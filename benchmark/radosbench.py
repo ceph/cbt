@@ -43,41 +43,12 @@ class Radosbench(Benchmark):
 
     def run(self):
         super(Radosbench, self).run()
-
-#        common.make_remote_dir('%s/write' % self.run_dir)
-#        monitoring.start('%s/write' % self.run_dir)
-#        # Run rados bench
-#        print 'Running radosbench write test.'
-#        ps = []
-#        for i in xrange(self.concurrent_procs):
-#            out_file = '%s/write/output.%s' % (self.run_dir, i)
-#            objecter_log = '%s/write/objecter.%s.log' % (self.run_dir, i)
-#            p = common.pdsh(settings.cluster.get('clients'), '/usr/bin/rados -p rados-bench-%s %s bench %s write %s --no-cleanup 2> %s > %s' % (i, op_size_str, self.time, concurrent_ops_str, objecter_log, out_file))
-#            ps.append(p)
-#        for p in ps:
-#            print p.wait()
-#        monitoring.stop('%s/write' % self.run_dir)
-#        common.sync_files('%s/write/*' % self.run_dir, '%s/write' % self.out_dir)
         # Run write test
         self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
         # Run read test unless write_only 
         if self.write_only: return
         self.dropcaches()
         self._run('seq', '%s/seq' % self.run_dir, '%s/seq' % self.out_dir)
-#        common.make_remote_dir('%s/seq' % self.run_dir)
-#        monitoring.start('%s/seq' % self.run_dir)
-#        # Run rados bench
-#        print 'Running radosbench read test.'
-#        ps = []
-#        for i in xrange(self.concurrent_procs):
-#            out_file = '%s/seq/output.%s' % (self.run_dir, i)
-#            objecter_log = '%s/seq/objecter.%s.log' % (self.run_dir, i)
-#            p = common.pdsh(settings.cluster.get('clients'), '/usr/bin/rados -p rados-bench-%s %s bench %s seq %s --no-cleanup 2> %s > %s' % (i, op_size_str, self.time, concurrent_ops_str, objecter_log, out_file))
-#            ps.append(p)
-#        for p in ps:
-#            p.wait()
-#        monitoring.stop('%s/seq' % self.run_dir)
-#        common.sync_files('%s/seq/*' % self.run_dir, '%s/seq' self.out_dir)
 
     def _run(self, mode, run_dir, out_dir):
         # We'll always drop caches for rados bench
@@ -101,10 +72,6 @@ class Radosbench(Benchmark):
             p.wait()
         monitoring.stop(run_dir)
         common.sync_files('%s/*' % run_dir, out_dir)
-
-
-#    def cleanup(self):
-#        common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
