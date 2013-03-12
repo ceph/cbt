@@ -31,25 +31,20 @@ if __name__ == '__main__':
     ctx = parse_args()
     settings.initialize(ctx)
 
-    common.setup_cluster()
-    if not settings.cluster.get("rebuild_every_test", False):
-        common.setup_ceph()
-#        setup_radosbench(rb_config)
-        print 'Checking Health.'
-        check_health()
-
     iteration = 0
     print settings.cluster
+    global_init = {} 
     while (iteration < settings.cluster.get("iterations", 0)):
-        if os.path.exists(os.path.join(settings.cluster.get("archive_dir"), '%08d' % iteration)):
-            print 'Skipping existing iteration %d.' % iteration
-            iteration += 1
-            continue
-
         benchmarks = benchmarkfactory.getAll(iteration)
         for b in benchmarks:
-#             print b
-            b.initialize()
+            if b.exists():
+                continue
+
+            if not b.getclass() in global_init:
+                b.initialize()
+                if not settings.cluster.get('rebuild_every_test', False):
+                    global_init[b.getclass()] = True
             b.run()
-            b.cleanup()
+            if not b.getclass() in global_init:
+                b.cleanup()
         iteration += 1

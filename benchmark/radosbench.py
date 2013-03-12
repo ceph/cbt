@@ -2,6 +2,7 @@ import subprocess
 import common
 import settings
 import monitoring
+import os
 
 from benchmark import Benchmark
 
@@ -18,21 +19,27 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/radosbench/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/radosbench/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.op_size), int(self.concurrent_ops))
 
+    def exists(self):
+        if os.path.exists(self.out_dir):
+            print 'Skipping existing test in %s.' % self.out_dir
+            return True
+        return False
+
     def initialize(self): 
-        super(Radosbench, self).initialize()
-        if settings.cluster.get('rebuild_every_test', False):
-            # Setup the pools
-            for i in xrange(self.concurrent_procs):
-                common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rados-bench-%s %d %d' % (i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-                common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rados-bench-%s size 1' % i).communicate()
+        common.setup_cluster()
+        common.setup_ceph()
+        # Setup the pools
+        for i in xrange(self.concurrent_procs):
+            common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rados-bench-%s %d %d' % (i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
+            common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rados-bench-%s size 1' % i).communicate()
+            # check the health for each pool.
+            print 'Checking Healh after pool creation.'
+            common.check_health()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
 
-        # Check the health before we start the benchmarks
-        print 'Checking Health.'
-        common.check_health()
-
+        return True
 
     def run(self):
         super(Radosbench, self).run()
