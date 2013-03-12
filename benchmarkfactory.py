@@ -2,6 +2,8 @@ import settings
 import common
 import copy
 from benchmark.radosbench import Radosbench
+from benchmark.rbdfio import RbdFio 
+#from benchmark import *
 
 def getAll(iteration):
     objects = []
@@ -14,10 +16,10 @@ def get(benchmark, config, iteration):
     default = {"benchmark":benchmark, "iteration":iteration}
 
     permutations = [default]
-    for param, value in sorted(config.iteritems()):
+    for param, value in sorted(config.iteritems(), reverse=True):
         if (isinstance(value, list)):
             localperms = []
-            for lv in value:
+            for lv in sorted(value, reverse=True):
                 for p in permutations:
                     lp = copy.deepcopy(p)
                     lp[param] = lv
@@ -34,3 +36,5 @@ def get(benchmark, config, iteration):
 def getObject(benchmark, bconfig):
     if benchmark == "radosbench":
         return Radosbench(bconfig)
+    if benchmark == "rbdfio":
+        return RbdFio(bconfig)

@@ -10,9 +10,11 @@ class Benchmark(object):
         self.tmp_dir = "%s/%08d" % (settings.cluster.get('tmp_dir'), config.get('iteration'))
         self.archive_dir = "%s/%08d" % (settings.cluster.get('archive_dir'), config.get('iteration'))
 
+    def getclass(self):
+        return self.__class__.__name__
+
     def initialize(self):
-        if settings.cluster.get('rebuild_every_test', False):
-            common.setup_ceph()
+        pass
 
     def run(self):
         pass
