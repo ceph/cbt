@@ -3,6 +3,7 @@ import common
 import copy
 from benchmark.radosbench import Radosbench
 from benchmark.rbdfio import RbdFio 
+from benchmark.kvmrbdfio import KvmRbdFio
 #from benchmark import *
 
 def getAll(iteration):
@@ -38,3 +39,5 @@ def getObject(benchmark, bconfig):
         return Radosbench(bconfig)
     if benchmark == "rbdfio":
         return RbdFio(bconfig)
+    if benchmark == "kvmrbdfio":
+        return KvmRbdFio(bconfig)

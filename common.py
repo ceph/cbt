@@ -67,8 +67,8 @@ def sync_files(remote_dir, local_dir):
     rpdcp(nodes, '-r', remote_dir, local_dir).communicate()
 
 def setup_cluster():
-    print "Stopping ceph."
-    stop_ceph()
+#    print "Stopping ceph."
+#    stop_ceph()
 
     sc = settings.cluster
     nodes = get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])

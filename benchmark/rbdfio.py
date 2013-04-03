@@ -19,6 +19,8 @@ class RbdFio(Benchmark):
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
         self.rep_size = config.get('rep_size', 1)
+        self.rbdadd_mons = config.get('rbdadd_mons')
+        self.rbdadd_options = config.get('rbdadd_options')
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.run_dir = '%s/rbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/rbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
@@ -44,7 +46,8 @@ class RbdFio(Benchmark):
         common.pdsh(settings.cluster.get('clients'), 'sudo modprobe rbd').communicate()
         for i in xrange(self.concurrent_procs):
             common.pdsh(settings.cluster.get('clients'), 'sudo rbd create rbdfio/rbdfio-`hostname -s`-%d --size %d' % (i, self.vol_size)).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo rbd map rbdfio-`hostname -s`-%d  --pool rbdfio --id admin' % i).communicate()
+#            common.pdsh(settings.cluster.get('clients'), 'sudo rbd map rbdfio-`hostname -s`-%d  --pool rbdfio --id admin' % i).communicate()
+            common.pdsh(settings.cluster.get('clients'), 'sudo echo "%s %s rbdfio rbdfio-`hostname -s`-%d" | sudo tee /sys/bus/rbd/add && sudo /sbin/udevadm settle' % (self.rbdadd_mons, self.rbdadd_options, i)).communicate()
             common.pdsh(settings.cluster.get('clients'), 'sudo mkfs.xfs /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d' % i).communicate()
             common.pdsh(settings.cluster.get('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
             common.pdsh(settings.cluster.get('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d /srv/rbdfio-`hostname -s`-%d' %(i, i)).communicate()
