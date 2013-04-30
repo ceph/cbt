@@ -30,11 +30,13 @@ class Radosbench(Benchmark):
         common.setup_ceph()
         # Setup the pools
         for i in xrange(self.concurrent_procs):
-            common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rados-bench-%s %d %d' % (i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-            common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rados-bench-%s size 1' % i).communicate()
-            # check the health for each pool.
-            print 'Checking Healh after pool creation.'
-            common.check_health()
+            for node in settings.cluster.get('clients').split(','):
+                node = node.rpartition("@")[2]
+                common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rados-bench-%s-%s %d %d' % (node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
+                common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rados-bench-%s-%s size 1' % (node, i)).communicate()
+                # check the health for each pool.
+                print 'Checking Healh after pool creation.'
+                common.check_health()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
@@ -66,7 +68,7 @@ class Radosbench(Benchmark):
         for i in xrange(self.concurrent_procs):
             out_file = '%s/output.%s' % (run_dir, i)
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
-            p = common.pdsh(settings.cluster.get('clients'), '/usr/bin/rados -p rados-bench-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
+            p = common.pdsh(settings.cluster.get('clients'), '/usr/bin/rados -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
             ps.append(p)
         for p in ps:
             p.wait()
