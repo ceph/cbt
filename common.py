@@ -147,6 +147,14 @@ def setup_fs():
         servers = sc.get('servers')
         pdsh(servers, 'sudo umount /srv/osd-device-%s-data;sudo rm -rf /srv/osd-device-%s' % (device, device)).communicate()
         pdsh(servers, 'sudo mkdir /srv/osd-device-%s-data' % device).communicate()
-        pdsh(servers, 'sudo mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)).communicate()
-        pdsh(servers, 'sudo mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data /srv/osd-device-%s-data' % (mount_opts, fs, device, device)).communicate()
+
+        if fs == 'zfs':
+            print 'ruhoh, zfs detected.  No mkfs for you!'
+            pdsh(servers, 'sudo zpool destroy osd-device-%s-data' % device).communicate()
+#            pdsh(servers, 'sudo mkfs.ext4 /dev/disk/by-partlabel/osd-device-%s-data' % device).communicate()
+            pdsh(servers, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data /dev/disk/by-partlabel/osd-device-%s-data' % (device, device)).communicate()
+            pdsh(servers, 'sudo mount %s -t zfs osd-device-%s-data /srv/osd-device-%s-data' % (mount_opts, device, device)).communicate()
+        else: 
+            pdsh(servers, 'sudo mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)).communicate()
+            pdsh(servers, 'sudo mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data /srv/osd-device-%s-data' % (mount_opts, fs, device, device)).communicate()
 
