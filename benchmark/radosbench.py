@@ -18,6 +18,7 @@ class Radosbench(Benchmark):
         self.pgs_per_pool = config.get('pgs_per_pool', 2048)
         self.run_dir = '%s/radosbench/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/radosbench/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.op_size), int(self.concurrent_ops))
+        self.use_existing = config.get('use_existing', True)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -26,17 +27,21 @@ class Radosbench(Benchmark):
         return False
 
     def initialize(self): 
-        common.setup_cluster()
-        common.setup_ceph()
-        # Setup the pools
-        for i in xrange(self.concurrent_procs):
-            for node in settings.cluster.get('clients').split(','):
-                node = node.rpartition("@")[2]
-                common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rados-bench-%s-%s %d %d' % (node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-                common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rados-bench-%s-%s size 1' % (node, i)).communicate()
-                # check the health for each pool.
-                print 'Checking Healh after pool creation.'
-                common.check_health()
+        if not self.use_existing:
+            common.setup_cluster()
+            common.setup_ceph()
+            common.dump_config(self.run_dir)
+            # Setup the pools
+            for i in xrange(self.concurrent_procs):
+                for node in settings.cluster.get('clients').split(','):
+                    node = node.rpartition("@")[2]
+                    common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rados-bench-%s-%s %d %d' % (node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
+                    common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rados-bench-%s-%s size 1' % (node, i)).communicate()
+                    # check the health for each pool.
+                    print 'Checking Healh after pool creation.'
+                    common.check_health()
+
+        common.check_scrub()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
