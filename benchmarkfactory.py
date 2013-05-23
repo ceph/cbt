@@ -17,10 +17,12 @@ def get(benchmark, config, iteration):
     default = {"benchmark":benchmark, "iteration":iteration}
 
     permutations = [default]
-    for param, value in sorted(config.iteritems(), reverse=True):
+#    for param, value in sorted(config.iteritems(), reverse=True):
+    for param, value in config.iteritems():
         if (isinstance(value, list)):
             localperms = []
-            for lv in sorted(value, reverse=True):
+#            for lv in sorted(value, reverse=True):
+            for lv in value:
                 for p in permutations:
                     lp = copy.deepcopy(p)
                     lp[param] = lv
