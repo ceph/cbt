@@ -53,6 +53,18 @@ def check_health():
             print stdout
         time.sleep(1)
 
+def check_scrub():
+    print 'Waiting until Scrubbing completes...'
+
+    while True:
+        stdout, stderr = pdsh(settings.cluster.get('head'), 'ceph pg dump | cut -f 16 | grep "0.000000" | wc -l').communicate()
+        if " 0\n" in stdout:
+            print stdout
+            break
+        else:
+            print stdout
+        time.sleep(1)
+
 def make_remote_dir(remote_dir):
     print 'Making remote directory: %s' % remote_dir
     sc = settings.cluster
@@ -153,8 +165,12 @@ def setup_fs():
             pdsh(servers, 'sudo zpool destroy osd-device-%s-data' % device).communicate()
 #            pdsh(servers, 'sudo mkfs.ext4 /dev/disk/by-partlabel/osd-device-%s-data' % device).communicate()
             pdsh(servers, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data /dev/disk/by-partlabel/osd-device-%s-data' % (device, device)).communicate()
+            pdsh(servers, 'sudo zpool add osd-device-%s-data log /dev/disk/by-partlabel/osd-device-%s-zil' % (device, device)).communicate()
             pdsh(servers, 'sudo mount %s -t zfs osd-device-%s-data /srv/osd-device-%s-data' % (mount_opts, device, device)).communicate()
         else: 
             pdsh(servers, 'sudo mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)).communicate()
             pdsh(servers, 'sudo mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data /srv/osd-device-%s-data' % (mount_opts, fs, device, device)).communicate()
+
+def dump_config(run_dir):
+    pdsh(settings.cluster.get('servers'), 'sudo ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok config show > %s/ceph_settings.out' % run_dir).communicate()
 

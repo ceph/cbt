@@ -20,7 +20,7 @@ class RbdFio(Benchmark):
         self.vol_size = config.get('vol_size', 65536)
         self.rep_size = config.get('rep_size', 1)
         self.rbdadd_mons = config.get('rbdadd_mons')
-        self.rbdadd_options = config.get('rbdadd_options')
+        self.rbdadd_options = config.get('rbdadd_options', 'share')
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.run_dir = '%s/rbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/rbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
@@ -36,7 +36,7 @@ class RbdFio(Benchmark):
         super(RbdFio, self).initialize()
         common.setup_cluster()
         common.setup_ceph()
-
+        common.dump_config(self.run_dir)
         # Setup the pools
         common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rbdfio %d %d' % (self.pgs, self.pgs)).communicate()
         common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rbdfio size 1').communicate()
@@ -51,6 +51,8 @@ class RbdFio(Benchmark):
             common.pdsh(settings.cluster.get('clients'), 'sudo mkfs.xfs /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d' % i).communicate()
             common.pdsh(settings.cluster.get('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
             common.pdsh(settings.cluster.get('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d /srv/rbdfio-`hostname -s`-%d' %(i, i)).communicate()
+
+        common.check_scrub()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
