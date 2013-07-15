@@ -81,12 +81,6 @@ def sync_files(remote_dir, local_dir):
 def setup_cluster():
 #    print "Stopping ceph."
 #    stop_ceph()
-
-    sc = settings.cluster
-    nodes = get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])
-    tmp_dir = sc.get("tmp_dir")
-    print 'Deleting %s' % tmp_dir
-    pdsh(nodes, 'rm -rf %s' % tmp_dir).communicate()
     setup_ceph_conf()
 
 def setup_ceph():
@@ -119,6 +113,9 @@ def stop_ceph():
     sc = settings.cluster
     nodes = get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])
     pdsh(nodes, 'sudo /etc/init.d/ceph stop').communicate()
+    pdsh(nodes, 'sudo killall -9 ceph-osd').communicate()
+    pdsh(nodes, 'sudo killall -9 ceph-mon').communicate()
+
 #    if rgws:
 #        pdsh(rgws, 'sudo /etc/init.d/radosgw stop;sudo /etc/init.d/apache2 stop').communicate()
 
@@ -142,6 +139,22 @@ def purge_logs():
     sc = settings.cluster
     nodes = get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])
     pdsh(nodes, 'sudo rm -rf /var/log/ceph/*').communicate()
+
+def cleanup_tests():
+    sc = settings.cluster
+    clients = sc.get('clients')
+    rgws = sc.get('rgws')
+    nodes = get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])
+    pdsh(clients, 'sudo killall -9 rados;sudo killall -9 rest-bench').communicate()
+    if rgws:
+        pdsh(rgws, 'sudo killall -9 radosgw-admin').communicate()
+    pdsh(nodes, 'sudo killall -9 pdcp').communicate()
+
+    # cleanup the tmp_dir
+    tmp_dir = sc.get("tmp_dir")
+    print 'Deleting %s' % tmp_dir
+    pdsh(nodes, 'rm -rf %s' % tmp_dir).communicate()
+
 
 def mkcephfs():
     pdsh(settings.cluster.get('head'), 'sudo mkcephfs -a -c /etc/ceph/ceph.conf').communicate()
@@ -174,3 +187,5 @@ def setup_fs():
 def dump_config(run_dir):
     pdsh(settings.cluster.get('servers'), 'sudo ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok config show > %s/ceph_settings.out' % run_dir).communicate()
 
+def dump_historic_ops(run_dir):
+    pdsh(settings.cluster.get('servers'), 'find /var/run/ceph/*.asok -maxdepth 1 -exec sudo ceph --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % run_dir).communicate()

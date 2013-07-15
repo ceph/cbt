@@ -3,6 +3,7 @@ import common
 import settings
 import monitoring
 import os
+import time
 
 from benchmark import Benchmark
 
@@ -27,11 +28,17 @@ class Radosbench(Benchmark):
         return False
 
     def initialize(self): 
+        common.cleanup_tests()
         if not self.use_existing:
             common.setup_cluster()
             common.setup_ceph()
-            common.dump_config(self.run_dir)
+
+            # Create the run directory
+            common.make_remote_dir(self.run_dir)
+
             # Setup the pools
+
+            monitoring.start("%s/pool_monitoring" % self.run_dir)
             for i in xrange(self.concurrent_procs):
                 for node in settings.cluster.get('clients').split(','):
                     node = node.rpartition("@")[2]
@@ -40,11 +47,19 @@ class Radosbench(Benchmark):
                     # check the health for each pool.
                     print 'Checking Healh after pool creation.'
                     common.check_health()
+            monitoring.stop()
 
+        print 'Running scrub monitoring.'
+        monitoring.start("%s/scrub_monitoring" % self.run_dir)
         common.check_scrub()
+        monitoring.stop()
 
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
+        print 'Pausing for 60s for idle monitoring.'
+        monitoring.start("%s/idle_monitoring" % self.run_dir)
+        time.sleep(60)
+        monitoring.stop()
+
+        common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
         return True
 
@@ -66,6 +81,10 @@ class Radosbench(Benchmark):
         op_size_str = '-b %s' % self.op_size
 
         common.make_remote_dir(run_dir)
+
+        # dump the cluster config
+        common.dump_config(run_dir)
+
         monitoring.start(run_dir)
         # Run rados bench
         print 'Running radosbench read test.'
@@ -78,6 +97,9 @@ class Radosbench(Benchmark):
         for p in ps:
             p.wait()
         monitoring.stop(run_dir)
+
+        # Get the historic ops
+        common.dump_historic_ops(run_dir)
         common.sync_files('%s/*' % run_dir, out_dir)
 
     def __str__(self):
