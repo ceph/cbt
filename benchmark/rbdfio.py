@@ -38,19 +38,19 @@ class RbdFio(Benchmark):
         common.setup_ceph()
         common.dump_config(self.run_dir)
         # Setup the pools
-        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rbdfio %d %d' % (self.pgs, self.pgs)).communicate()
-        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rbdfio size 1').communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo ceph osd pool create rbdfio %d %d' % (self.pgs, self.pgs)).communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo ceph osd pool set rbdfio size 1').communicate()
         print 'Checking Healh after pool creation.'
         common.check_health()
 
-        common.pdsh(settings.cluster.get('clients'), 'sudo modprobe rbd').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo modprobe rbd').communicate()
         for i in xrange(self.concurrent_procs):
-            common.pdsh(settings.cluster.get('clients'), 'sudo rbd create rbdfio/rbdfio-`hostname -s`-%d --size %d' % (i, self.vol_size)).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo rbd create rbdfio/rbdfio-`hostname -s`-%d --size %d' % (i, self.vol_size)).communicate()
 #            common.pdsh(settings.cluster.get('clients'), 'sudo rbd map rbdfio-`hostname -s`-%d  --pool rbdfio --id admin' % i).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo echo "%s %s rbdfio rbdfio-`hostname -s`-%d" | sudo tee /sys/bus/rbd/add && sudo /sbin/udevadm settle' % (self.rbdadd_mons, self.rbdadd_options, i)).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo mkfs.xfs /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d' % i).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d /srv/rbdfio-`hostname -s`-%d' %(i, i)).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo echo "%s %s rbdfio rbdfio-`hostname -s`-%d" | sudo tee /sys/bus/rbd/add && sudo /sbin/udevadm settle' % (self.rbdadd_mons, self.rbdadd_options, i)).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mkfs.xfs /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d' % i).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/rbdfio/rbdfio-`hostname -s`-%d /srv/rbdfio-`hostname -s`-%d' %(i, i)).communicate()
 
         common.check_scrub()
 
@@ -71,7 +71,7 @@ class RbdFio(Benchmark):
             names += "--name=/srv/rbdfio-`hostname -s`-%d/cbt-rbdfio " % i
         out_file = '%s/output' % self.run_dir
         fio_cmd = 'sudo fio --rw=%s -ioengine=%s --runtime=%s --numjobs=1 --direct=1 --bs=%dB --iodepth=%d --size %dM %s > %s' %  (self.mode, self.ioengine, self.time, self.op_size, self.iodepth, self.vol_size * 9/10, names, out_file)
-        common.pdsh(settings.cluster.get('clients'), fio_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
 #        ps = []
 #        for i in xrange(self.concurrent_procs):
 #            out_file = '%s/output.%s' % (self.run_dir, i)
@@ -84,8 +84,8 @@ class RbdFio(Benchmark):
 
 
     def cleanup(self):
-         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd unmap \'{}\' \;').communicate()
+         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd unmap \'{}\' \;').communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RbdFio, self).__str__())

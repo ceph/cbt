@@ -3,8 +3,7 @@ import settings
 import subprocess
 
 def start(directory):
-    sc = settings.cluster
-    nodes = common.get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])
+    nodes = settings.getnodes('clients', 'servers', 'mons', 'rgws')
     collectl_dir = '%s/collectl' % directory
     perf_dir = '%s/perf' % directory
     blktrace_dir = '%s/blktrace' % directory
@@ -13,8 +12,8 @@ def start(directory):
     common.pdsh(nodes, 'mkdir -p -m0755 -- %s;collectl -s+mYZ -i 1:10 -F0 -f %s' % (collectl_dir,collectl_dir))
 
     # perf
-#    common.pdsh(get_nodes([clients, servers, mons, rgws]), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
-#    common.pdsh(get_nodes([clients, servers, mons, rgws]), 'cd %s;sudo perf_3.6 record -g -f -a -F 100 -o perf.data' % perf_dir)
+#    common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
+#    common.pdsh(nodes), 'cd %s;sudo perf_3.6 record -g -f -a -F 100 -o perf.data' % perf_dir)
 
     # blktrace
 #    common.pdsh(servers, 'mkdir -p -m0755 -- %s' % blktrace_dir).communicate()
@@ -24,12 +23,13 @@ def start(directory):
 
 
 def stop(directory=None):
-    sc = settings.cluster
-    nodes = common.get_nodes([sc.get('clients'), sc.get('servers'), sc.get('mons'), sc.get('rgws')])
+    nodes = settings.getnodes('clients', 'servers', 'mons', 'rgws')
+
     common.pdsh(nodes, 'pkill -SIGINT -f collectl').communicate()
     common.pdsh(nodes, 'sudo pkill -SIGINT -f perf_3.6').communicate()
-    common.pdsh(sc.get('servers'), 'sudo pkill -SIGINT -f blktrace').communicate()
+    common.pdsh(settings.getnodes('servers'), 'sudo pkill -SIGINT -f blktrace').communicate()
     if directory:
+        sc = settings.cluster
         common.pdsh(nodes, 'cd %s/perf;sudo chown %s.%s perf.data' % (directory, sc.get('user'), sc.get('user')))
         make_movies(directory)
 
@@ -39,5 +39,5 @@ def make_movies(directory):
     blktrace_dir = '%s/blktrace' % directory
 
     for device in xrange (0,sc.get('osds_per_node')):
-        common.pdsh(sc.get('servers'), 'cd %s;%s -t device%s -o device%s.mpg --movie' % (blktrace_dir,seekwatcher,device,device)).communicate()
+        common.pdsh(settings.getnodes('servers'), 'cd %s;%s -t device%s -o device%s.mpg --movie' % (blktrace_dir,seekwatcher,device,device)).communicate()
 
