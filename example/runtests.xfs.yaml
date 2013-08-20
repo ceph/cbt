@@ -1,0 +1,41 @@
+cluster:
+  head: "ubuntu@node19"
+  clients: ["ubuntu@node19","ubuntu@node20","ubuntu@node29","ubuntu@node30"]
+  servers: ["ubuntu@node31","ubuntu@node33","ubuntu@node34","ubuntu@node35","ubuntu@node36","ubuntu@node37","ubuntu@node38","ubuntu@node39","ubuntu@node45","ubuntu@node46"]
+  mons: ["ubuntu@node19","ubuntu@node20","ubuntu@node29"]
+  user: ubuntu
+  osds_per_node: 7 
+  fs: xfs
+  mkfs_opts: -f -i size=2048 -n size=64k
+  mount_opts: -o inode64,noatime,logbsize=256k
+  ceph.conf: /home/nhm/src/ceph-tools/cbt/example/ceph.conf
+  iterations: 1 
+#  rebuild_every_test: True
+  tmp_dir: "/tmp/cbt"
+benchmarks:
+  rbdfio:
+    rbdadd_mons: "192.168.10.2:6789"
+    rbdadd_options: "noshare"
+    time: 60
+    pgs: 8192 
+    vol_size: 65536 
+    mode: [randwrite, randread, write, read]
+    op_size: [4096, 131072, 4194304]
+    concurrent_procs: [1, 2, 4, 8, 16]
+    iodepth: [1, 2, 4, 8, 16]
+  radosbench:
+    op_size: [4194304, 131072, 4096]
+    write_only: False 
+    time: 300 
+    concurrent_ops: [32]
+    concurrent_procs: 2 
+    pgs_per_pool: 1024 
+    use_existing: False 
+#  kvmrbdfio:
+#    time: 60
+#    pgs: 8192
+#    vol_size: 65536
+#    mode: [randwrite, randread, write, read]
+#    op_size: [4096, 131072, 4194304]
+#    iodepth: [1, 2, 4, 8, 16]
+
