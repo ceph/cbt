@@ -189,3 +189,6 @@ def dump_config(run_dir):
 
 def dump_historic_ops(run_dir):
     pdsh(settings.cluster.get('servers'), 'find /var/run/ceph/*.asok -maxdepth 1 -exec sudo ceph --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % run_dir).communicate()
+
+def set_osd_param(param, value):
+    pdsh(settings.cluster.get('servers'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))

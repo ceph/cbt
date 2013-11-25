@@ -25,10 +25,10 @@ class KvmRbdFio(Benchmark):
         self.rep_size = config.get('rep_size', 1)
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options')
+        self.client_ra = config.get('client_ra')
         # FIXME there are too many permutations, need to put results in SQLITE3 
-
-        self.run_dir = '%s/kvmrbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/kvmrbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
+        self.run_dir = '%s/kvmrbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
+        self.out_dir = '%s/kvmrbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -53,7 +53,7 @@ class KvmRbdFio(Benchmark):
 #        for i in xrange(self.concurrent_procs):
         names = ""
         for i in xrange(self.concurrent_procs):
-            letter = string.ascii_lowercase[i+1]
+            letter = string.ascii_lowercase[i+2]
 #            common.pdsh(settings.cluster.get('clients'), 'sudo rbd create rbdfio/rbdfio-`hostname -s`-%d --size %d' % (i, self.vol_size)).communicate()
 #            common.pdsh(settings.cluster.get('clients'), 'sudo rbd map rbdfio-`hostname -s`-%d  --pool rbdfio --id admin' % i).communicate()
 #            common.pdsh(settings.cluster.get('clients'), 'sudo echo "%s %s rbdfio rbdfio-`hostname -s`-%d" | sudo tee /sys/bus/rbd/add && sudo /sbin/udevadm settle' % (self.rbdadd_mons, self.rbdadd_options, i)).communicate()
@@ -66,6 +66,9 @@ class KvmRbdFio(Benchmark):
 
     def run(self):
         super(KvmRbdFio, self).run()
+        # Set client readahead
+        self.set_client_param('read_ahead_kb', self.client_ra)
+
         # We'll always drop caches for rados bench
         self.dropcaches()
 
@@ -92,11 +95,13 @@ class KvmRbdFio(Benchmark):
         monitoring.stop(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-
     def cleanup(self):
          common.pdsh(settings.cluster.get('clients'), 'sudo umount /srv/*').communicate()
 #         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
 #         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd unmap \'{}\' \;').communicate()
+
+    def set_client_param(self, param, value):
+         common.pdsh(settings.cluster.get('clients'), 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(KvmRbdFio, self).__str__())

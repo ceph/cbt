@@ -9,6 +9,7 @@ class Benchmark(object):
         self.config = config
         self.tmp_dir = "%s/%08d" % (settings.cluster.get('tmp_dir'), config.get('iteration'))
         self.archive_dir = "%s/%08d" % (settings.cluster.get('archive_dir'), config.get('iteration'))
+        self.osd_ra = config.get('osd_ra', 128)
 
     def getclass(self):
         return self.__class__.__name__
@@ -17,7 +18,8 @@ class Benchmark(object):
         pass
 
     def run(self):
-        pass
+        print "Setting OSD Read Ahead to: %s" % self.osd_ra
+        common.set_osd_param('read_ahead_kb', self.osd_ra)
 
     def cleanup(self):
         pass

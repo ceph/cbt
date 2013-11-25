@@ -21,9 +21,10 @@ class RbdFio(Benchmark):
         self.rep_size = config.get('rep_size', 1)
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options', 'share')
+        self.client_ra = config.get('client_ra', 128)
         # FIXME there are too many permutations, need to put results in SQLITE3
-        self.run_dir = '%s/rbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/rbdfio/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
+        self.run_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
+        self.out_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -39,7 +40,7 @@ class RbdFio(Benchmark):
         common.dump_config(self.run_dir)
         # Setup the pools
         common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rbdfio %d %d' % (self.pgs, self.pgs)).communicate()
-        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rbdfio size 1').communicate()
+        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rbdfio size 3').communicate()
         print 'Checking Healh after pool creation.'
         common.check_health()
 
@@ -59,6 +60,9 @@ class RbdFio(Benchmark):
 
     def run(self):
         super(RbdFio, self).run()
+        # Set client readahead
+        self.set_client_param('read_ahead_kb', self.client_ra)
+
         # We'll always drop caches for rados bench
         self.dropcaches()
 
@@ -86,6 +90,9 @@ class RbdFio(Benchmark):
     def cleanup(self):
          common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
          common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd unmap \'{}\' \;').communicate()
+
+    def set_client_param(self, param, value):
+         common.pdsh(settings.cluster.get('clients'), 'find /sys/block/rbd* -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RbdFio, self).__str__())

@@ -17,8 +17,8 @@ class Radosbench(Benchmark):
         self.write_only = config.get('write_only', False)
         self.op_size = config.get('op_size', 4194304)
         self.pgs_per_pool = config.get('pgs_per_pool', 2048)
-        self.run_dir = '%s/radosbench/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.op_size), int(self.concurrent_ops))
-        self.out_dir = '%s/radosbench/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.op_size), int(self.concurrent_ops))
+        self.run_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
+        self.out_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.use_existing = config.get('use_existing', True)
 
     def exists(self):
@@ -28,6 +28,7 @@ class Radosbench(Benchmark):
         return False
 
     def initialize(self): 
+        super(Radosbench, self).initialize()
         common.cleanup_tests()
         if not self.use_existing:
             common.setup_cluster()
