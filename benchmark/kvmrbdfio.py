@@ -13,7 +13,7 @@ class KvmRbdFio(Benchmark):
     def __init__(self, config):
         super(KvmRbdFio, self).__init__(config)
         self.concurrent_procs = config.get('concurrent_procs', 1)
-        self.total_procs = self.concurrent_procs * len(settings.cluster.get('clients').split(','))
+        self.total_procs = self.concurrent_procs * len(settings.getnodes('clients'))
 
         self.time =  str(config.get('time', '300'))
         self.iodepth = config.get('iodepth', 16)
@@ -57,9 +57,9 @@ class KvmRbdFio(Benchmark):
 #            common.pdsh(settings.cluster.get('clients'), 'sudo rbd create rbdfio/rbdfio-`hostname -s`-%d --size %d' % (i, self.vol_size)).communicate()
 #            common.pdsh(settings.cluster.get('clients'), 'sudo rbd map rbdfio-`hostname -s`-%d  --pool rbdfio --id admin' % i).communicate()
 #            common.pdsh(settings.cluster.get('clients'), 'sudo echo "%s %s rbdfio rbdfio-`hostname -s`-%d" | sudo tee /sys/bus/rbd/add && sudo /sbin/udevadm settle' % (self.rbdadd_mons, self.rbdadd_options, i)).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo mkfs.xfs /dev/vd%s' % letter).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
-            common.pdsh(settings.cluster.get('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/vd%s /srv/rbdfio-`hostname -s`-%d' %(letter, i)).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mkfs.xfs /dev/vd%s' % letter).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/vd%s /srv/rbdfio-`hostname -s`-%d' %(letter, i)).communicate()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
@@ -82,9 +82,9 @@ class KvmRbdFio(Benchmark):
         pre_cmd = 'sudo fio --rw=read -ioengine=sync --numjobs=1 --bs=4M --runtime=1 --size %dM %s > /dev/null' % (self.vol_size * 9/10, names)
         fio_cmd = 'sudo fio --rw=%s -ioengine=%s --runtime=%s --numjobs=1 --direct=1 --bs=%dB --iodepth=%d --size %dM %s > %s' %  (self.mode, self.ioengine, self.time, self.op_size, self.iodepth, self.vol_size * 9/10, names, out_file)
         print 'Attempting to populating fio files...'
-        common.pdsh(settings.cluster.get('clients'), pre_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
         print 'Running rbd fio %s test.' % self.mode
-        common.pdsh(settings.cluster.get('clients'), fio_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
 #        ps = []
 #        for i in xrange(self.concurrent_procs):
 #            out_file = '%s/output.%s' % (self.run_dir, i)
@@ -96,7 +96,7 @@ class KvmRbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def cleanup(self):
-         common.pdsh(settings.cluster.get('clients'), 'sudo umount /srv/*').communicate()
+         common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*').communicate()
 #         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
 #         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd unmap \'{}\' \;').communicate()
 
