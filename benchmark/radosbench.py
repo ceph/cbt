@@ -20,6 +20,7 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.use_existing = config.get('use_existing', True)
+        self.tmp_conf = '%s/ceph.conf' % settings.cluster.get('tmp_dir')
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -37,13 +38,12 @@ class Radosbench(Benchmark):
             common.make_remote_dir(self.run_dir)
 
             # Setup the pools
-
             monitoring.start("%s/pool_monitoring" % self.run_dir)
             for i in xrange(self.concurrent_procs):
                 for node in settings.getnodes('clients').split(','):
                     node = node.rpartition("@")[2]
-                    common.pdsh(settings.getnodes('head'), 'sudo ceph osd pool create rados-bench-%s-%s %d %d' % (node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-                    common.pdsh(settings.getnodes('head'), 'sudo ceph osd pool set rados-bench-%s-%s size 1' % (node, i)).communicate()
+                    common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
+                    common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size 1' % (self.tmp_conf, node, i)).communicate()
                     # check the health for each pool.
                     print 'Checking Healh after pool creation.'
                     common.check_health()
@@ -92,7 +92,7 @@ class Radosbench(Benchmark):
         for i in xrange(self.concurrent_procs):
             out_file = '%s/output.%s' % (run_dir, i)
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
-            p = common.pdsh(settings.getnodes('clients'), '/usr/bin/rados -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
+            p = common.pdsh(settings.getnodes('clients'), '/usr/bin/rados -c %s -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (self.tmp_conf, i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
             ps.append(p)
         for p in ps:
             p.wait()
