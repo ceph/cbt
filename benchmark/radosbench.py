@@ -31,7 +31,6 @@ class Radosbench(Benchmark):
         super(Radosbench, self).initialize()
         common.cleanup_tests()
         if not self.use_existing:
-            common.setup_cluster()
             common.setup_ceph()
 
             # Create the run directory

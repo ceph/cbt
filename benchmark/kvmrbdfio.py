@@ -40,7 +40,6 @@ class KvmRbdFio(Benchmark):
         pass
 #        self.cleanup()
 #        super(KvmRbdFio, self).initialize()
-        common.setup_cluster()
 #        common.setup_ceph()
 
         # Setup the pools

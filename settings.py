@@ -30,6 +30,8 @@ def initialize(ctx):
         cluster['ceph.conf'] = ctx.conf
     if ctx.archive:
         cluster['archive_dir'] = ctx.archive
+    if 'tmp_dir' not in cluster:
+        cluster['tmp_dir'] = '/tmp/cbt.%s' % os.getpid()
 
 def getnodes(*nodelists):
     nodes = []
@@ -37,7 +39,8 @@ def getnodes(*nodelists):
         cur = cluster.get(nodelist, [])
         if isinstance(cur, str):
             cur = [cur]
-
+        if isinstance(cur, dict):
+            cur = cur.keys()
         if cur:
             nodes = nodes + cur
     print nodes

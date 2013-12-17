@@ -25,7 +25,7 @@ class Benchmark(object):
         pass
 
     def dropcaches(self):
-        nodes = settings.getnodes('clients', 'servers') 
+        nodes = settings.getnodes('clients', 'osds') 
 
         common.pdsh(nodes, 'sync').communicate()
         common.pdsh(nodes, 'echo 3 | sudo tee /proc/sys/vm/drop_caches').communicate()
