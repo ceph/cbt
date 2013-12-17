@@ -41,8 +41,12 @@ def rscp(node, remotefile, localfile):
 
 def check_health():
     print 'Waiting until Ceph is healthy...'
-    i = 0
-    j = 30
+
+    tmp_dir = settings.cluster.get('tmp_dir')
+    tmp_conf = '%s/ceph.conf' % tmp_dir
+
+#    i = 0
+#    j = 30
 #    while True:
 #        if i > j:
 #            break
@@ -51,7 +55,7 @@ def check_health():
 #        time.sleep(1)
 
     while True:
-        stdout, stderr = pdsh(settings.getnodes('head'), 'ceph health').communicate()
+        stdout, stderr = pdsh(settings.getnodes('head'), 'ceph -c %s health' % tmp_conf).communicate()
         if "HEALTH_OK" in stdout:
             break
         else:
@@ -59,10 +63,12 @@ def check_health():
         time.sleep(1)
 
 def check_scrub():
-    print 'Waiting until Scrubbing completes...'
+    tmp_dir = settings.cluster.get('tmp_dir')
+    tmp_conf = '%s/ceph.conf' % tmp_dir
 
+    print 'Waiting until Scrubbing completes...'
     while True:
-        stdout, stderr = pdsh(settings.getnodes('head'), 'ceph pg dump | cut -f 16 | grep "0.000000" | wc -l').communicate()
+        stdout, stderr = pdsh(settings.getnodes('head'), 'ceph -c %s pg dump | cut -f 16 | grep "0.000000" | wc -l' % tmp_conf).communicate()
         if " 0\n" in stdout:
             print stdout
             break
@@ -101,8 +107,8 @@ def setup_ceph():
     mkcephfs()
     print 'Starting Ceph.'
     start_ceph()
-    print 'Setting up pools'
-    setup_pools()
+#    print 'Setting up pools'
+#    setup_pools()
     print 'Checking Health.'
     check_health()
 
@@ -128,7 +134,7 @@ def setup_ceph_conf():
     tmp_conf = "%s/ceph.conf" % tmp_dir
     nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
 
-    conf_file = settings.cluster.get("ceph.conf")
+    conf_file = settings.cluster.get("conf_file")
     print "Distributing %s." % conf_file
     pdcp(nodes, '', conf_file, tmp_conf).communicate()
 #    pdsh(nodes, 'sudo cp /tmp/ceph.conf /etc/ceph/ceph.conf').communicate()
@@ -158,7 +164,7 @@ def cleanup_tests():
     # cleanup the tmp_dir
     tmp_dir = settings.cluster.get("tmp_dir")
     print 'Deleting %s' % tmp_dir
-    pdsh(nodes, 'rm -rf %s' % tmp_dir).communicate()
+    pdsh(nodes, 'sudo rm -rf %s' % tmp_dir).communicate()
 
 
 def mkcephfs():
@@ -196,7 +202,7 @@ def mkcephfs():
     # Build the ceph-mons
     for monhost, mons in monhosts.iteritems():
         for mon, addr in mons.iteritems():
-            pdsh(monhost, 'rm -rf %s/mon.%s' % (tmp_dir, mon)).communicate()
+            pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (tmp_dir, mon)).communicate()
             pdsh(monhost, 'mkdir -p %s/mon.%s' % (tmp_dir, mon)).communicate()
             pdsh(monhost, 'sudo ceph-mon --mkfs -c %s -i %s --monmap=%s --keyring=%s' % (tmp_conf, mon, monmap_fn, keyring_fn)).communicate()
             pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (keyring_fn, tmp_dir, mon)).communicate()
@@ -217,11 +223,11 @@ def mkcephfs():
             osduuid = str(uuid.uuid4())
             pdsh(host, 'sudo ceph -c %s osd create %s' % (tmp_conf, osduuid)).communicate()
             pdsh(host, 'sudo ceph -c %s osd crush add osd.%s 1.0 host=%s rack=localrack root=default' % (tmp_conf, osdnum, host)).communicate()
-            pdsh(host, 'sudo ceph-osd -c %s -i %s --mkfs --mkkey --osd-uuid %s' % (tmp_conf, osdnum, osduuid)).communicate()
+            pdsh(host, 'sudo sh -c "ulimit -n 16384 && exec ceph-osd -c %s -i %s --mkfs --mkkey --osd-uuid %s"' % (tmp_conf, osdnum, osduuid)).communicate()
 
             key_fn = '%s/osd-device-%s-data/keyring' % (osd_dir, i)
             pdsh(host, 'sudo ceph -c %s -i %s auth add osd.%s osd "allow *" mon "allow profile osd"' % (tmp_conf, key_fn, osdnum)).communicate()
-            pdsh(host, 'sudo ceph-run ceph-osd -c %s -i %s' % (tmp_conf, osdnum)).communicate()
+            pdsh(host, 'sudo sh -c "ulimit -n 16384 && exec ceph-run ceph-osd -c %s -i %s"' % (tmp_conf, osdnum)).communicate()
             osdnum = osdnum+1
 
 
@@ -262,7 +268,10 @@ def setup_fs():
             pdsh(osds, 'sudo mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, fs, device, osd_dir, device)).communicate()
 
 def dump_config(run_dir):
-    pdsh(settings.getnodes('osds'), 'sudo ceph --admin-daemon /var/run/ceph/ceph-osd.0.asok config show > %s/ceph_settings.out' % run_dir).communicate()
+    tmp_dir = settings.cluster.get('tmp_dir')
+    tmp_conf = '%s/ceph.conf' % tmp_dir
+
+    pdsh(settings.getnodes('osds'), 'sudo ceph -c %s --admin-daemon /var/run/ceph/ceph-osd.0.asok config show > %s/ceph_settings.out' % (tmp_conf, run_dir)).communicate()
 
 def dump_historic_ops(run_dir):
     pdsh(settings.getnodes('osds'), 'find /var/run/ceph/*.asok -maxdepth 1 -exec sudo ceph --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % run_dir).communicate()

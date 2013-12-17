@@ -25,13 +25,18 @@ def initialize(ctx):
     if not (benchmarks):
         shutdown('No benchmarks section found in config file, bailing.')
 
-    # overlod the yaml if a ceph.conf file is specified on the command line
-    if ctx.conf:
-        cluster['ceph.conf'] = ctx.conf
-    if ctx.archive:
-        cluster['archive_dir'] = ctx.archive
+    # set the tmp_dir if not set.
     if 'tmp_dir' not in cluster:
         cluster['tmp_dir'] = '/tmp/cbt.%s' % os.getpid()
+
+    # set the ceph.conf file from the commandline, yaml, or default
+    if ctx.conf:
+        cluster['conf_file'] = ctx.conf
+    elif 'conf_file' not in cluster:
+        cluster['conf_file'] = "%s/ceph.conf" % cluster.get('conf_file')
+
+    if ctx.archive:
+        cluster['archive_dir'] = ctx.archive
 
 def getnodes(*nodelists):
     nodes = []
