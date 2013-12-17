@@ -20,7 +20,6 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.use_existing = config.get('use_existing', True)
-        self.tmp_conf = '%s/ceph.conf' % settings.cluster.get('tmp_dir')
 
     def exists(self):
         if os.path.exists(self.out_dir):

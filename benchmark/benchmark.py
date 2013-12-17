@@ -8,6 +8,7 @@ class Benchmark(object):
     def __init__(self, config):
         self.config = config
         self.tmp_dir = "%s/%08d" % (settings.cluster.get('tmp_dir'), config.get('iteration'))
+        self.tmp_conf = '%s/ceph.conf' % settings.cluster.get('tmp_dir')
         self.archive_dir = "%s/%08d" % (settings.cluster.get('archive_dir'), config.get('iteration'))
         self.osd_ra = config.get('osd_ra', 128)
 
