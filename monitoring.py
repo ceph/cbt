@@ -9,7 +9,8 @@ def start(directory):
     blktrace_dir = '%s/blktrace' % directory
 
     # collectl
-    common.pdsh(nodes, 'mkdir -p -m0755 -- %s;collectl -s+mYZ -i 1:10 -F0 -f %s' % (collectl_dir,collectl_dir))
+    common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
+    common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 -F0 -f %s' % collectl_dir)
 
     # perf
 #    common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()

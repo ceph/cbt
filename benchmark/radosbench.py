@@ -5,12 +5,16 @@ import monitoring
 import os
 import time
 
+from cluster.ceph import Ceph
 from benchmark import Benchmark
 
 class Radosbench(Benchmark):
 
     def __init__(self, config):
         super(Radosbench, self).__init__(config)
+
+        self.tmp_dir = self.cluster.tmp_dir
+        self.tmp_conf = self.cluster.tmp_conf
         self.time =  str(config.get('time', '300'))
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.concurrent_ops = config.get('concurrent_ops', 16)
@@ -29,9 +33,10 @@ class Radosbench(Benchmark):
 
     def initialize(self): 
         super(Radosbench, self).initialize()
-        common.cleanup_tests()
+        
+        self.cluster.cleanup()
         if not self.use_existing:
-            common.setup_ceph()
+            self.cluster.initialize()
 
             # Create the run directory
             common.make_remote_dir(self.run_dir)
@@ -45,12 +50,12 @@ class Radosbench(Benchmark):
                     common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size 1' % (self.tmp_conf, node, i)).communicate()
                     # check the health for each pool.
                     print 'Checking Healh after pool creation.'
-                    common.check_health()
+                    self.cluster.check_health()
             monitoring.stop()
 
         print 'Running scrub monitoring.'
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        common.check_scrub()
+        self.cluster.check_scrub()
         monitoring.stop()
 
         print 'Pausing for 60s for idle monitoring.'
@@ -82,7 +87,7 @@ class Radosbench(Benchmark):
         common.make_remote_dir(run_dir)
 
         # dump the cluster config
-        common.dump_config(run_dir)
+        self.cluster.dump_config(run_dir)
 
         monitoring.start(run_dir)
         # Run rados bench
@@ -98,7 +103,7 @@ class Radosbench(Benchmark):
         monitoring.stop(run_dir)
 
         # Get the historic ops
-        common.dump_historic_ops(run_dir)
+        self.cluster.dump_historic_ops(run_dir)
         common.sync_files('%s/*' % run_dir, out_dir)
 
     def __str__(self):
