@@ -2,6 +2,7 @@ import settings
 import subprocess
 import time
 import os
+import errno
 
 def pdsh(nodes, command):
     args = ['pdsh', '-R', 'ssh', '-w', nodes, command]
@@ -44,3 +45,10 @@ def sync_files(remote_dir, local_dir):
         os.makedirs(local_dir)
     rpdcp(nodes, '-r', remote_dir, local_dir).communicate()
 
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc: # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else: raise

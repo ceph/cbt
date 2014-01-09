@@ -52,10 +52,14 @@ def getnodes(*nodelists):
     return ','.join(uniquenodes(nodes))
 
 def uniquenodes(nodes):
+    user = cluster.get('user')
     ret = [] 
     for node in nodes:
-        if node and not node in ret:
-            ret.append(node)
+        if node:
+            if user:
+                node = '%s@%s' % (user, node)
+            if not node in ret:
+                ret.append(node)
     print ret
     return ret
  

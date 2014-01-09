@@ -27,7 +27,8 @@ class Ceph(Cluster):
 
         # Cleanup old junk and create new junk
         self.cleanup()
-        common.pdsh(settings.getnodes('mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
+        common.mkdir_p(self.tmp_dir)
+        common.pdsh(settings.getnodes('head', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
         common.pdsh(settings.getnodes('mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
         common.pdsh(settings.getnodes('mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
         self.distribute_conf()
@@ -68,6 +69,7 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo killall -9 radosgw-admin').communicate()
         common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop').communicate()
         common.pdsh(nodes, 'sudo killall -9 pdsh').communicate()
+        monitoring.stop()
 
     def cleanup(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
@@ -89,7 +91,9 @@ class Ceph(Cluster):
             common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
             common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
 
-            if fs == 'zfs':
+            if fs == 'tmpfs':
+                print 'using tmpfs osds, not creating a file system.'
+            elif fs == 'zfs':
                 print 'ruhoh, zfs detected.  No mkfs for you!'
                 common.pdsh(osds, 'sudo zpool destroy osd-device-%s-data' % device).communicate()
                 common.pdsh(osds, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data /dev/disk/by-partlabel/osd-device-%s-data' % (device, device)).communicate()
@@ -127,7 +131,10 @@ class Ceph(Cluster):
         common.pdcp(settings.getnodes('mons'), '', '%s.tmp' % self.monmap_fn, self.monmap_fn).communicate()
 
         # Build the ceph-mons
+        user = settings.cluster.get('user')
         for monhost, mons in monhosts.iteritems():
+            if user:
+                monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
                 common.pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
@@ -136,25 +143,31 @@ class Ceph(Cluster):
             
         # Start the mons
         for monhost, mons in monhosts.iteritems():
+            if user:
+                monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
-                common.pdsh(settings.getnodes('mons'), 'sudo ceph-run ceph-mon -c %s -i %s --keyring=%s' % (self.tmp_conf, mon, self.keyring_fn)).communicate()
+                common.pdsh(monhost, 'sudo ceph-run ceph-mon -c %s -i %s --keyring=%s' % (self.tmp_conf, mon, self.keyring_fn)).communicate()
 
     def make_osds(self):
         osdnum = 0
-        osdhosts = settings.getnodes('osds').split(',')
+        osdhosts = settings.cluster.get('osds')
 
         for host in osdhosts:
+            user = settings.cluster.get('user')
+            if user:
+                pdshhost = '%s@%s' % (user, host)
+
             for i in xrange(0, settings.cluster.get('osds_per_node')):            
                 # Build the OSD
                 osduuid = str(uuid.uuid4())
                 key_fn = '%s/osd-device-%s-data/keyring' % (self.mnt_dir, i)
-                common.pdsh(host, 'sudo ceph -c %s osd create %s' % (self.tmp_conf, osduuid)).communicate()
-                common.pdsh(host, 'sudo ceph -c %s osd crush add osd.%s 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host)).communicate()
-                common.pdsh(host, 'sudo sh -c "ulimit -n 16384 && exec ceph-osd -c %s -i %s --mkfs --mkkey --osd-uuid %s"' % (self.tmp_conf, osdnum, osduuid)).communicate()
-                common.pdsh(host, 'sudo ceph -c %s -i %s auth add osd.%s osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum)).communicate()
+                common.pdsh(pdshhost, 'sudo ceph -c %s osd create %s' % (self.tmp_conf, osduuid)).communicate()
+                common.pdsh(pdshhost, 'sudo ceph -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host)).communicate()
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec ceph-osd -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.tmp_conf, osdnum, osduuid)).communicate()
+                common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum)).communicate()
 
                 # Start the OSD
-                common.pdsh(host, 'sudo sh -c "ulimit -n 16384 && exec ceph-run ceph-osd -c %s -i %s"' % (self.tmp_conf, osdnum)).communicate()
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec ceph-run ceph-osd -c %s -i %d"' % (self.tmp_conf, osdnum)).communicate()
                 osdnum = osdnum+1
 
 
