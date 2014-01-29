@@ -48,5 +48,5 @@ if __name__ == '__main__':
             if not b.getclass() in global_init:
                 b.cleanup()
         iteration += 1
-        for k,b in global_init.items():
-            b.cleanup()
+    for k,b in global_init.items():
+        b.cleanup()
