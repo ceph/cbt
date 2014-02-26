@@ -17,14 +17,14 @@ class Benchmark(object):
         return self.__class__.__name__
 
     def initialize(self):
-        pass
+        self.cleanup()
 
     def run(self):
         print "Setting OSD Read Ahead to: %s" % self.osd_ra
         self.cluster.set_osd_param('read_ahead_kb', self.osd_ra)
 
     def cleanup(self):
-        pass
+         common.pdsh(settings.getnodes('clients'), 'sudo rm -rf %s' % self.run_dir).communicate()
 
     def dropcaches(self):
         nodes = settings.getnodes('clients', 'osds') 

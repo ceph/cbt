@@ -48,12 +48,7 @@ class KvmRbdFio(Benchmark):
         return False
 
     def initialize(self): 
-#        pass
-#        self.cleanup()
-#        super(KvmRbdFio, self).initialize()
-#        common.setup_ceph()
-
-        # Setup the pools
+        super(KvmRbdFio, self).initialize()
 #        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rbdfio %d %d' % (self.pgs, self.pgs)).communicate()
 #        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rbdfio size 1').communicate()
 #        print 'Checking Healh after pool creation.'
@@ -117,8 +112,7 @@ class KvmRbdFio(Benchmark):
 
     def cleanup(self):
          common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*').communicate()
-#         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-#         common.pdsh(settings.cluster.get('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd unmap \'{}\' \;').communicate()
+#         common.pdsh(settings.getnodes('clients'), 'sudo rm -rf %s' % self.rundir).communicate()
 
     def set_client_param(self, param, value):
          cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)
