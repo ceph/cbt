@@ -153,8 +153,8 @@ class Ceph(Cluster):
                 if self.mon_valgrind:
                     valdir = '%s/valgrind' % self.tmp_dir
                     common.pdsh(monhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
-                    logfile = '%s/ceph-osd.%d.log' % (valdir, mon)
-                    outfile = '%s/ceph-osd.%d.out' % (valdir, mon)
+                    logfile = '%s/ceph-mon.%s.log' % (valdir, mon)
+                    outfile = '%s/ceph-mon.%s.out' % (valdir, mon)
                     cmd = 'valgrind --tool=massif --soname-synonyms=somalloc=*tcmalloc* --massif-out-file=%s --log-file=%s %s' % (outfile, logfile, cmd)
                 else:
                     cmd = 'ceph-run %s' % cmd
