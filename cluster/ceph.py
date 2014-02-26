@@ -19,6 +19,7 @@ class Ceph(Cluster):
         self.monmap_fn = "%s/monmap" % self.tmp_dir
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         self.osd_valgrind = config.get('osd_valgrind', False)
+        self.mon_valgrind = config.get('mon_valgrind', False)
 
     def initialize(self): 
         super(Ceph, self).initialize()
@@ -148,7 +149,16 @@ class Ceph(Cluster):
             if user:
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
-                common.pdsh(monhost, 'sudo ceph-run ceph-mon -c %s -i %s --keyring=%s' % (self.tmp_conf, mon, self.keyring_fn)).communicate()
+                cmd = 'ceph-mon -c %s -i %s --keyring=%s' % (self.tmp_conf, mon, self.keyring_fn)
+                if self.mon_valgrind:
+                    valdir = '%s/valgrind' % self.tmp_dir
+                    common.pdsh(monhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
+                    logfile = '%s/ceph-osd.%d.log' % (valdir, mon)
+                    outfile = '%s/ceph-osd.%d.out' % (valdir, mon)
+                    cmd = 'valgrind --tool=massif --soname-synonyms=somalloc=*tcmalloc* --massif-out-file=%s --log-file=%s %s' % (outfile, logfile, cmd)
+                else:
+                    cmd = 'ceph-run %s' % cmd
+                common.pdsh(monhost, 'sudo %s' % cmd).communicate()
 
     def make_osds(self):
         osdnum = 0
