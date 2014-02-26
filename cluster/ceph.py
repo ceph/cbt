@@ -18,6 +18,7 @@ class Ceph(Cluster):
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
+        self.osd_valgrind = config.get('osd_valgrind', False)
 
     def initialize(self): 
         super(Ceph, self).initialize()
@@ -60,6 +61,7 @@ class Ceph(Cluster):
     def shutdown(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
 
+        common.pdsh(nodes, 'sudo killall -9 massif-amd64-li').communicate()
         common.pdsh(nodes, 'sudo killall -9 ceph-osd').communicate()
         common.pdsh(nodes, 'sudo killall -9 ceph-mon').communicate()
         common.pdsh(nodes, 'sudo killall -9 ceph-mds').communicate()
@@ -167,7 +169,16 @@ class Ceph(Cluster):
                 common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum)).communicate()
 
                 # Start the OSD
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec ceph-run ceph-osd -c %s -i %d"' % (self.tmp_conf, osdnum)).communicate()
+                cmd = 'ceph-osd -c %s -i %d' % (self.tmp_conf, osdnum)
+                if self.osd_valgrind:
+                    valdir = '%s/valgrind' % self.tmp_dir
+                    common.pdsh(pdshhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
+                    logfile = '%s/ceph-osd.%d.log' % (valdir, osdnum)
+                    outfile = '%s/ceph-osd.%d.out' % (valdir, osdnum)
+                    cmd = 'valgrind --tool=massif --soname-synonyms=somalloc=*tcmalloc* --massif-out-file=%s --log-file=%s %s' % (outfile, logfile, cmd)
+                else:
+                    cmd = 'ceph-run %s' % cmd
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec %s"' % cmd).communicate()
                 osdnum = osdnum+1
 
 
