@@ -24,6 +24,7 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.use_existing = config.get('use_existing', True)
+        self.erasure = config.get('erasure', False)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -43,11 +44,18 @@ class Radosbench(Benchmark):
 
             # Setup the pools
             monitoring.start("%s/pool_monitoring" % self.run_dir)
+            if self.erasure:
+                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush rule create-erasure cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=2 --property erasure-code-k=1' % self.tmp_conf).communicate()
+
             for i in xrange(self.concurrent_procs):
                 for node in settings.getnodes('clients').split(','):
                     node = node.rpartition("@")[2]
-                    common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-                    common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size 1' % (self.tmp_conf, node, i)).communicate()
+                    if self.erasure:
+                        common.pdsh(settings.getnodes('head'), 'ceph -c %s osd pool create rados-bench-%s-%s %d %d erasure crush_ruleset=cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=2 --property erasure-code-k=1' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
+                    else:
+                        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
+                        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size 1' % (self.tmp_conf, node, i)).communicate()
+
                     # check the health for each pool.
                     print 'Checking Healh after pool creation.'
                     self.cluster.check_health()
