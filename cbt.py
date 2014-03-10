@@ -40,8 +40,10 @@ if __name__ == '__main__':
         for b in benchmarks:
             if b.exists():
                 continue
+            # Tell the benchmark to initialize unless it's in the skip list.
             if not b.getclass() in global_init:
                 b.initialize()
+                # Skip future initializations unless rebuild requested.
                 if not settings.cluster.get('rebuild_every_test', False):
                     global_init[b.getclass()] = b
             b.run()
