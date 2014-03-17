@@ -4,9 +4,68 @@ import settings
 import monitoring
 import os
 import time
+import threading
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
+
+class BackfillThread(threading.Thread):
+    def __init__(self, config, cluster):
+        threading.Thread.__init__(self)
+        self.config = config
+        self.cluster = cluster
+        self.state = 'pre'
+        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done, 'post':self.post}
+        self.stoprequest = threading.Event()
+
+    def logcmd(self, message):
+        return 'echo "[`date`] %s" >> %s/backfill.log' % (message, self.config.get('run_dir'))
+
+    def pre(self):
+        pre_time = self.config.get("pre_time", 60)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Starting Backfill Thread, waiting %s seconds.' % pre_time)).communicate()
+        time.sleep(pre_time)
+        self.state = 'osdout'
+
+    def osdout(self):
+        for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s out." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd out %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+        waittime = 120
+        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for %s seconds while the cluster heals.' % waittime)).communicate()
+        time.sleep(waittime)
+        self.state = "osdin"
+
+    def osdin(self):
+        for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s in." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd in %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+        # Wait until the cluster is healthy.
+        time.sleep(10)
+        self.cluster.check_health()
+        self.state = "post"
+
+    def post(self):
+        post_time = self.config.get("post_time", 60)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
+        time.sleep(post_time)
+        self.state = "done"
+
+    def done(self):
+        common.pdsh(settings.getnodes('head'), self.logcmd("Done.  Killing RADOS Bench.")).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
+        self.stoprequest.set()
+
+    def join(self, timeout=None):
+        common.pdsh(settings.getnodes('head'), self.logcmd('Backfill cancel event.  Will stop at next state.')).communicate()
+        self.stoprequest.set()
+        super(BackfillThread, self).join(timeout)
+
+    def run(self):
+        self.stoprequest.clear()
+        while not self.stoprequest.isSet():
+          self.states[self.state]()
+        common.pdsh(settings.getnodes('head'), self.logcmd('Exiting BackfillThread.  Last state was: %s' % self.state)).communicate()
 
 class Radosbench(Benchmark):
 
@@ -26,6 +85,8 @@ class Radosbench(Benchmark):
         self.use_existing = config.get('use_existing', True)
         self.erasure = config.get('erasure', False)
         self.pool_replication = config.get('pool_replication', 1)
+        self.erasure_k = config.get('erasure_k', 6)
+        self.erasure_m = config.get('erasure_m', 2)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -43,25 +104,9 @@ class Radosbench(Benchmark):
             # Create the run directory
             common.make_remote_dir(self.run_dir)
 
-            # Setup the pools
-            monitoring.start("%s/pool_monitoring" % self.run_dir)
+            # Setup the rules
             if self.erasure:
-                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush rule create-erasure cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=2 --property erasure-code-k=1' % self.tmp_conf).communicate()
-
-            for i in xrange(self.concurrent_procs):
-                for node in settings.getnodes('clients').split(','):
-                    node = node.rpartition("@")[2]
-                    if self.erasure:
-                        common.pdsh(settings.getnodes('head'), 'ceph -c %s osd pool create rados-bench-%s-%s %d %d erasure crush_ruleset=cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=2 --property erasure-code-k=1' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-                    else:
-                        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool)).communicate()
-                        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size %d' % (self.tmp_conf, node, i, self.pool_replication)).communicate()
-
-                    # check the health for each pool.
-                    print 'Checking Healh after pool creation.'
-                    self.cluster.check_health()
-            monitoring.stop()
-
+                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush rule create-erasure cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=%s --property erasure-code-k=%s' % (self.tmp_conf, self.erasure_m, self.erasure_k)).communicate()
         print 'Running scrub monitoring.'
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
@@ -78,11 +123,14 @@ class Radosbench(Benchmark):
 
     def run(self):
         super(Radosbench, self).run()
+        
+        # Remake the pools
+        self.mkpools()
+
         # Run write test
         self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
-        # Run read test unless write_only 
+        # Run read test unless write_only
         if self.write_only: return
-        self.dropcaches()
         self._run('seq', '%s/seq' % self.run_dir, '%s/seq' % self.out_dir)
 
     def _run(self, mode, run_dir, out_dir):
@@ -98,8 +146,16 @@ class Radosbench(Benchmark):
         # dump the cluster config
         self.cluster.dump_config(run_dir)
 
-        monitoring.start(run_dir)
+        # Run the backfill testing thread if requested
+        bft = None
+        if 'backfill' in self.config:
+            bf_config = self.config.get("backfill", {})
+            bf_config['run_dir'] = run_dir
+            bft = BackfillThread(bf_config, self.cluster)
+            bft.start()
+
         # Run rados bench
+        monitoring.start(run_dir)
         print 'Running radosbench read test.'
         ps = []
         for i in xrange(self.concurrent_procs):
@@ -111,9 +167,32 @@ class Radosbench(Benchmark):
             p.wait()
         monitoring.stop(run_dir)
 
-        # Get the historic ops
+        # If we were doing bf, wait until it's done.
+        if bft:
+            bft.join()
+
+        # Finally, get the historic ops
         self.cluster.dump_historic_ops(run_dir)
         common.sync_files('%s/*' % run_dir, out_dir)
+
+    def mkpools(self):
+        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        for i in xrange(self.concurrent_procs):
+            for node in settings.getnodes('clients').split(','):
+                node = node.rpartition("@")[2]
+                erasure_line = ""
+                if self.erasure:
+                    erasure_line = 'erasure crush_ruleset=cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=%s --property erasure-code-k=%s' % (self.erasure_m, self.erasure_k)
+                common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete rados-bench-%s-%s rados-bench-%s-%s --yes-i-really-really-mean-it' % (self.tmp_conf, node, i, node, i)).communicate()
+                common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d %s' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool, erasure_line)).communicate()
+                if not self.erasure:
+                    common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size %d' % (self.tmp_conf, node, i, self.pool_replication)).communicate()
+
+                # check the health for each pool.
+                print 'Checking Healh after pool creation.'
+                self.cluster.check_health()
+        monitoring.stop()
+
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
