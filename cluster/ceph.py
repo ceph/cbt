@@ -13,7 +13,7 @@ class Ceph(Cluster):
     def __init__(self, config):
         super(Ceph, self).__init__(config)
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
-        self.pid_dir = config.get('pid_dir', "%s/pid" % self.pid_dir)
+        self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.monitoring_dir = "%s/monitoring" % self.tmp_dir
         self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
@@ -32,6 +32,7 @@ class Ceph(Cluster):
         self.cleanup()
         common.mkdir_p(self.tmp_dir)
         common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
         self.distribute_conf()
@@ -150,7 +151,8 @@ class Ceph(Cluster):
             if user:
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
-                cmd = 'ceph-mon -c %s -i %s --keyring=%s' % (self.tmp_conf, mon, self.keyring_fn)
+                pidfile="%s/%s.pid" % (self.pid_dir, monhost)
+                cmd = 'ceph-mon -c %s -i %s --keyring=%s --pid-file=%s' % (self.tmp_conf, mon, self.keyring_fn, pidfile)
                 if self.mon_valgrind:
                     valdir = '%s/valgrind' % self.tmp_dir
                     common.pdsh(monhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
@@ -180,7 +182,8 @@ class Ceph(Cluster):
                 common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum)).communicate()
 
                 # Start the OSD
-                cmd = 'ceph-osd -c %s -i %d' % (self.tmp_conf, osdnum)
+                pidfile="%s/ceph-osd.%d.pid" % (self.pid_dir, osdnum)
+                cmd = 'ceph-osd -c %s -i %d --pid-file=%s' % (self.tmp_conf, osdnum, pidfile)
                 if self.osd_valgrind:
                     valdir = '%s/valgrind' % self.tmp_dir
                     common.pdsh(pdshhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
