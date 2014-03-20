@@ -13,6 +13,7 @@ class Ceph(Cluster):
     def __init__(self, config):
         super(Ceph, self).__init__(config)
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
+        self.pid_dir = config.get('pid_dir', "%s/pid" % self.pid_dir)
         self.monitoring_dir = "%s/monitoring" % self.tmp_dir
         self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
@@ -192,14 +193,21 @@ class Ceph(Cluster):
                 osdnum = osdnum+1
 
 
-    def check_health(self):
+    def check_health(self, logfile=None):
+        logline = ""
+        if logfile:
+            logline = "| tee -a %s" % logfile
+        ret = 0
+
         while True:
-            stdout, stderr = common.pdsh(settings.getnodes('head'), 'ceph -c %s health' % self.tmp_conf).communicate()
+            stdout, stderr = common.pdsh(settings.getnodes('head'), 'ceph -c %s health %s' % (self.tmp_conf, logline)).communicate()
             if "HEALTH_OK" in stdout:
                 break
             else:
-                print stdout
+                ret = ret + 1
+            print stdout
             time.sleep(1)
+        return ret
 
     def check_scrub(self):
         print 'Waiting until Scrubbing completes...'

@@ -15,7 +15,7 @@ class BackfillThread(threading.Thread):
         self.config = config
         self.cluster = cluster
         self.state = 'pre'
-        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done, 'post':self.post}
+        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done}
         self.stoprequest = threading.Event()
 
     def logcmd(self, message):
@@ -25,27 +25,31 @@ class BackfillThread(threading.Thread):
         pre_time = self.config.get("pre_time", 60)
         common.pdsh(settings.getnodes('head'), self.logcmd('Starting Backfill Thread, waiting %s seconds.' % pre_time)).communicate()
         time.sleep(pre_time)
-        self.state = 'osdout'
-
-    def osdout(self):
         for osdnum in self.config.get('osds'):
             lcmd = self.logcmd("Marking OSD %s out." % osdnum)
             common.pdsh(settings.getnodes('head'), 'ceph -c %s osd out %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-        waittime = 120
-        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for %s seconds while the cluster heals.' % waittime)).communicate()
-        time.sleep(waittime)
-        self.state = "osdin"
+        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
 
-    def osdin(self):
+        self.state = 'osdout'
+
+    def osdout(self):
+        ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
+        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+        if ret == 0:
+            return # Cluster hasn't become unhealthy yet.
+
+        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
         for osdnum in self.config.get('osds'):
             lcmd = self.logcmd("Marking OSD %s in." % osdnum)
             common.pdsh(settings.getnodes('head'), 'ceph -c %s osd in %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-        # Wait until the cluster is healthy.
-        time.sleep(10)
-        self.cluster.check_health()
-        self.state = "post"
 
-    def post(self):
+        self.state = "osdin"
+
+    def osdin(self):
+        # Wait until the cluster is healthy.
+        ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
+        if ret == 0:
+            return # Cluster hasn't become unhealthy yet.
         post_time = self.config.get("post_time", 60)
         common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
         time.sleep(post_time)
