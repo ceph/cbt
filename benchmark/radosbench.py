@@ -17,6 +17,9 @@ class BackfillThread(threading.Thread):
         self.state = 'pre'
         self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done}
         self.stoprequest = threading.Event()
+        self.outhealthtries = 0
+        self.inhealthtries = 0
+        self.maxhealthtries = 60
 
     def logcmd(self, message):
         return 'echo "[`date`] %s" >> %s/backfill.log' % (message, self.config.get('run_dir'))
@@ -25,7 +28,11 @@ class BackfillThread(threading.Thread):
         pre_time = self.config.get("pre_time", 60)
         common.pdsh(settings.getnodes('head'), self.logcmd('Starting Backfill Thread, waiting %s seconds.' % pre_time)).communicate()
         time.sleep(pre_time)
+        lcmd = self.logcmd("Setting the ceph osd noup flag")
+        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd set noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
         for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s down." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd down %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
             lcmd = self.logcmd("Marking OSD %s out." % osdnum)
             common.pdsh(settings.getnodes('head'), 'ceph -c %s osd out %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
         common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
@@ -35,11 +42,21 @@ class BackfillThread(threading.Thread):
     def osdout(self):
         ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
         common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
-        if ret == 0:
+
+        if self.outhealthtries < self.maxhealthtries and ret == 0:
+            self.outhealthtries = self.outhealthtries + 1
             return # Cluster hasn't become unhealthy yet.
 
-        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+        if ret == 0:       
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+
+        lcmd = self.logcmd("Unsetting the ceph osd noup flag")
+        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd unset noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
         for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s up." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd up %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
             lcmd = self.logcmd("Marking OSD %s in." % osdnum)
             common.pdsh(settings.getnodes('head'), 'ceph -c %s osd in %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
 
@@ -48,8 +65,15 @@ class BackfillThread(threading.Thread):
     def osdin(self):
         # Wait until the cluster is healthy.
         ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
-        if ret == 0:
+        if self.inhealthtries < self.maxhealthtries and ret == 0:
+            self.inhealthtries = self.inhealthtries + 1
             return # Cluster hasn't become unhealthy yet.
+
+        if ret == 0:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+
         post_time = self.config.get("post_time", 60)
         common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
         time.sleep(post_time)
