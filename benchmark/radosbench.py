@@ -134,7 +134,7 @@ class Radosbench(Benchmark):
 
             # Setup the rules
             if self.erasure:
-                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush rule create-erasure cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=%s --property erasure-code-k=%s' % (self.tmp_conf, self.erasure_m, self.erasure_k)).communicate()
+                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd erasure-code-profile set cbt-profile ruleset-failure-domain=osd m=%s k=%s' % (self.tmp_conf, self.erasure_m, self.erasure_k)).communicate()
         print 'Running scrub monitoring.'
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
@@ -208,11 +208,11 @@ class Radosbench(Benchmark):
         for i in xrange(self.concurrent_procs):
             for node in settings.getnodes('clients').split(','):
                 node = node.rpartition("@")[2]
-                erasure_line = ""
+                erasure_profile = ""
                 if self.erasure:
-                    erasure_line = 'erasure crush_ruleset=cbt-erasure --property erasure-code-ruleset-failure-domain=osd --property erasure-code-m=%s --property erasure-code-k=%s' % (self.erasure_m, self.erasure_k)
+                    erasure_profile = 'cbt-profile'
                 common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete rados-bench-%s-%s rados-bench-%s-%s --yes-i-really-really-mean-it' % (self.tmp_conf, node, i, node, i)).communicate()
-                common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d %s' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool, erasure_line)).communicate()
+                common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d %s' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool, erasure_profile)).communicate()
                 if not self.erasure:
                     common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size %d' % (self.tmp_conf, node, i, self.pool_replication)).communicate()
 
