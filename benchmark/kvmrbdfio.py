@@ -12,7 +12,6 @@ class KvmRbdFio(Benchmark):
 
     def __init__(self, config):
         super(KvmRbdFio, self).__init__(config)
-        self.tmp_dir = self.cluster.tmp_dir
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
 
@@ -31,10 +30,11 @@ class KvmRbdFio(Benchmark):
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options')
         self.client_ra = config.get('client_ra', '128')
+        self.fio_cmd = config.get('fio_cmd', '/usr/bin/fio')
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
-        self.run_dir = '%s/kvmrbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/kvmrbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
+        self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.tmp_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
+        self.out_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
         # Make the file names string
         self.names = ''
@@ -90,7 +90,7 @@ class KvmRbdFio(Benchmark):
  #           names += '--name=/srv/rbdfio-`hostname -s`-0/cbt-kvmrbdfio-%d ' % i 
         out_file = '%s/output' % self.run_dir
 #        pre_cmd = 'sudo fio --rw=write -ioengine=sync --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.numjobs, self.vol_size, self.names)
-        fio_cmd = 'sudo fio'
+        fio_cmd = 'sudo %s' % self.fio_cmd
         fio_cmd += ' --rw=%s' % self.mode
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
             fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
@@ -102,7 +102,17 @@ class KvmRbdFio(Benchmark):
         fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
         fio_cmd += ' --size=%dM' % self.vol_size 
+        fio_cmd += ' --write_iops_log=%s' % out_file 
+        fio_cmd += ' --write_bw_log=%s' % out_file
+        fio_cmd += ' --write_lat_log=%s' % out_file
+        if 'recovery_test' in self.cluster.config:
+            fio_cmd += ' --time_based'
         fio_cmd += ' %s > %s' % (self.names, out_file)
+
+        # Run the backfill testing thread if requested
+        if 'recovery_test' in self.cluster.config:
+            recovery_callback = self.recovery_callback
+            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
         print 'Running rbd fio %s test.' % self.mode
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
@@ -111,6 +121,7 @@ class KvmRbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def cleanup(self):
+         super(KvmRbdFio, self).cleanup()
          common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*').communicate()
 #         common.pdsh(settings.getnodes('clients'), 'sudo rm -rf %s' % self.rundir).communicate()
 
@@ -120,3 +131,7 @@ class KvmRbdFio(Benchmark):
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(KvmRbdFio, self).__str__())
+
+    def recovery_callback(self):
+        common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()
+

@@ -9,98 +9,97 @@ import threading
 from cluster.ceph import Ceph
 from benchmark import Benchmark
 
-class BackfillThread(threading.Thread):
-    def __init__(self, config, cluster):
-        threading.Thread.__init__(self)
-        self.config = config
-        self.cluster = cluster
-        self.state = 'pre'
-        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done}
-        self.stoprequest = threading.Event()
-        self.outhealthtries = 0
-        self.inhealthtries = 0
-        self.maxhealthtries = 60
-
-    def logcmd(self, message):
-        return 'echo "[`date`] %s" >> %s/backfill.log' % (message, self.config.get('run_dir'))
-
-    def pre(self):
-        pre_time = self.config.get("pre_time", 60)
-        common.pdsh(settings.getnodes('head'), self.logcmd('Starting Backfill Thread, waiting %s seconds.' % pre_time)).communicate()
-        time.sleep(pre_time)
-        lcmd = self.logcmd("Setting the ceph osd noup flag")
-        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd set noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
-        for osdnum in self.config.get('osds'):
-            lcmd = self.logcmd("Marking OSD %s down." % osdnum)
-            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd down %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-            lcmd = self.logcmd("Marking OSD %s out." % osdnum)
-            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd out %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
-
-        self.state = 'osdout'
-
-    def osdout(self):
-        ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
-        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
-
-        if self.outhealthtries < self.maxhealthtries and ret == 0:
-            self.outhealthtries = self.outhealthtries + 1
-            return # Cluster hasn't become unhealthy yet.
-
-        if ret == 0:       
-            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
-        else:
-            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
-
-        lcmd = self.logcmd("Unsetting the ceph osd noup flag")
-        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd unset noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
-        for osdnum in self.config.get('osds'):
-            lcmd = self.logcmd("Marking OSD %s up." % osdnum)
-            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd up %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-            lcmd = self.logcmd("Marking OSD %s in." % osdnum)
-            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd in %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-
-        self.state = "osdin"
-
-    def osdin(self):
-        # Wait until the cluster is healthy.
-        ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
-        if self.inhealthtries < self.maxhealthtries and ret == 0:
-            self.inhealthtries = self.inhealthtries + 1
-            return # Cluster hasn't become unhealthy yet.
-
-        if ret == 0:
-            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
-        else:
-            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
-
-        post_time = self.config.get("post_time", 60)
-        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
-        time.sleep(post_time)
-        self.state = "done"
-
-    def done(self):
-        common.pdsh(settings.getnodes('head'), self.logcmd("Done.  Killing RADOS Bench.")).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
-        self.stoprequest.set()
-
-    def join(self, timeout=None):
-        common.pdsh(settings.getnodes('head'), self.logcmd('Backfill cancel event.  Will stop at next state.')).communicate()
-        self.stoprequest.set()
-        super(BackfillThread, self).join(timeout)
-
-    def run(self):
-        self.stoprequest.clear()
-        while not self.stoprequest.isSet():
-          self.states[self.state]()
-        common.pdsh(settings.getnodes('head'), self.logcmd('Exiting BackfillThread.  Last state was: %s' % self.state)).communicate()
+#class BackfillThread(threading.Thread):
+#    def __init__(self, config, cluster):
+#        threading.Thread.__init__(self)
+#        self.config = config
+#        self.cluster = cluster
+#        self.state = 'pre'
+#        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done}
+#        self.stoprequest = threading.Event()
+#        self.outhealthtries = 0
+#        self.inhealthtries = 0
+#        self.maxhealthtries = 60
+#
+#    def logcmd(self, message):
+#        return 'echo "[`date`] %s" >> %s/backfill.log' % (message, self.config.get('run_dir'))
+#
+#    def pre(self):
+#        pre_time = self.config.get("pre_time", 60)
+#        common.pdsh(settings.getnodes('head'), self.logcmd('Starting Backfill Thread, waiting %s seconds.' % pre_time)).communicate()
+#        time.sleep(pre_time)
+#        lcmd = self.logcmd("Setting the ceph osd noup flag")
+#        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd set noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
+#        for osdnum in self.config.get('osds'):
+#            lcmd = self.logcmd("Marking OSD %s down." % osdnum)
+#            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd down %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+#            lcmd = self.logcmd("Marking OSD %s out." % osdnum)
+#            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd out %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+#        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
+#
+#        self.state = 'osdout'
+#
+#    def osdout(self):
+#        ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
+#        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+#
+#        if self.outhealthtries < self.maxhealthtries and ret == 0:
+#            self.outhealthtries = self.outhealthtries + 1
+#            return # Cluster hasn't become unhealthy yet.
+#
+#        if ret == 0:       
+#            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+#        else:
+#            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+#
+#        lcmd = self.logcmd("Unsetting the ceph osd noup flag")
+#        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd unset noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
+#        for osdnum in self.config.get('osds'):
+#            lcmd = self.logcmd("Marking OSD %s up." % osdnum)
+#            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd up %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+#            lcmd = self.logcmd("Marking OSD %s in." % osdnum)
+#            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd in %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+#
+#        self.state = "osdin"
+#
+#    def osdin(self):
+#        # Wait until the cluster is healthy.
+#        ret = self.cluster.check_health("%s/backfill.log" % self.config.get('run_dir'))
+#        if self.inhealthtries < self.maxhealthtries and ret == 0:
+#            self.inhealthtries = self.inhealthtries + 1
+#            return # Cluster hasn't become unhealthy yet.
+#
+#        if ret == 0:
+#            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+#        else:
+#            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+#
+#        post_time = self.config.get("post_time", 60)
+#        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
+#        time.sleep(post_time)
+#        self.state = "done"
+#
+#    def done(self):
+#        common.pdsh(settings.getnodes('head'), self.logcmd("Done.  Killing RADOS Bench.")).communicate()
+#        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
+#        self.stoprequest.set()
+#
+#    def join(self, timeout=None):
+#        common.pdsh(settings.getnodes('head'), self.logcmd('Backfill cancel event.  Will stop at next state.')).communicate()
+#        self.stoprequest.set()
+#        super(BackfillThread, self).join(timeout)
+#
+#    def run(self):
+#        self.stoprequest.clear()
+#        while not self.stoprequest.isSet():
+#          self.states[self.state]()
+#        common.pdsh(settings.getnodes('head'), self.logcmd('Exiting BackfillThread.  Last state was: %s' % self.state)).communicate()
 
 class Radosbench(Benchmark):
 
     def __init__(self, config):
         super(Radosbench, self).__init__(config)
 
-        self.tmp_dir = self.cluster.tmp_dir
         self.tmp_conf = self.cluster.tmp_conf
         self.time =  str(config.get('time', '300'))
         self.concurrent_procs = config.get('concurrent_procs', 1)
@@ -108,8 +107,8 @@ class Radosbench(Benchmark):
         self.write_only = config.get('write_only', False)
         self.op_size = config.get('op_size', 4194304)
         self.pgs_per_pool = config.get('pgs_per_pool', 2048)
-        self.run_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
-        self.out_dir = '%s/radosbench/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
+        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
+        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.use_existing = config.get('use_existing', True)
         self.erasure = config.get('erasure', False)
         self.pool_replication = config.get('pool_replication', 1)
@@ -122,6 +121,7 @@ class Radosbench(Benchmark):
             return True
         return False
 
+    # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
         super(Radosbench, self).initialize()
         
@@ -175,12 +175,9 @@ class Radosbench(Benchmark):
         self.cluster.dump_config(run_dir)
 
         # Run the backfill testing thread if requested
-        bft = None
-        if 'backfill' in self.config:
-            bf_config = self.config.get("backfill", {})
-            bf_config['run_dir'] = run_dir
-            bft = BackfillThread(bf_config, self.cluster)
-            bft.start()
+        if 'recovery_test' in self.cluster.config:
+            recovery_callback = self.recovery_callback
+            self.cluster.create_recovery_test(run_dir, recovery_callback)
 
         # Run rados bench
         monitoring.start(run_dir)
@@ -195,9 +192,9 @@ class Radosbench(Benchmark):
             p.wait()
         monitoring.stop(run_dir)
 
-        # If we were doing bf, wait until it's done.
-        if bft:
-            bft.join()
+        # If we were doing recovery, wait until it's done.
+        if 'recovery_test' in self.cluster.config:
+            self.cluster.wait_recovery_test()
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(run_dir)
@@ -221,6 +218,8 @@ class Radosbench(Benchmark):
                 self.cluster.check_health()
         monitoring.stop()
 
+    def recovery_callback(self): 
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())

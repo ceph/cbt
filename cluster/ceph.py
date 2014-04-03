@@ -5,11 +5,11 @@ import monitoring
 import os
 import time
 import uuid
+import threading
 
 from cluster import Cluster
 
 class Ceph(Cluster):
-
     def __init__(self, config):
         super(Ceph, self).__init__(config)
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
@@ -234,3 +234,99 @@ class Ceph(Cluster):
 
     def __str__(self):
         return "foo"
+
+    def create_recovery_test(self, run_dir, callback):
+        rt_config = self.config.get("recovery_test", {})
+        rt_config['run_dir'] = run_dir
+        self.rt = RecoveryTestThread(rt_config, self, callback)
+        self.rt.start()
+
+    def wait_recovery_done(self):
+        self.rt.join()
+
+class RecoveryTestThread(threading.Thread):
+    def __init__(self, config, cluster, callback):
+        threading.Thread.__init__(self)
+        self.config = config
+        self.cluster = cluster
+        self.callback = callback
+        self.state = 'pre'
+        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done}
+        self.stoprequest = threading.Event()
+        self.outhealthtries = 0
+        self.inhealthtries = 0
+        self.maxhealthtries = 60
+
+    def logcmd(self, message):
+        return 'echo "[`date`] %s" >> %s/recovery.log' % (message, self.config.get('run_dir'))
+
+    def pre(self):
+        pre_time = self.config.get("pre_time", 60)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Starting Recovery Test Thread, waiting %s seconds.' % pre_time)).communicate()
+        time.sleep(pre_time)
+        lcmd = self.logcmd("Setting the ceph osd noup flag")
+        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd set noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
+        for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s down." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd down %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+            lcmd = self.logcmd("Marking OSD %s out." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd out %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
+
+        self.state = 'osdout'
+
+    def osdout(self):
+        ret = self.cluster.check_health("%s/recovery.log" % self.config.get('run_dir'))
+        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+
+        if self.outhealthtries < self.maxhealthtries and ret == 0:
+            self.outhealthtries = self.outhealthtries + 1
+            return # Cluster hasn't become unhealthy yet.
+
+        if ret == 0:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+
+        lcmd = self.logcmd("Unsetting the ceph osd noup flag")
+        common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd unset noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
+        for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s up." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd up %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+            lcmd = self.logcmd("Marking OSD %s in." % osdnum)
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd in %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+
+        self.state = "osdin"
+
+    def osdin(self):
+        # Wait until the cluster is healthy.
+        ret = self.cluster.check_health("%s/recovery.log" % self.config.get('run_dir'))
+        if self.inhealthtries < self.maxhealthtries and ret == 0:
+            self.inhealthtries = self.inhealthtries + 1
+            return # Cluster hasn't become unhealthy yet.
+
+        if ret == 0:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+
+        post_time = self.config.get("post_time", 60)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
+        time.sleep(post_time)
+        self.state = "done"
+
+    def done(self):
+        common.pdsh(settings.getnodes('head'), self.logcmd("Done.  Calling parent callback function.")).communicate()
+        self.callback()
+        self.stoprequest.set()
+
+    def join(self, timeout=None):
+        common.pdsh(settings.getnodes('head'), self.logcmd('Received notification that parent is finished and waiting.')).communicate()
+        super(RecoveryTestThread, self).join(timeout)
+
+    def run(self):
+        self.stoprequest.clear()
+        while not self.stoprequest.isSet():
+          self.states[self.state]()
+        common.pdsh(settings.getnodes('head'), self.logcmd('Exiting recovery test thread.  Last state was: %s' % self.state)).communicate()
+
