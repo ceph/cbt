@@ -6,6 +6,7 @@ import os
 import settings
 import common
 import benchmarkfactory
+from cluster.ceph import Ceph
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Continuously run ceph tests.')
@@ -34,9 +35,10 @@ if __name__ == '__main__':
     iteration = 0
     print settings.cluster
     global_init = {} 
+    # FIXME: Create ClusterFactory and parametrically match benchmarks and clusters.
+    cluster = Ceph(settings.cluster)
     while (iteration < settings.cluster.get("iterations", 0)):
-        benchmarks = benchmarkfactory.getAll(iteration)
-        
+        benchmarks = benchmarkfactory.getAll(cluster, iteration)
         for b in benchmarks:
             if b.exists():
                 continue

@@ -4,12 +4,11 @@ import settings
 import common
 import monitoring
 
-from cluster.ceph import Ceph
-
 class Benchmark(object):
-    def __init__(self, config):
+    def __init__(self, cluster, config):
         self.config = config
-        self.cluster = Ceph(settings.cluster)
+        self.cluster = cluster
+#        self.cluster = Ceph(settings.cluster)
         self.archive_dir = "%s/%08d/%s" % (settings.cluster.get('archive_dir'), config.get('iteration'), self.getclass())
         self.tmp_dir = "%s/%08d/%s" % (settings.cluster.get('tmp_dir'), config.get('iteration'), self.getclass())
         self.osd_ra = config.get('osd_ra', 128)
@@ -18,7 +17,15 @@ class Benchmark(object):
         return self.__class__.__name__
 
     def initialize(self):
+        self.cluster.cleanup()
+        use_existing = settings.cluster.get('use_existing', True)
+        if not use_existing:
+            self.cluster.initialize()
+
         self.cleanup()
+        # Create the run directory
+        common.make_remote_dir(self.run_dir)
+
 
     def run(self):
         print "Setting OSD Read Ahead to: %s" % self.osd_ra

@@ -11,8 +11,8 @@ from benchmark import Benchmark
 
 class Radosbench(Benchmark):
 
-    def __init__(self, config):
-        super(Radosbench, self).__init__(config)
+    def __init__(self, cluster, config):
+        super(Radosbench, self).__init__(cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
         self.time =  str(config.get('time', '300'))
@@ -20,14 +20,9 @@ class Radosbench(Benchmark):
         self.concurrent_ops = config.get('concurrent_ops', 16)
         self.write_only = config.get('write_only', False)
         self.op_size = config.get('op_size', 4194304)
-        self.pgs_per_pool = config.get('pgs_per_pool', 2048)
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
-        self.use_existing = config.get('use_existing', True)
-        self.erasure = config.get('erasure', False)
-        self.pool_replication = config.get('pool_replication', 1)
-        self.erasure_k = config.get('erasure_k', 6)
-        self.erasure_m = config.get('erasure_m', 2)
+        self.pool_profile = config.get('pool_profile', 'default')
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -38,17 +33,7 @@ class Radosbench(Benchmark):
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
         super(Radosbench, self).initialize()
-        
-        self.cluster.cleanup()
-        if not self.use_existing:
-            self.cluster.initialize()
 
-            # Create the run directory
-            common.make_remote_dir(self.run_dir)
-
-            # Setup the rules
-            if self.erasure:
-                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd erasure-code-profile set cbt-profile ruleset-failure-domain=osd m=%s k=%s' % (self.tmp_conf, self.erasure_m, self.erasure_k)).communicate()
         print 'Running scrub monitoring.'
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
@@ -119,17 +104,8 @@ class Radosbench(Benchmark):
         for i in xrange(self.concurrent_procs):
             for node in settings.getnodes('clients').split(','):
                 node = node.rpartition("@")[2]
-                erasure_profile = ""
-                if self.erasure:
-                    erasure_profile = 'cbt-profile'
-                common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete rados-bench-%s-%s rados-bench-%s-%s --yes-i-really-really-mean-it' % (self.tmp_conf, node, i, node, i)).communicate()
-                common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create rados-bench-%s-%s %d %d %s' % (self.tmp_conf, node, i, self.pgs_per_pool, self.pgs_per_pool, erasure_profile)).communicate()
-                if not self.erasure:
-                    common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set rados-bench-%s-%s size %d' % (self.tmp_conf, node, i, self.pool_replication)).communicate()
-
-                # check the health for each pool.
-                print 'Checking Healh after pool creation.'
-                self.cluster.check_health()
+                self.cluster.rmpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
+                self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
         monitoring.stop()
 
     def recovery_callback(self): 

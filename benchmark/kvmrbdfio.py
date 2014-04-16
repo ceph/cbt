@@ -10,8 +10,8 @@ from benchmark import Benchmark
 
 class KvmRbdFio(Benchmark):
 
-    def __init__(self, config):
-        super(KvmRbdFio, self).__init__(config)
+    def __init__(self, cluster, config):
+        super(KvmRbdFio, self).__init__(cluster, config)
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
 
@@ -49,15 +49,6 @@ class KvmRbdFio(Benchmark):
 
     def initialize(self): 
         super(KvmRbdFio, self).initialize()
-#        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool create rbdfio %d %d' % (self.pgs, self.pgs)).communicate()
-#        common.pdsh(settings.cluster.get('head'), 'sudo ceph osd pool set rbdfio size 1').communicate()
-#        print 'Checking Healh after pool creation.'
-#        common.check_health()
-
-#        common.pdsh(settings.cluster.get('clients'), 'sudo modprobe rbd').communicate()
-#        for i in xrange(self.concurrent_procs):
-#        names = ""
-#        for i in xrange(self.concurrent_procs):
         for i in xrange(1):
              letter = string.ascii_lowercase[i+1]
              common.pdsh(settings.getnodes('clients'), 'sudo mkfs.ext4 /dev/vd%s' % letter).communicate()
@@ -123,7 +114,6 @@ class KvmRbdFio(Benchmark):
     def cleanup(self):
          super(KvmRbdFio, self).cleanup()
          common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*').communicate()
-#         common.pdsh(settings.getnodes('clients'), 'sudo rm -rf %s' % self.rundir).communicate()
 
     def set_client_param(self, param, value):
          cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)

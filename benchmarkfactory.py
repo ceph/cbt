@@ -6,13 +6,13 @@ from benchmark.rbdfio import RbdFio
 from benchmark.kvmrbdfio import KvmRbdFio
 #from benchmark import *
 
-def getAll(iteration):
+def getAll(cluster, iteration):
     objects = []
     for benchmark, config in sorted(settings.benchmarks.iteritems()):
-        objects.extend(get(benchmark, config, iteration))
+        objects.extend(get(cluster, benchmark, config, iteration))
     return objects
 
-def get(benchmark, config, iteration):
+def get(cluster, benchmark, config, iteration):
     objects = []
     default = {"benchmark":benchmark, "iteration":iteration}
 
@@ -33,13 +33,13 @@ def get(benchmark, config, iteration):
                 p[param] = value
 
     for p in permutations:
-        objects.append(getObject(benchmark, p))
+        objects.append(getObject(cluster, benchmark, p))
     return objects
 
-def getObject(benchmark, bconfig):
+def getObject(cluster, benchmark, bconfig):
     if benchmark == "radosbench":
-        return Radosbench(bconfig)
+        return Radosbench(cluster, bconfig)
     if benchmark == "rbdfio":
-        return RbdFio(bconfig)
+        return RbdFio(cluster, bconfig)
     if benchmark == "kvmrbdfio":
-        return KvmRbdFio(bconfig)
+        return KvmRbdFio(cluster, bconfig)

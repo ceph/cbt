@@ -21,6 +21,9 @@ class Ceph(Cluster):
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         self.osd_valgrind = config.get('osd_valgrind', False)
         self.mon_valgrind = config.get('mon_valgrind', False)
+        self.tiering = config.get('tiering', False)
+        self.ruleset_map = {}
+        self.cur_ruleset = 1;
 
     def initialize(self): 
         super(Ceph, self).initialize()
@@ -53,6 +56,9 @@ class Ceph(Cluster):
 
         # Wait for initial scrubbing to complete (This should only matter on pre-dumpling clusters)
         self.check_scrub()
+
+        # Make the crush and erasure profiles
+        self.make_profiles()
 
         # Peform Idle Monitoring
         monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
@@ -243,6 +249,109 @@ class Ceph(Cluster):
 
     def wait_recovery_done(self):
         self.rt.join()
+
+    # FIXME: This is a total hack that assumes there is only 1 existing ruleset!
+    # Will change pending a fix for http://tracker.ceph.com/issues/8060
+    def set_ruleset(self, name):
+        name = str(name)
+        if name in self.ruleset_map:
+            raise Exception('A rule named %s already exists!' % name)
+        self.ruleset_map[name] = self.cur_ruleset
+        self.cur_ruleset += 1
+
+    def get_ruleset(self, name):
+        name = str(name)
+        print self.ruleset_map
+        return self.ruleset_map[name]
+
+    def make_profiles(self):
+        crush_profiles = self.config.get('crush_profiles', {})
+        for name,profile in crush_profiles.items():
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush add-bucket %s-root root' % (self.tmp_conf, name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush add-bucket %s-rack rack' % (self.tmp_conf, name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush move %s-rack root=%s-root' % (self.tmp_conf, name, name)).communicate()
+            # FIXME: We need to build a dict mapping OSDs to hosts and create a proper hierarchy!
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush add-bucket %s-host host' % (self.tmp_conf, name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush move %s-host rack=%s-rack' % (self.tmp_conf, name, name)).communicate()
+            
+            osds = profile.get('osds', None)
+            if not osds:
+                raise Exception("No OSDs defined for crush profile, bailing!")
+            for i in osds:
+                common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush set %s 1.0 host=%s-host' % (self.tmp_conf, i, name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd crush rule create-simple %s %s-root osd' % (self.tmp_conf, name, name)).communicate()
+            self.set_ruleset(name)
+
+        erasure_profiles = self.config.get('erasure_profiles', {})
+        for name,profile in erasure_profiles.items():
+            k = profile.get('erasure_k', 6)
+            m = profile.get('erasure_m', 2)
+	    common.pdsh(settings.getnodes('head'), 'ceph -c %s osd erasure-code-profile set %s ruleset-failure-domain=osd k=%s m=%s' % (self.tmp_conf, name, k, m)).communicate()
+            self.set_ruleset(name)
+
+    def mkpool(self, name, profile_name):
+        pool_profiles = self.config.get('pool_profiles', {'default': {}})
+        profile = pool_profiles.get(profile_name, {})
+
+        pg_size = profile.get('pg_size', 1024)
+        pgp_size = profile.get('pgp_size', 1024)
+        erasure_profile = profile.get('erasure_profile', '')
+        replication = str(profile.get('replication', None))
+        cache = profile.get('cache', None)
+        crush_profile = profile.get('crush_profile', None)
+        hit_set_type = profile.get('hit_set_type', None)
+        hit_set_count = profile.get('hit_set_count', None)
+        hit_set_period = profile.get('hit_set_period', None)
+        target_max_objects = profile.get('target_max_objects', None)
+
+#        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d %s' % (self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
+
+        if replication and replication.isdigit():
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s size %s' % (self.tmp_conf, name, replication)).communicate()
+        if crush_profile:
+            ruleset = self.get_ruleset(crush_profile)
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s crush_ruleset %s' % (self.tmp_conf, name, ruleset)).communicate()
+        if hit_set_type:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s hit_set_type %s' % (self.tmp_conf, name, hit_set_type)).communicate()
+        if hit_set_count:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s hit_set_count %s' % (self.tmp_conf, name, hit_set_count)).communicate()
+        if hit_set_period:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s hit_set_period %s' % (self.tmp_conf, name, hit_set_period)).communicate()
+        if target_max_objects:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_objects %s' % (self.tmp_conf, name, target_max_objects)).communicate()
+
+        print 'Checking Healh after pool creation.'
+        self.check_health()
+
+        # If there is a cache profile assigned, make a cache pool
+        if cache:
+            cache_profile = cache.get('pool_profile', 'default')
+            cache_mode = cache.get('mode', 'writeback')
+            cache_name = '%s-cache' % name
+            self.mkpool(cache_name, cache_profile)
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier add %s %s' % (self.tmp_conf, name, cache_name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier cache-mode %s %s' % (self.tmp_conf, cache_name, cache_mode)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier set-overlay %s %s' % (self.tmp_conf, name, cache_name)).communicate()
+
+    def rmpool(self, name, profile_name):
+        pool_profiles = self.config.get('pool_profiles', {'default': {}})
+        profile = pool_profiles.get(profile_name, {})
+        cache = profile.get('cache', None)
+        if cache:
+            cache_profile = cache.get('pool_profile', 'default')
+            cache_name = '%s-cache' % name
+
+            # flush and remove the overlay and such
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier cache-mode %s forward' % (self.tmp_conf, cache_name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo rados -c %s -p %s cache-flush-evict-all' % (self.tmp_conf, cache_name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier remove-overlay %s' % (self.tmp_conf, name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier remove %s %s' % (self.tmp_conf, name, cache_name)).communicate()
+
+            # delete the cache pool
+            self.rmpool(cache_name, cache_profile)
+        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
+
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback):
