@@ -23,7 +23,7 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.pool_profile = config.get('pool_profile', 'default')
-        self.path = config.get('path', '/usr/bin/rados')
+        self.cmd_path = config.get('cmd_path', '/usr/bin/rados')
 
     def exists(self):
         if os.path.exists(self.out_dir):
