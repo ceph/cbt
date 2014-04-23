@@ -23,6 +23,7 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.tmp_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.pool_profile = config.get('pool_profile', 'default')
+        self.path = config.get('path', '/usr/bin/rados')
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -85,7 +86,7 @@ class Radosbench(Benchmark):
         for i in xrange(self.concurrent_procs):
             out_file = '%s/output.%s' % (run_dir, i)
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
-            p = common.pdsh(settings.getnodes('clients'), '/usr/bin/rados -c %s -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (self.tmp_conf, i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
+            p = common.pdsh(settings.getnodes('clients'), '%s -c %s -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (self.path, self.tmp_conf, i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
             ps.append(p)
         for p in ps:
             p.wait()
