@@ -4,7 +4,7 @@ import copy
 from benchmark.radosbench import Radosbench
 from benchmark.rbdfio import RbdFio 
 from benchmark.kvmrbdfio import KvmRbdFio
-#from benchmark import *
+from benchmark.librbdfio import LibrbdFio
 
 def getAll(cluster, iteration):
     objects = []
@@ -17,11 +17,9 @@ def get(cluster, benchmark, config, iteration):
     default = {"benchmark":benchmark, "iteration":iteration}
 
     permutations = [default]
-#    for param, value in sorted(config.iteritems(), reverse=True):
     for param, value in config.iteritems():
         if (isinstance(value, list)):
             localperms = []
-#            for lv in sorted(value, reverse=True):
             for lv in value:
                 for p in permutations:
                     lp = copy.deepcopy(p)
@@ -43,3 +41,5 @@ def getObject(cluster, benchmark, bconfig):
         return RbdFio(cluster, bconfig)
     if benchmark == "kvmrbdfio":
         return KvmRbdFio(cluster, bconfig)
+    if benchmark == 'librbdfio':
+        return LibrbdFio(cluster, bconfig)
