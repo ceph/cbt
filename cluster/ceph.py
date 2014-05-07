@@ -19,8 +19,8 @@ class Ceph(Cluster):
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
-        self.osd_valgrind = config.get('osd_valgrind', False)
-        self.mon_valgrind = config.get('mon_valgrind', False)
+        self.osd_valgrind = config.get('osd_valgrind', None)
+        self.mon_valgrind = config.get('mon_valgrind', None)
         self.tiering = config.get('tiering', False)
         self.ruleset_map = {}
         self.cur_ruleset = 1;
@@ -160,11 +160,7 @@ class Ceph(Cluster):
                 pidfile="%s/%s.pid" % (self.pid_dir, monhost)
                 cmd = 'ceph-mon -c %s -i %s --keyring=%s --pid-file=%s' % (self.tmp_conf, mon, self.keyring_fn, pidfile)
                 if self.mon_valgrind:
-                    valdir = '%s/valgrind' % self.tmp_dir
-                    common.pdsh(monhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
-                    logfile = '%s/ceph-mon.%s.log' % (valdir, mon)
-                    outfile = '%s/ceph-mon.%s.out' % (valdir, mon)
-                    cmd = 'valgrind --tool=massif --soname-synonyms=somalloc=*tcmalloc* --massif-out-file=%s --log-file=%s %s' % (outfile, logfile, cmd)
+                    cmd = "%s %s" % (setup_valgrind(self.mon_valgrind, 'mon', self.tmp_dir), cmd)
                 else:
                     cmd = 'ceph-run %s' % cmd
                 common.pdsh(monhost, 'sudo %s' % cmd).communicate()
@@ -191,11 +187,7 @@ class Ceph(Cluster):
                 pidfile="%s/ceph-osd.%d.pid" % (self.pid_dir, osdnum)
                 cmd = 'ceph-osd -c %s -i %d --pid-file=%s' % (self.tmp_conf, osdnum, pidfile)
                 if self.osd_valgrind:
-                    valdir = '%s/valgrind' % self.tmp_dir
-                    common.pdsh(pdshhost, 'sudo mkdir -p -m0755 -- %s' % valdir).communicate()
-                    logfile = '%s/ceph-osd.%d.log' % (valdir, osdnum)
-                    outfile = '%s/ceph-osd.%d.out' % (valdir, osdnum)
-                    cmd = 'valgrind --tool=massif --soname-synonyms=somalloc=*tcmalloc* --massif-out-file=%s --log-file=%s %s' % (outfile, logfile, cmd)
+                    cmd = "%s %s" % (setup_valgrind(self.osd_valgrind, 'osd', self.tmp_dir), cmd)
                 else:
                     cmd = 'ceph-run %s' % cmd
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec %s"' % cmd).communicate()
@@ -303,6 +295,7 @@ class Ceph(Cluster):
         hit_set_count = profile.get('hit_set_count', None)
         hit_set_period = profile.get('hit_set_period', None)
         target_max_objects = profile.get('target_max_objects', None)
+        target_max_bytes = profile.get('target_max_bytes', None)
 
 #        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
         common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d %s' % (self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
@@ -320,7 +313,8 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s hit_set_period %s' % (self.tmp_conf, name, hit_set_period)).communicate()
         if target_max_objects:
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_objects %s' % (self.tmp_conf, name, target_max_objects)).communicate()
-
+        if target_max_bytes:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_bytes %s' % (self.tmp_conf, name, target_max_bytes)).communicate()
         print 'Checking Healh after pool creation.'
         self.check_health()
 
