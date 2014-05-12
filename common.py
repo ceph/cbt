@@ -56,10 +56,13 @@ def mkdir_p(path):
 def setup_valgrind(mode, name, tmp_dir):
     valdir = '%s/valgrind' % tmp_dir
     logfile = '%s/%s.log' % (valdir, name)
-    outfile = '%s/%s.out' % (valdir, name)
 
-    pdsh(settings.getnodes('clients'), 'mkdir -p -m0755 -- %s' % valdir).communicate()
+    pdsh(settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % valdir).communicate()
     if mode == 'massif':
+        outfile = '%s/%s.massif.out' % (valdir, name)
         return 'valgrind --tool=massif --soname-synonyms=somalloc=*tcmalloc* --massif-out-file=%s --log-file=%s ' % (outfile, logfile)
+    if mode == 'memcheck':
+        return 'valgrind --tool=memcheck --soname-synonyms=somalloc=*tcmalloc* --log-file=%s ' % (logfile)
+
     print 'valgrind mode: %s is not supported.' % mode
     return ''
