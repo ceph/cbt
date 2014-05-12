@@ -14,6 +14,7 @@ class Ceph(Cluster):
         super(Ceph, self).__init__(config)
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
+        self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
         self.monitoring_dir = "%s/monitoring" % self.tmp_dir
         self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
@@ -38,7 +39,11 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
         self.distribute_conf()
+
+        # Set the core directory
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'echo "%s/core.%%e.%%p.%%h.%%t" | sudo tee /proc/sys/kernel/core_pattern' % self.tmp_dir).communicate()
 
         # Create the filesystems
         self.setup_fs()
@@ -71,6 +76,7 @@ class Ceph(Cluster):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
 
         common.pdsh(nodes, 'sudo killall -9 massif-amd64-li').communicate()
+        common.pdsh(nodes, 'sudo killall -9 memcheck-amd64-').communicate()
         common.pdsh(nodes, 'sudo killall -9 ceph-osd').communicate()
         common.pdsh(nodes, 'sudo killall -9 ceph-mon').communicate()
         common.pdsh(nodes, 'sudo killall -9 ceph-mds').communicate()
@@ -149,7 +155,7 @@ class Ceph(Cluster):
             for mon, addr in mons.iteritems():
                 common.pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
-                common.pdsh(monhost, 'sudo ceph-mon --mkfs -c %s -i %s --monmap=%s --keyring=%s' % (self.tmp_conf, mon, self.monmap_fn, self.keyring_fn)).communicate()
+                common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec ceph-mon --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.tmp_conf, mon, self.monmap_fn, self.keyring_fn)).communicate()
                 common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (self.keyring_fn, self.tmp_dir, mon)).communicate()
             
         # Start the mons
@@ -158,9 +164,9 @@ class Ceph(Cluster):
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
                 pidfile="%s/%s.pid" % (self.pid_dir, monhost)
-                cmd = 'ceph-mon -c %s -i %s --keyring=%s --pid-file=%s' % (self.tmp_conf, mon, self.keyring_fn, pidfile)
+                cmd = 'sudo sh -c "ulimit -c unlimited && exec ceph-mon -c %s -i %s --keyring=%s --pid-file=%s"' % (self.tmp_conf, mon, self.keyring_fn, pidfile)
                 if self.mon_valgrind:
-                    cmd = "%s %s" % (setup_valgrind(self.mon_valgrind, 'mon', self.tmp_dir), cmd)
+                    cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
                 else:
                     cmd = 'ceph-run %s' % cmd
                 common.pdsh(monhost, 'sudo %s' % cmd).communicate()
@@ -180,17 +186,18 @@ class Ceph(Cluster):
                 key_fn = '%s/osd-device-%s-data/keyring' % (self.mnt_dir, i)
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd create %s' % (self.tmp_conf, osduuid)).communicate()
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host)).communicate()
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec ceph-osd -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.tmp_conf, osdnum, osduuid)).communicate()
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec ceph-osd -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.tmp_conf, osdnum, osduuid)).communicate()
                 common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum)).communicate()
 
                 # Start the OSD
                 pidfile="%s/ceph-osd.%d.pid" % (self.pid_dir, osdnum)
                 cmd = 'ceph-osd -c %s -i %d --pid-file=%s' % (self.tmp_conf, osdnum, pidfile)
                 if self.osd_valgrind:
-                    cmd = "%s %s" % (setup_valgrind(self.osd_valgrind, 'osd', self.tmp_dir), cmd)
+                    cmd = "%s %s" % (common.setup_valgrind(self.osd_valgrind, 'osd.%d' % osdnum, self.tmp_dir), cmd)
                 else:
                     cmd = 'ceph-run %s' % cmd
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && exec %s"' % cmd).communicate()
+
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
                 osdnum = osdnum+1
 
 
