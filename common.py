@@ -43,6 +43,8 @@ def sync_files(remote_dir, local_dir):
 
     if not os.path.exists(local_dir):
         os.makedirs(local_dir)
+
+    pdsh(nodes, 'sudo chown -R %s.%s %s' % (settings.cluster.get('user'), settings.cluster.get('user'), remote_dir))
     rpdcp(nodes, '-r', remote_dir, local_dir).communicate()
 
 def mkdir_p(path):

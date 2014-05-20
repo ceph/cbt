@@ -16,7 +16,6 @@ class LibrbdFio(Benchmark):
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
-        self.cmd_path_full += self.cmd_path
         self.pool_profile = config.get('pool_profile', 'default')
 
         self.concurrent_procs = config.get('concurrent_procs', 1)
@@ -78,6 +77,9 @@ class LibrbdFio(Benchmark):
 
     def run(self):
         super(LibrbdFio, self).run()
+
+        # Set the full command path
+        self.cmd_path_full += self.cmd_path
         
         # We'll always drop caches for rados bench
         self.dropcaches()
