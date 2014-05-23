@@ -27,6 +27,7 @@ class LibrbdFio(Benchmark):
         self.mode = config.get('mode', 'write')
         self.rwmixread = config.get('rwmixread', 50)
         self.rwmixwrite = 100 - self.rwmixread
+        self.log_avg_msec = config.get('log_avg_msec', None)
 #        self.ioengine = config.get('ioengine', 'libaio')
         self.op_size = config.get('op_size', 4194304)
         self.pgs = config.get('pgs', 2048)
@@ -118,6 +119,8 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:
             fio_cmd += ' --random_distribution=%s' % self.random_distribution
+        if self.log_avg_msec is not None:
+            fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
         fio_cmd += ' %s > %s' % (self.names, out_file)
 
         # Run the backfill testing thread if requested
