@@ -353,6 +353,9 @@ class Ceph(Cluster):
             self.rmpool(cache_name, cache_profile)
         common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
 
+    def rbd_unmount(self):
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback):
