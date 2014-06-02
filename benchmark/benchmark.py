@@ -40,6 +40,8 @@ class Benchmark(object):
         if self.valgrind is not None:
             print 'Adding valgrind to the command path.'
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
+        # Set the full command path
+        self.cmd_path_full += self.cmd_path
 
     def cleanup(self):
         pass

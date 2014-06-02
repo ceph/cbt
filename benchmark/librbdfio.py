@@ -79,9 +79,6 @@ class LibrbdFio(Benchmark):
     def run(self):
         super(LibrbdFio, self).run()
 
-        # Set the full command path
-        self.cmd_path_full += self.cmd_path
-        
         # We'll always drop caches for rados bench
         self.dropcaches()
 
