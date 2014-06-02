@@ -94,7 +94,7 @@ class Radosbench(Benchmark):
 
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_test()
+            self.cluster.wait_recovery_done()
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(run_dir)
