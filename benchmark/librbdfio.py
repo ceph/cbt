@@ -32,6 +32,7 @@ class LibrbdFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
+        self.vol_order = config.get('vol_order', 22)
         self.random_distribution = config.get('random_distribution', None)
         self.poolname = "cbt-librbdfio"
 
@@ -145,7 +146,7 @@ class LibrbdFio(Benchmark):
         self.cluster.mkpool(self.poolname, self.pool_profile)
         for node in settings.getnodes('clients').split(','):
             node = node.rpartition("@")[2]
-            common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s --size %s --pool %s' % (node, self.vol_size, self.poolname)).communicate()
+            common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s --size %s --pool %s --order %s' % (node, self.vol_size, self.poolname, self.vol_order)).communicate()
         monitoring.stop()
 
     def recovery_callback(self): 
