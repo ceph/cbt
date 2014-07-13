@@ -1,5 +1,18 @@
 var keys = d3.keys(dataSet[0]);
 
+var mins = {}
+var maxes = {}
+dataSet.forEach(function(item) {
+  var mean = d3.mean(d3.values(item).slice(3));
+  var deviation = d3.deviation(d3.values(item).slice(3));
+  var minmax_key = d3.values(item).slice(0,3).join("");
+//  console.log(minmax_key);
+  mins[minmax_key] = mean-deviation;
+  maxes[minmax_key] = mean+deviation;
+});
+//console.log(mins);
+//console.log(maxes);
+
 var thead = d3.select("#view > thead")
 var th = thead.selectAll("th")
         .data(keys)
@@ -15,15 +28,27 @@ var tr = tbody.selectAll("tr")
     .append('tr')
         .selectAll('td')
         .data(function (row) {
-            return d3.entries(row);
-        })
+            key = d3.values(row).slice(0,3).join("")
+            dataArray = d3.entries(row);
+            dataArray.forEach(function(data) {
+              data["min"] = mins[key];
+              data["max"] = maxes[key];
+            });
+//            console.log(dataArray);
+            return dataArray;
+
+       })
         .enter()
         .append('td')
         .append('div')
         .style({
             "background-color": function(d, i){
                 if(i < 3) return "lightblue";
-                return makecolor(d.value, 20, 181);
+                console.log(d);
+                if (d.min === 0 && d.max === 0) {
+                   return "lightgrey";
+                }
+                return makecolor(d.value, d.min, d.max);
             },
         })
         .text(function(d){

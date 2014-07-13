@@ -79,9 +79,10 @@ if __name__ == '__main__':
     html.add_html(html.read_file('/home/nhm/src/ceph-tools/cbt/include/html/table.html'))
     html.add_style(html.read_file('/home/nhm/src/ceph-tools/cbt/include/css/table.css'))
     html.add_script(html.read_file('/home/nhm/src/ceph-tools/cbt/include/js/jsxcompressor.min.js'))
-    html.add_encoded_script(html.read_file('/home/nhm/src/ceph-tools/cbt/include/js/d3.ugly.js'))
-    html.add_encoded_script(html.format_data(database.fetch_table(['opsize', 'testtype'])))
-    html.add_encoded_script(html.read_file('/home/nhm/src/ceph-tools/cbt/include/js/table.js'))
+    html.add_script(html.read_file('/home/nhm/src/ceph-tools/cbt/include/js/d3.js'))
+    html.add_script(html.read_file('/home/nhm/src/ceph-tools/cbt/include/js/d3var.js'))
+    html.add_script(html.format_data(database.fetch_table(['opsize', 'testtype'])))
+    html.add_script(html.read_file('/home/nhm/src/ceph-tools/cbt/include/js/table.js'))
 
     print '<meta charset="utf-8">'
     print '<title>D3 Table Test </title>'
