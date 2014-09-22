@@ -7,31 +7,31 @@ import errno
 def pdsh(nodes, command):
     args = ['pdsh', '-R', 'ssh', '-w', nodes, command]
     print('pdsh: %s' % args)
-    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,  close_fds=True)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def pdcp(nodes, flags, localfile, remotefile):
-    args = ['pdcp', '-R', 'ssh', '-w', nodes, localfile, remotefile]
+    args = ['pdcp', '-f', '1', '-R', 'ssh', '-w', nodes, localfile, remotefile]
     if flags:
-        args = ['pdcp', '-R', 'ssh', '-w', nodes, flags, localfile, remotefile]
+        args = ['pdcp', '-f', '1', '-R', 'ssh', '-w', nodes, flags, localfile, remotefile]
     print('pdcp: %s' % args)
-    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,  close_fds=True)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def rpdcp(nodes, flags, remotefile, localfile):
-    args = ['rpdcp', '-R', 'ssh', '-w', nodes, remotefile, localfile]
+    args = ['rpdcp', '-f', '1', '-R', 'ssh', '-w', nodes, remotefile, localfile]
     if flags:
-        args = ['rpdcp', '-R', 'ssh', '-w', nodes, flags, remotefile, localfile]
+        args = ['rpdcp', '-f', '1', '-R', 'ssh', '-w', nodes, flags, remotefile, localfile]
     print('rpdcp: %s'  % args)
-    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,  close_fds=True)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def scp(node, localfile, remotefile):
     args = ['scp', localfile, '%s:%s' % (node, remotefile)]
     print('scp: %s' % args)
-    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,  close_fds=True)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def rscp(node, remotefile, localfile):
     args = ['scp', '%s:%s' % (node, remotefile), localfile]
     print('rscp: %s' % args)
-    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def make_remote_dir(remote_dir):
     print 'Making remote directory: %s' % remote_dir
