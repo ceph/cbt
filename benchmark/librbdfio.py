@@ -24,6 +24,7 @@ class LibrbdFio(Benchmark):
         self.ramp = str(config.get('ramp', None))
         self.iodepth = config.get('iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
+        self.end_fsync = str(config.get('end_fsync', 1))
         self.mode = config.get('mode', 'write')
         self.rwmixread = config.get('rwmixread', 50)
         self.rwmixwrite = 100 - self.rwmixread
@@ -108,6 +109,7 @@ class LibrbdFio(Benchmark):
         fio_cmd += ' --direct=1'
         fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
+        fio_cmd += ' --end_fsync=%s' % self.end_fsync
 #        if self.vol_size:
 #            fio_cmd += ' -- size=%dM' % self.vol_size
         fio_cmd += ' --write_iops_log=%s' % out_file
