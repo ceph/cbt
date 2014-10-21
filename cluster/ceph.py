@@ -126,6 +126,8 @@ class Ceph(Cluster):
         conf_file = self.config.get("conf_file")
         print "Distributing %s." % conf_file
         common.pdcp(nodes, '', conf_file, self.tmp_conf).communicate()
+        common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak').communicate()
+        common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
 
     def make_mons(self):
         # Build and distribute the keyring
