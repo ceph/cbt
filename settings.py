@@ -1,6 +1,7 @@
 import argparse
 import yaml
 import sys
+import os
 
 cluster = {}
 benchmarks = {}
