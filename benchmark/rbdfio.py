@@ -44,7 +44,7 @@ class RbdFio(Benchmark):
         # Make the file names string
         self.names = ''
         for i in xrange(self.concurrent_procs):
-            self.names += '--name=%s/mnt/kernelrbdfio-`hostname -s`-%d ' % (cluster.tmp_dir, i)
+            self.names += '--name=%s/mnt/cbt-kernelrbdfio-`hostname -s`/cbt-kernelrbdfio-%d ' % (self.cluster.tmp_dir, i)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -154,9 +154,9 @@ class RbdFio(Benchmark):
             node = node.rpartition("@")[2]
             common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-kernelrbdfio-%s --size %s --pool %s' % (node, self.vol_size, self.poolname)).communicate()
             common.pdsh(settings.getnodes(node), 'sudo rbd map cbt-kernelrbdfio-%s --pool %s --id admin' % (node, self.poolname)).communicate()
-            common.pdsh(settings.getnodes(node), 'sudo mkfs.xfs /dev/rbd/rbdfio/rbdfio-`hostname -s`').communicate()
-            common.pdsh(settings.getnodes(node), 'sudo mkdir -p -m0755 -- %s/mnt/rbdfio-`hostname -s`-%d' % (self.tmp_dir, i)).communicate()
-            common.pdsh(settings.getnodes(node), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/rbdfio/rbdfio-`hostname -s` %s/mnt/rbdfio-`hostname -s`' % (i, self.tmp_dir, i)).communicate()
+            common.pdsh(settings.getnodes(node), 'sudo mkfs.xfs /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s`').communicate()
+            common.pdsh(settings.getnodes(node), 'sudo mkdir -p -m0755 -- %s/mnt/cbt-kernelrbdfio-`hostname -s`' % self.cluster.tmp_dir).communicate()
+            common.pdsh(settings.getnodes(node), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s` %s/mnt/cbt-kernelrbdfio-`hostname -s`' % self.cluster.tmp_dir).communicate()
         monitoring.stop()
 
     def recovery_callback(self): 
