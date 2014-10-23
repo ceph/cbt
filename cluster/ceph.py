@@ -29,7 +29,10 @@ class Ceph(Cluster):
     def initialize(self): 
         super(Ceph, self).initialize()
 
-        # First, shutdown any old processes
+        # unmount any kernel rbd volumes
+        self.rbd_unmount()
+
+        # shutdown any old processes
         self.shutdown()
 
         # Cleanup old junk and create new junk
