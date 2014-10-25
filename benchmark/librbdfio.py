@@ -24,7 +24,7 @@ class LibrbdFio(Benchmark):
         self.ramp = str(config.get('ramp', None))
         self.iodepth = config.get('iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
-        self.end_fsync = str(config.get('end_fsync', 1))
+        self.end_fsync = str(config.get('end_fsync', 0))
         self.mode = config.get('mode', 'write')
         self.rwmixread = config.get('rwmixread', 50)
         self.rwmixwrite = 100 - self.rwmixread
