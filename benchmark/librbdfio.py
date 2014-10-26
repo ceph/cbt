@@ -89,11 +89,6 @@ class LibrbdFio(Benchmark):
 
         monitoring.start(self.run_dir)
 
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
-
         time.sleep(5)
         out_file = '%s/output' % self.run_dir
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s` --invalidate=0' % (self.cmd_path_full, self.poolname)
