@@ -312,8 +312,14 @@ class Ceph(Cluster):
 #        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
         common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d %s' % (self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
 
+        if replication and replication == 'erasure':
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d erasure %s' % (self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d' % (self.tmp_conf, name, pg_size, pgp_size)).communicate()
+
         if replication and replication.isdigit():
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s size %s' % (self.tmp_conf, name, replication)).communicate()
+
         if crush_profile:
             ruleset = self.get_ruleset(crush_profile)
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s crush_ruleset %s' % (self.tmp_conf, name, ruleset)).communicate()
