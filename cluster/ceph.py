@@ -366,8 +366,8 @@ class Ceph(Cluster):
 
     def rbd_unmount(self):
         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
-
+#        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback):
         threading.Thread.__init__(self)
