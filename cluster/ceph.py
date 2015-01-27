@@ -25,6 +25,7 @@ class Ceph(Cluster):
         self.tiering = config.get('tiering', False)
         self.ruleset_map = {}
         self.cur_ruleset = 1;
+        self.idle_duration = config.get('idle_duration', 0)
 
     def initialize(self): 
         super(Ceph, self).initialize()
@@ -69,9 +70,10 @@ class Ceph(Cluster):
         self.make_profiles()
 
         # Peform Idle Monitoring
-        monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
-        time.sleep(60)
-        monitoring.stop()
+        if self.idle_duration > 0:
+            monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
+            time.sleep(self.idle_duration)
+            monitoring.stop()
 
         return True
 
