@@ -1,0 +1,7 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Contact: mnelson@redhat.com
+License: LGPL2.1 or later (see COPYING-LGPL2.1)
+
+Files: *
+Copyright: (c) 2013-2015 Red Hat, Inc.
+License: LGPL2.1 (see COPYING-LGPL2.1)
