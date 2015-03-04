@@ -2,6 +2,7 @@
 import argparse
 import re
 import sys
+import math
 import numpy
 
 COUNTS_DICT = {
@@ -48,6 +49,9 @@ def get_mean(data):
 def get_std(data):
     return numpy.std(data)
 
+def get_sum(data):
+    return numpy.sum(data)
+
 def dev_from_max(data):
     values = data.values()
     maxval = get_max(values)
@@ -60,9 +64,22 @@ def dev_from_max(data):
 def pgs_per_osd(data):
     values = data.values()
     if values:
-       return "PGs Per OSD: Min: %.1f, Max: %.1f, Mean: %.1f, Std Dev: %.1f" % (get_min(values), get_max(values), get_mean(values), get_std(values))
+       return "Actual PGs Per OSD: Min: %d, Max: %d, Mean: %.1f, Std Dev: %.1f" % (get_min(values), get_max(values), get_mean(values), get_std(values))
     else:
        return "No OSDs acting in this capacity."
+
+def expected_pgs_per_osd(data):
+    values = data.values()
+    if values:
+        pgs = get_sum(values)
+        osds = len(values)
+
+        mean = 1.0 * pgs / osds
+        min_exp = (pgs / osds) - math.sqrt(2*pgs*math.log(osds)/osds)
+        max_exp = (pgs / osds) + math.sqrt(2*pgs*math.log(osds)/osds)
+        std_dev = 1.0 * (max_exp - min_exp) / 4
+
+        return "Expected PGs Per OSD: Min: %d, Max: %d, Mean: %.1f, Std Dev: %.1f" % (min_exp, max_exp, mean, std_dev)
 
 def most_used_osds(data):
     count = min(5, len(data))
@@ -102,10 +119,15 @@ def print_data(data):
 
     print format_line("Participating OSDs: " + str(osds))
     print format_line("Participating PGs: " + str(data['pgs']))
+
+    # Calculate the expected maximally loaded OSD:
+    pgs = int(data['pgs'])
+
     print div()
     for name,desc in sorted(COUNTS_DICT.iteritems()):
         print format_line(desc)
         if data[name].values():
+            print format_line(expected_pgs_per_osd(data[name]))
             print format_line(pgs_per_osd(data[name]))
             print format_line(most_used_osds(data[name]))
             print format_line(least_used_osds(data[name]))
@@ -158,7 +180,7 @@ if __name__ == '__main__':
        match = re.search(r"^(\d+)\.(\w{1,2})", parts[0])
        if match:
            pool = match.group(1)
-           uplist = parts[13].translate(None, '[]').split(',')
+           uplist = parts[12].translate(None, '[]').split(',')
            actinglist = parts[14].translate(None, '[]').split(',')
 
            if not pool in pool_counts:
