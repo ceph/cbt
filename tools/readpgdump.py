@@ -35,22 +35,22 @@ def add_count(key, dictionary):
    else:
        dictionary[key] = 1
 
-def max(data):
+def get_max(data):
     return numpy.max(data)
 
-def min(data):
+def get_min(data):
     return numpy.min(data)
 
 
-def mean(data):
+def get_mean(data):
     return numpy.mean(data)
 
-def std(data):
+def get_std(data):
     return numpy.std(data)
 
 def dev_from_max(data):
     values = data.values()
-    maxval = max(values)
+    maxval = get_max(values)
     total = 0
     for value in values:
         total += value
@@ -59,17 +59,20 @@ def dev_from_max(data):
 
 def pgs_per_osd(data):
     values = data.values()
-    return "PGs Per OSD: Min: %.1f, Max: %.1f, Mean: %.1f, Std Dev: %.1f" % (min(values), max(values), mean(values), std(values))
+    if values:
+       return "PGs Per OSD: Min: %.1f, Max: %.1f, Mean: %.1f, Std Dev: %.1f" % (get_min(values), get_max(values), get_mean(values), get_std(values))
+    else:
+       return "No OSDs acting in this capacity."
 
 def most_used_osds(data):
-    count = 5
+    count = min(5, len(data))
     out_array = []
     for element in get_top(count, data):
         out_array.append("%s(%s)" % (element[0], element[1]))
     return "%d Most Subscribed OSDs: %s" % (count, ", ".join(out_array))
 
 def least_used_osds(data):
-    count = 5
+    count = min(5, len(data))
     out_array = []
     for element in get_bottom(count, data):
         out_array.append("%s(%s)" % (element[0], element[1]))
@@ -102,11 +105,13 @@ def print_data(data):
     print div()
     for name,desc in sorted(COUNTS_DICT.iteritems()):
         print format_line(desc)
-        print format_line(pgs_per_osd(data[name]))
-        print format_line(most_used_osds(data[name]))
-        print format_line(least_used_osds(data[name]))
-        print format_line(dev_from_max(data[name]))
-
+        if data[name].values():
+            print format_line(pgs_per_osd(data[name]))
+            print format_line(most_used_osds(data[name]))
+            print format_line(least_used_osds(data[name]))
+            print format_line(dev_from_max(data[name]))
+        else:
+            print format_line("No OSDs found in this capacity")
         print div()
     print ''
 
@@ -115,7 +120,7 @@ def get_top(count, data):
     values=list(data.values())
     top = [] 
     for x in xrange(0, count):
-        value = max(values)
+        value = get_max(values)
         index = values.index(value)
         key = keys[index]
         top.append([key, value])
@@ -129,7 +134,7 @@ def get_bottom(count, data):
     values=list(data.values())
     top = []
     for x in xrange(0, count):
-        value = min(values)
+        value = get_min(values)
         index = values.index(value)
         key = keys[index]
         top.append([key, value])
@@ -153,8 +158,8 @@ if __name__ == '__main__':
        match = re.search(r"^(\d+)\.(\w{1,2})", parts[0])
        if match:
            pool = match.group(1)
-           uplist = parts[12].translate(None, '[]').split(',')
-           actinglist = parts[13].translate(None, '[]').split(',')
+           uplist = parts[13].translate(None, '[]').split(',')
+           actinglist = parts[14].translate(None, '[]').split(',')
 
            if not pool in pool_counts:
                pool_counts[pool] = {'pgs':0,'name':pool}
