@@ -68,7 +68,7 @@ def efficiency_score(data, weights):
 
     for osd,pgs in data.iteritems():
         weight = 1.0
-        if weights and weights[osd]:
+        if weights and osd in weights:
              weight = weights[osd]
         if weight*pgs > maxval:
              maxval = weight*pgs
