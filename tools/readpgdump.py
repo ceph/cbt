@@ -32,6 +32,7 @@ def parse_args():
     return args
 
 def add_count(key, dictionary):
+   key = int(key)
    if key in dictionary:
        dictionary[key] += 1
    else:
@@ -56,11 +57,23 @@ def get_sum(data):
 def dev_from_max(data):
     values = data.values()
     maxval = get_max(values)
-    total = 0
-    for value in values:
-        total += value
+    total = get_sum(values)
     pct = total / (1.0*maxval*len(values))
     return "Avg Deviation from Most Subscribed OSD: %.1f%%" % (100 * (1 - pct))
+
+def efficiency_score(data, weights):
+    values = data.values()
+    avgval = get_mean(values)
+    maxval = avgval
+
+    for osd,pgs in data.iteritems():
+        weight = 1.0
+        if weights and weights[osd]:
+             weight = weights[osd]
+        if weight*pgs > maxval:
+             maxval = weight*pgs
+    
+    return 100.0*(avgval/maxval)
 
 def pgs_per_osd(data):
     values = data.values()
@@ -82,6 +95,7 @@ def expected_pgs_per_osd(data):
 
         return "Expected PGs Per OSD: Min: %d, Max: %d, Mean: %.1f, Std Dev: %.1f" % (min_exp, max_exp, mean, std_dev)
 
+
 def most_used_osds(data):
     count = min(5, len(data))
     out_array = []
@@ -101,8 +115,13 @@ def print_report(pool_counts, total_counts, input_type):
     print format_line("Detected input as %s" % input_type)
     print div()
     for pool,data in sorted(pool_counts.iteritems()):
-        print_data(data)
-    print_data(total_counts)
+        weights = pool_weights[pool]
+        print_data(data, pool_weights, total_weights)
+        print_weights(data, pool_weights[pool])
+        print div()
+    print_data(total_counts, pool_weights, total_weights)
+    print_weights(total_counts, total_weights)
+    print div()
 
 def div():
     return "+" + "-" * 76 + "+"
@@ -110,7 +129,7 @@ def div():
 def format_line(line):
     return str("| %s" % line).ljust(77) + "|"
 
-def print_data(data):
+def print_data(data, pool_weights, total_weights):
     print ''
     print div() 
     print format_line("Pool ID: " + str(data['name']))
@@ -136,10 +155,24 @@ def print_data(data):
             print format_line(most_used_osds(data[name]))
             print format_line(least_used_osds(data[name]))
             print format_line(dev_from_max(data[name]))
+            print format_line("") 
+            print format_line("Efficiency score using equal weights: %.1f%%" % efficiency_score(data[name], {}))
+            for pool,weights in pool_weights.iteritems():
+                print format_line("Efficiency score using optimal weights for pool %s: %.1f%%" % (pool, efficiency_score(data[name], weights['acting_totals'])))
+#            print format_line(efficiency_score(data[name]))
+            print format_line("Efficiency score using optimal weights for all pools: %.1f%%" % efficiency_score(data[name], total_weights['acting_totals']))
         else:
             print format_line("No OSDs found in this capacity")
         print div()
-    print ''
+
+def print_weights(data, weights):
+    if data['acting_totals'].values():
+        print format_line("Optimal OSD Weights for Pool ID: %s" % str(data['name']))
+        print format_line("")
+        section_weights = weights['acting_totals']
+        for osd,weight in section_weights.iteritems():
+            print format_line("OSD %s: %.2f" % (osd, weight))
+    
 
 def get_top(count, data):
     keys=list(data.keys())
@@ -200,6 +233,19 @@ def add_counts(pool, uplist, actinglist):
         add_count(actinglist[x], pool_counts[pool]['acting_totals'])
         add_count(actinglist[x], total_counts['acting_totals'])
 
+def fill_weights():
+    for pool,data in sorted(pool_counts.iteritems()):
+        pool_weights[pool] = {}
+        for name,desc in sorted(COUNTS_DICT.iteritems()):
+            pool_weights[pool][name] = {}
+            mean = get_mean(data[name].values())
+            for osd,pgs in sorted(data[name].iteritems()):
+                pool_weights[pool][name][int(osd)] = 1.0*mean/pgs
+    for name,desc in sorted(COUNTS_DICT.iteritems()):
+        total_weights[name] = {} 
+        mean = get_mean(total_counts[name].values())
+        for osd,pgs in sorted(total_counts[name].iteritems()):
+            total_weights[name][int(osd)] = 1.0*mean/pgs
 
 def parse_json(data):
     try:
@@ -213,6 +259,7 @@ def parse_json(data):
         uplist = pg['up']
         actinglist = pg['acting']
         add_counts(pool, uplist, actinglist)
+    fill_weights()
     print_report(pool_counts, total_counts, "JSON")
 
 def parse_text(data):
@@ -233,12 +280,15 @@ def parse_text(data):
              add_counts(pool, uplist, actinglist)
     if upnum == 0 or actingnum == 0:
         raise ValueError('could not parse the input as a plain ceph pg dump')
+    fill_weights()
     print_report(pool_counts, total_counts, "plain")
 
 if __name__ == '__main__':
     ctx = parse_args()
     pool_counts = {}
     total_counts = {'pgs':0, 'name':'Totals (All Pools)'}
+    pool_weights = {}
+    total_weights = {}
     data = ctx.pg_map.read()
     try:
         parse_json(data) 
