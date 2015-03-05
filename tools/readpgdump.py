@@ -4,6 +4,7 @@ import re
 import sys
 import math
 import numpy
+import json
 
 COUNTS_DICT = {
     'up_primaries':'OSDs in Primary Role (Up)',
@@ -95,7 +96,10 @@ def least_used_osds(data):
         out_array.append("%s(%s)" % (element[0], element[1]))
     return "%d Least Subscribed OSDs: %s" % (count, ", ".join(out_array))
 
-def print_report(pool_counts, total_counts):
+def print_report(pool_counts, total_counts, input_type):
+    print div()
+    print format_line("Detected input as %s" % input_type)
+    print div()
     for pool,data in sorted(pool_counts.iteritems()):
         print_data(data)
     print_data(total_counts)
@@ -165,52 +169,83 @@ def get_bottom(count, data):
         del values[index]
     return top
 
+def add_counts(pool, uplist, actinglist):
+    if not pool in pool_counts:
+       pool_counts[pool] = {'pgs':0,'name':pool}
+       for clist in COUNTS_DICT.keys():
+           pool_counts[pool][clist] = {}
+           total_counts[clist] = {}
+    pool_counts[pool]['pgs'] += 1
+    total_counts['pgs'] += 1
+
+    add_count(uplist[0], pool_counts[pool]['up_primaries'])
+    add_count(uplist[0], total_counts['up_primaries'])
+
+    for x in range (1, len(uplist)):
+        add_count(uplist[x], pool_counts[pool]['up_secondaries'])
+        add_count(uplist[x], total_counts['up_secondaries'])
+
+    for x in range (0, len(uplist)):
+        add_count(uplist[x], pool_counts[pool]['up_totals'])
+        add_count(uplist[x], total_counts['up_totals'])
+
+    add_count(actinglist[0], pool_counts[pool]['acting_primaries'])
+    add_count(actinglist[0], total_counts['acting_primaries'])
+
+    for x in range (1, len(actinglist)):
+        add_count(actinglist[x], pool_counts[pool]['acting_secondaries'])
+        add_count(actinglist[x], total_counts['acting_secondaries'])
+
+    for x in range (0, len(actinglist)):
+        add_count(actinglist[x], pool_counts[pool]['acting_totals'])
+        add_count(actinglist[x], total_counts['acting_totals'])
+
+
+def parse_json(data):
+    try:
+        json_data = json.loads(data)
+    except ValueError, e:
+        parse_text(data)
+        return
+    for pg in json_data['pg_stats']:
+        match = re.search(r"^(\d+)\.(\w{1,2})", pg['pgid'])
+        pool = match.group(1)
+        uplist = pg['up']
+        actinglist = pg['acting']
+        add_counts(pool, uplist, actinglist)
+    print_report(pool_counts, total_counts, "JSON")
+
+def parse_text(data):
+    upnum = 0
+    actingnum = 0
+
+    for line in data.splitlines():
+        parts = line.rstrip().split('\t')
+        if parts[0] == "pg_stat":
+            upnum = parts.index("up")
+            actingnum = parts.index("acting")
+            continue
+        match = re.search(r"^(\d+)\.(\w{1,2})", parts[0])
+        if match:
+             pool = match.group(1)
+             uplist = parts[upnum].translate(None, '[]').split(',')
+             actinglist = parts[actingnum].translate(None, '[]').split(',')
+             add_counts(pool, uplist, actinglist)
+    if upnum == 0 or actingnum == 0:
+        raise ValueError('could not parse the input as a plain ceph pg dump')
+    print_report(pool_counts, total_counts, "plain")
 
 if __name__ == '__main__':
     ctx = parse_args()
     pool_counts = {}
     total_counts = {'pgs':0, 'name':'Totals (All Pools)'}
-    up_primary_osd_counts = {}
-    up_secondary_osd_counts = {}
-    acting_primary_osd_counts = {}
-    acting_secondary_osd_counts = {} 
-
-    for line in ctx.pg_map:
-       parts = line.rstrip().split('\t')
-       match = re.search(r"^(\d+)\.(\w{1,2})", parts[0])
-       if match:
-           pool = match.group(1)
-           uplist = parts[12].translate(None, '[]').split(',')
-           actinglist = parts[14].translate(None, '[]').split(',')
-
-           if not pool in pool_counts:
-               pool_counts[pool] = {'pgs':0,'name':pool}
-               for clist in COUNTS_DICT.keys():
-                   pool_counts[pool][clist] = {}
-                   total_counts[clist] = {}
-           pool_counts[pool]['pgs'] += 1           
-           total_counts['pgs'] += 1
-
-           add_count(uplist[0], pool_counts[pool]['up_primaries'])
-           add_count(uplist[0], total_counts['up_primaries'])
-
-           for x in range (1, len(uplist)):
-               add_count(uplist[x], pool_counts[pool]['up_secondaries'])
-               add_count(uplist[x], total_counts['up_secondaries'])
-
-           for x in range (0, len(uplist)):
-               add_count(uplist[x], pool_counts[pool]['up_totals'])
-               add_count(uplist[x], total_counts['up_totals'])
-
-           add_count(actinglist[0], pool_counts[pool]['acting_primaries'])
-           add_count(actinglist[0], total_counts['acting_primaries'])
-
-           for x in range (1, len(actinglist)):
-               add_count(actinglist[x], pool_counts[pool]['acting_secondaries'])
-               add_count(actinglist[x], total_counts['acting_secondaries'])
-
-           for x in range (0, len(actinglist)):
-               add_count(actinglist[x], pool_counts[pool]['acting_totals'])
-               add_count(actinglist[x], total_counts['acting_totals'])
-
-    print_report(pool_counts, total_counts)
+    data = ctx.pg_map.read()
+    try:
+        parse_json(data) 
+    except ValueError, e:
+        try:
+            parse_text(data)
+        except ValueError, e:
+            print "Failed to read the input as either JSON or plain text."
+            sys.exit(1)
+       
