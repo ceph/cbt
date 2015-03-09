@@ -8,7 +8,7 @@ cluster:
   fs: xfs
   mkfs_opts: -f -i size=2048 -n size=64k
   mount_opts: -o inode64,noatime,logbsize=256k
-  ceph.conf: /home/nhm/src/ceph-tools/cbt/example/ceph.conf
+  ceph.conf: /home/nhm/src//cbt/example/ceph.conf
   iterations: 1 
 #  rebuild_every_test: True
   tmp_dir: "/tmp/cbt"
