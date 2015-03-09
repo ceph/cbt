@@ -1,0 +1,14 @@
+#view > tbody div {
+/*  height:50; */
+}
+
+th {
+ background-color:blue;
+  color:white  
+}
+
+td {
+  border: 1px solid lightgrey;
+  background-color:#ccc;
+  width:200px;
+}

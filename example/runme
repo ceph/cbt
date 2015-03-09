@@ -1,0 +1,2 @@
+../cbt.py --archive=/home/ubuntu/data/foo ./runtests.xfs.yaml
+
