@@ -110,7 +110,7 @@ class Radosbench(Benchmark):
         monitoring.stop()
 
     def recovery_callback(self): 
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados')
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())

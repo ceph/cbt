@@ -74,7 +74,7 @@ class LibrbdFio(Benchmark):
         # populate the fio files
         print 'Attempting to populating fio files...'
         pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s` --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, self.numjobs, self.vol_size, self.names)
-        common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), pre_cmd)
 
         return True
 
@@ -124,7 +124,7 @@ class LibrbdFio(Benchmark):
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
         print 'Running rbd fio %s test.' % self.mode
-        common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), fio_cmd)
 
 
         # If we were doing recovery, wait until it's done.
@@ -143,11 +143,11 @@ class LibrbdFio(Benchmark):
         self.cluster.mkpool(self.poolname, self.pool_profile)
         for node in settings.getnodes('clients').split(','):
             node = node.rpartition("@")[2]
-            common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s --size %s --pool %s --order %s' % (node, self.vol_size, self.poolname, self.vol_order)).communicate()
+            common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s --size %s --pool %s --order %s' % (node, self.vol_size, self.poolname, self.vol_order))
         monitoring.stop()
 
     def recovery_callback(self): 
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio')
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(LibrbdFio, self).__str__())
