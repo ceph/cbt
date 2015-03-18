@@ -201,7 +201,7 @@ class Ceph(Cluster):
                     cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
                 else:
                     cmd = 'ceph-run %s' % cmd
-                common.pdsh(monhost, 'sudo %s' % cmd)
+                common.pdsh(monhost, 'sudo %s' % cmd, True)
 
     def make_osds(self):
         osdnum = 0
@@ -217,9 +217,9 @@ class Ceph(Cluster):
                 osduuid = str(uuid.uuid4())
                 key_fn = '%s/osd-device-%s-data/keyring' % (self.mnt_dir, i)
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd create %s' % (self.tmp_conf, osduuid))
-                common.pdsh(pdshhost, 'sudo ceph -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host))
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.ceph_osd_cmd, self.tmp_conf, osdnum, osduuid))
-                common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum))
+                common.pdsh(pdshhost, 'sudo ceph -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host), True)
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.ceph_osd_cmd, self.tmp_conf, osdnum, osduuid), True)
+                common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum), True)
 
                 # Start the OSD
                 pidfile="%s/ceph-osd.%d.pid" % (self.pid_dir, osdnum)
@@ -229,7 +229,7 @@ class Ceph(Cluster):
                 else:
                     cmd = 'ceph-run %s' % cmd
 
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd)
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd, True)
                 osdnum = osdnum+1
 
 
