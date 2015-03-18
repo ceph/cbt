@@ -100,34 +100,57 @@ class Ceph(Cluster):
         print 'Deleting %s' % self.tmp_dir
         common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir)
 
-    def setup_fs(self):
+    def make_fs(self, osds, device, device_id):
         sc = settings.cluster
         fs = sc.get('fs')
         mkfs_opts = sc.get('mkfs_opts', '')
         mount_opts = sc.get('mount_opts', '')
+        
+        common.pdsh(osds, 'sudo umount %s' % device, True)
+        common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device_id))
+        common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device_id))
 
+        if fs == 'tmpfs':
+            print 'using tmpfs osds, not creating a file system.'
+        elif fs == 'zfs':
+            print 'ruhoh, zfs detected.  No mkfs for you!'
+            common.pdsh(osds, 'sudo zpool destroy osd-device-%s-data' % device_id)
+            common.pdsh(osds, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data %s' % (device_id, device))
+            common.pdsh(osds, 'sudo zpool add osd-device-%s-data log /dev/disk/by-partlabel/osd-device-%s-zil' % (device_id, device_id))
+            common.pdsh(osds, 'sudo mount %s -t zfs osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, device_id, self.mnt_dir, device_id))
+        else: 
+            common.pdsh(osds, 'sudo mkfs.%s %s %s' % (fs, mkfs_opts, device))
+            common.pdsh(osds, 'sudo mount %s -t %s %s %s/osd-device-%s-data' % (mount_opts, fs, device, self.mnt_dir, device_id))
+
+    def setup_fs(self):
+        sc = settings.cluster
+        fs = sc.get('fs')
+        
         if fs == '':
              shutdown("No OSD filesystem specified.  Exiting.")
 
-        for device in xrange (0,sc.get('osds_per_node')):
-            osds = settings.getnodes('osds')
-            common.pdsh(osds, 'sudo umount /dev/disk/by-partlabel/osd-device-%s-data' % device)
-            common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device))
-            common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device))
-
-            if fs == 'tmpfs':
-                print 'using tmpfs osds, not creating a file system.'
-            elif fs == 'zfs':
-                print 'ruhoh, zfs detected.  No mkfs for you!'
-                common.pdsh(osds, 'sudo zpool destroy osd-device-%s-data' % device)
-                common.pdsh(osds, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data /dev/disk/by-partlabel/osd-device-%s-data' % (device, device))
-                common.pdsh(osds, 'sudo zpool add osd-device-%s-data log /dev/disk/by-partlabel/osd-device-%s-zil' % (device, device))
-                common.pdsh(osds, 'sudo mount %s -t zfs osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, device, self.mnt_dir, device))
-            else: 
-                common.pdsh(osds, 'sudo mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device))
-                common.pdsh(osds, 'sudo mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, fs, device, self.mnt_dir, device))
-
-
+        osds = settings.getnodes('osds')
+        osds_mkfsed = False
+        user = sc.get('user')
+        for osd in sc.get('osds'):
+            device_id = 0
+            devices = sc.get(osd)
+            print "["+osd+"]:"+",".join(devices)
+            if not devices:
+                if not osds_mkfsed:
+                    break;
+                else:
+                    print "[ERROR] missing osd devices of "+osd
+                    sys.exit()
+            for device in devices:
+                self.make_fs( user+'@'+osd, device, device_id )
+                osds_mkfsed = True
+                device_id = device_id + 1
+       
+        if not osds_mkfsed: 
+            for device in xrange (0,sc.get('osds_per_node')):
+                self.make_fs( osds, "/dev/disk/by-partlabel/osd-device-"+str(device)+"-data", device )
+ 
     def distribute_conf(self):
         nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
         conf_file = self.config.get("conf_file")
