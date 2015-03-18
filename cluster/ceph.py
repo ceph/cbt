@@ -155,7 +155,8 @@ class Ceph(Cluster):
         nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
         conf_file = self.config.get("conf_file")
         print "Distributing %s." % conf_file
-        common.pdcp(nodes, '', conf_file, self.tmp_conf)
+        for node in nodes.split(','):
+            common.scp(node, conf_file, self.tmp_conf)
         common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak', True)
         common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf)
 
