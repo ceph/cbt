@@ -132,8 +132,8 @@ class Ceph(Cluster):
         osds = settings.getnodes('osds')
         osds_mkfsed = False
         user = sc.get('user')
+        device_id = 0
         for osd in sc.get('osds'):
-            device_id = 0
             devices = sc.get(osd)
             print "["+osd+"]:"+",".join(devices)
             if not devices:
@@ -216,7 +216,7 @@ class Ceph(Cluster):
             for i in xrange(0, settings.cluster.get('osds_per_node')):            
                 # Build the OSD
                 osduuid = str(uuid.uuid4())
-                key_fn = '%s/osd-device-%s-data/keyring' % (self.mnt_dir, i)
+                key_fn = '%s/osd-device-%s-data/keyring' % (self.mnt_dir, osdnum)
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd create %s' % (self.tmp_conf, osduuid))
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host), True)
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.ceph_osd_cmd, self.tmp_conf, osdnum, osduuid), True)
