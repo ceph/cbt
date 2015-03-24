@@ -43,6 +43,9 @@ class Benchmark(object):
         # Set the full command path
         self.cmd_path_full += self.cmd_path
 
+    def exists(self):
+        return False
+
     def cleanup(self):
         pass
 
