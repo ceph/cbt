@@ -14,6 +14,7 @@ class Ceph(Cluster):
         super(Ceph, self).__init__(config)
         self.ceph_osd_cmd = config.get('ceph-osd_cmd', '/usr/bin/ceph-osd')
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
+        self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
@@ -24,6 +25,7 @@ class Ceph(Cluster):
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         self.osd_valgrind = config.get('osd_valgrind', None)
         self.mon_valgrind = config.get('mon_valgrind', None)
+        self.rgw_valgrind = config.get('rgw_valgrind', None)
         self.tiering = config.get('tiering', False)
         self.ruleset_map = {}
         self.cur_ruleset = 1;
@@ -58,6 +60,7 @@ class Ceph(Cluster):
         monitoring.start('%s/creation' % self.monitoring_dir)
         self.make_mons()
         self.make_osds()
+        self.start_rgw()
         monitoring.stop()
 
         # Check Health
@@ -208,6 +211,23 @@ class Ceph(Cluster):
 
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
                 osdnum = osdnum+1
+
+
+    def start_rgw(self):
+        rgwhosts = settings.cluster.get('rgws')
+
+        for host in rgwhosts:
+            pdshhost = host
+            user = settings.cluster.get('user')
+            if user:
+                pdshhost = '%s@%s' % (user, host)
+            cmd = '%s -c %s -n client.radosgw.gateway --log-file=%s/rgw.log' % (self.ceph_rgw_cmd, self.tmp_conf, self.log_dir)
+            if self.rgw_valgrind:
+                cmd = "%s %s" % (common.setup_valgrind(self.rgw_valgrind, 'rgw.%s' % host, self.tmp_dir), cmd)
+            else:
+                cmd = 'ceph-run %s' % cmd
+
+            common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
 
     def check_health(self, logfile=None):
