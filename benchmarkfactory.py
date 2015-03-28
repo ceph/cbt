@@ -5,6 +5,7 @@ from benchmark.radosbench import Radosbench
 from benchmark.rbdfio import RbdFio 
 from benchmark.kvmrbdfio import KvmRbdFio
 from benchmark.librbdfio import LibrbdFio
+from benchmark.cosbench import Cosbench
 
 def getAll(cluster, iteration):
     objects = []
@@ -43,3 +44,5 @@ def getObject(cluster, benchmark, bconfig):
         return KvmRbdFio(cluster, bconfig)
     if benchmark == 'librbdfio':
         return LibrbdFio(cluster, bconfig)
+    if benchmark == 'cosbench':
+        return Cosbench(cluster, bconfig)
