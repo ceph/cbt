@@ -214,7 +214,7 @@ class Ceph(Cluster):
 
 
     def start_rgw(self):
-        rgwhosts = settings.cluster.get('rgws')
+        rgwhosts = settings.cluster.get('rgws', [])
 
         for host in rgwhosts:
             pdshhost = host
