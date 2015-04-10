@@ -1,0 +1,190 @@
+--------------
+ Introduction
+--------------
+
+Cosbench is a distributed benchmark tool to test cloud object storage systems, 
+in CBT toolset, cosbench benchmark will use radosgw api to generate workload.
+
+------------
+ Components
+------------
+
+1.  Driver (also referred to as COSBench Driver or Load Generator):
+o  Responsible for workload generation, issuing operations to target cloud object storage,
+and collecting performance statistics.
+o  Can be accessed via http://<driver-host>:18088/driver/index.html.
+
+2.  Controller (also referred to as COSBench Controller):
+o  Responsible for coordinating drivers to collectively execute a workload, collecting and 
+aggregating runtime status or benchmark results from driver instances, and accepting 
+workload submissions.
+o  Can be accessed via http://<controller-host>:19088/controller/index.html. 
+
+---------------------
+ System Requirements
+---------------------
+
+NOTE: The current release of COSBench features Ubuntu* 12.04.1 LTS Desktop, but the COSBench 
+development team assumes that organizations will install using various OSs and contribute related 
+feedback to the community.
+o  Ubuntu 12.04.1 LTS Desktop
+o  Java* Runtime Environment 1.6 or later
+o  Curl 7.22.0 or later
+o  Csvtool if processing generated csv files is required.
+o  Free TCP port (ensure these ports are accessible non-locally):  
+    o  On COSBench controller machine: 19088
+    o  On COSBench driver machines: 18088
+
+------------------
+ Install Cosbench
+------------------
+
+Intel source code for COSBench is being released under the Apache 2.0 license, and hosted at 
+http://github.com/intel-cloud/cosbench/.
+
+1. installing the requirements
+   sudo apt-get install openjdk-7-jre
+   sudo apt-get install curl
+
+2. install cosbench
+    unzip ${cosbench-zip}
+    cd ${cosbench-zip}
+    chmod +x *.sh
+
+    unset http_proxy
+    vim conf/controller.conf 
+    
+****** Edit content like below ******
+    [controller]
+    drivers = 2
+    log_level = INFO
+    log_file = log/system.log
+    archive_dir = archive
+    
+    [driver1]
+    name = driver1
+    url = http://127.0.0.1:18088/driver
+    
+    [driver2]
+    name = driver2
+    url = http://192.168.5.252:18088/driver
+ ************************************
+
+    ssh to all driver nodes
+    vim conf/driver.conf 
+
+ ****** Edit content like below ******
+    [driver]
+    log_level = INFO
+    url=http://192.168.5.251:18088:driver
+ *************************************
+
+    sh start-all.sh
+
+ ****** see output like below ******
+
+    root@client01:~/0.4.1.0# ./start-all.sh 
+    Launching osgi framwork ... 
+    Successfully launched osgi framework!
+    Booting cosbench driver ... 
+    .
+    Starting    cosbench-log_0.4.1    [OK]
+    Starting    cosbench-tomcat_0.4.1    [OK]
+    Starting    cosbench-config_0.4.1    [OK]
+    Starting    cosbench-http_0.4.1    [OK]
+    Starting    cosbench-cdmi-util_0.4.1    [OK]
+    Starting    cosbench-core_0.4.1    [OK]
+    Starting    cosbench-core-web_0.4.1    [OK]
+    Starting    cosbench-api_0.4.1    [OK]
+    Starting    cosbench-mock_0.4.1    [OK]
+    Starting    cosbench-ampli_0.4.1    [OK]
+    Starting    cosbench-swift_0.4.1    [OK]
+    Starting    cosbench-keystone_0.4.1    [OK]
+    Starting    cosbench-httpauth_0.4.1    [OK]
+    Starting    cosbench-s3_0.4.1    [OK]
+    Starting    cosbench-librados_0.4.1    [OK]
+    Starting    cosbench-scality_0.4.1    [OK]
+    Starting    cosbench-cdmi-swift_0.4.1    [OK]
+    Starting    cosbench-cdmi-base_0.4.1    [OK]
+    Starting    cosbench-driver_0.4.1    [OK]
+    Starting    cosbench-driver-web_0.4.1    [OK]
+    Successfully started cosbench driver!
+    Listening on port 0.0.0.0/0.0.0.0:18089 ... 
+    Persistence bundle starting...
+    Persistence bundle started.
+    ----------------------------------------------
+    !!! Service will listen on web port: 18088 !!!
+    ----------------------------------------------
+    
+    ======================================================
+    
+    Launching osgi framwork ... 
+    Successfully launched osgi framework!
+    Booting cosbench controller ... 
+    .
+    Starting    cosbench-log_0.4.1    [OK]
+    Starting    cosbench-tomcat_0.4.1    [OK]
+    Starting    cosbench-config_0.4.1    [OK]
+    Starting    cosbench-core_0.4.1    [OK]
+    Starting    cosbench-core-web_0.4.1    [OK]
+    Starting    cosbench-controller_0.4.1    [OK]
+    Starting    cosbench-controller-web_0.4.1    [OK]
+    Successfully started cosbench controller!
+    Listening on port 0.0.0.0/0.0.0.0:19089 ... 
+    Persistence bundle starting...
+    Persistence bundle started.
+    ----------------------------------------------
+    !!! Service will listen on web port: 19088 !!!
+    ----------------------------------------------
+ 
+3.  Create Radosgw User for cosbench
+    radosgw-admin user create --uid="cosbench" --display-name="cosbench"
+    radosgw-admin subuser create --uid=cosbench --subuser=cosbench:operator --access=full
+    radosgw-admin key create --uid=cosbench --subuser=cosbench:operator --key-type=swift
+    radosgw-admin user modify --uid=cosbench --max-buckets=100000
+    radosgw-admin subuser modify --uid=cosbench --subuser=cosbench:operator --secret=intel2012 --key-type=swift
+
+4.  Check if radosgw can be accessed with cosbench auth
+    curl -D - -H 'X-Auth-User: cosbench:operator' -H 'X-Auth-Key: intel2012' http://${radosgw.server}/auth/v1.0"
+
+******* see output like below ******
+
+    HTTP/1.1 204 No Content
+    Date: Fri, 10 Apr 2015 02:48:58 GMT
+    Server: Apache/2.4.7 (Ubuntu)
+    X-Storage-Url: http://127.0.0.1/swift/v1
+    X-Storage-Token: AUTH_rgwtk11000000636f7362656e63683a6f70657261746f728d2a9e3caa0ce94f9a8b28552070872ef67d9919008df3868dd4a2b09c7ddfed2ce2f7d6
+    X-Auth-Token: AUTH_rgwtk11000000636f7362656e63683a6f70657261746f728d2a9e3caa0ce94f9a8b28552070872ef67d9919008df3868dd4a2b09c7ddfed2ce2f7d6
+    Content-Type: application/json
+************************************
+
+5.  cosbench param config in yaml
+
+benchmarks:
+  cosbench: 
+    cosbench_dir: /root/0.4.1.0
+    cosbench_xml_dir: /home/cephperf/plugin/cbt/conf/cosbench/
+    controller: client01
+    auth:
+      config: username=cosbench:operator;password=intel2012;url=http://192.168.5.251/auth/v1.0;retry=9
+    obj_size: [128KB]
+    template: [default]
+    mode: [write]
+    ratio: [100]
+    rampup: 10
+    runtime: 10
+    rampdown: 10
+    workers: [20]
+    containers: ["u(1,100)"]
+    objects: ["u(1,100)"]
+    
+ ****** Parameter intro ******
+    [cosbench_dir]: where cosbench execute files are
+    [cosbench_xml_dir]: cosbench start a test from xml file, so in cbt, we will translate yaml
+                        to xml, this indicates where cosbench xml files will creat to
+    [controller]: cosbench need a controller node to monitor and submit test jobs, this is where 
+                  cosbench controller daemon runs
+    [auth][config]: specify radosgw username and passwork and radosgw url for cosbench
+    [template]: Cosbench can support multi workstage, so user can design complex workload like 
+                seqwrite in 1st workstage, and randread in 2nd workstage then randwrite in 3rd 
+                workstage, etc. But in CBT toolset, currently we only support 2 workstage template.
