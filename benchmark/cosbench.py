@@ -24,6 +24,7 @@ class Cosbench(Benchmark):
         self.containers = config["containers_max"]
         self.objects = config["objects_max"]
         self.mode = config["mode"]
+        self.user = settings.cluster.get('user')
 
         self.run_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.run_dir, int(self.osd_ra), self.op_size, int(self.total_procs), int(self.containers),int(self.objects), self.mode)
         self.out_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.archive_dir, int(self.osd_ra), self.op_size, int(self.total_procs),  int(self.containers),int(self.objects), self.mode)
@@ -42,7 +43,7 @@ class Cosbench(Benchmark):
                 pass
         print cosconf
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
-            stdout, stderr = common.pdsh(self.config["controller"],"curl -D - -H 'X-Auth-User: %s' -H 'X-Auth-Key: %s' %s" % (cosconf["username"], cosconf["password"], cosconf["url"])).communicate()
+            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"curl -D - -H 'X-Auth-User: %s' -H 'X-Auth-Key: %s' %s" % (cosconf["username"], cosconf["password"], cosconf["url"])).communicate()
         else:
             print "[ERROR]Auth Configuration in Yaml file is not in correct format"
             sys.exit()
@@ -170,12 +171,11 @@ class Cosbench(Benchmark):
         except KeyboardInterrupt:
             print "[WARNING] accept keyboard interrupt, cancel this run"
             conf = self.config
-            stdout, stderr = common.pdsh(conf["controller"],'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
+            stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
             print "[LOG]%s" % stdout
 
         self.check_workload_status()
-
-        time.sleep(5)
+        self.check_cosbench_res_dir()
 
         monitoring.stop(self.run_dir)
         self.cluster.dump_historic_ops(self.run_dir)
@@ -189,9 +189,9 @@ class Cosbench(Benchmark):
         except:
             wait = False
         while wait:
-            stdout, stderr = common.pdsh(self.config["controller"],"sh %s/cli.sh info | grep %s | awk '{print $8}'" % (self.config["cosbench_dir"], self.runid)).communicate()
+            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info | grep %s | awk '{print $8}'" % (self.config["cosbench_dir"], self.runid)).communicate()
             if stderr:
-                print "[ERROR]Cosbench Deamon is not running on %s" % self.config["controller"]
+                print "Cosbench Deamon is not running on %s" % self.config["controller"]
                 return False
             try:
                 status = stdout.split(':')[1]
@@ -200,13 +200,25 @@ class Cosbench(Benchmark):
             except:
                 wait = False
             time.sleep(1)
-        stdout, stderr = common.pdsh(self.config["controller"],"sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
+        stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
         print stdout
         return True
 
+    def check_cosbench_res_dir(self):
+        #check res dir
+        check_time = 0
+        while True:
+            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]), "find %s/archive -maxdepth 1 -name '%s-*'" % (self.config["cosbench_dir"], self.runid)).communicate() 
+            if stdout:
+                return True
+            if check_time == 300:
+                return False
+            check_time += 1
+            time.sleep(1)
+
     def _run(self):
         conf = self.config
-        stdout, stderr = common.pdsh(conf["controller"],'sh %s/cli.sh submit %s/%s.xml' % (conf["cosbench_dir"], conf["cosbench_xml_dir"], conf["xml_name"])).communicate()
+        stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh submit %s/%s.xml' % (conf["cosbench_dir"], conf["cosbench_xml_dir"], conf["xml_name"])).communicate()
         m = re.findall('Accepted with ID:\s*(\w+)', stdout )
         if not m:
             print "[ERROR] cosbench start failing with error: %s" % stderr
