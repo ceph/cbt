@@ -27,7 +27,7 @@ def get(cluster, benchmark, config, iteration):
                     lp = copy.deepcopy(p)
                     lp[param] = lv
                     localperms.append(lp)
-            permutations = localperms;
+            permutations = localperms
         else:
             for p in permutations:
                 p[param] = value

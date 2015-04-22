@@ -28,7 +28,7 @@ class Ceph(Cluster):
         self.rgw_valgrind = config.get('rgw_valgrind', None)
         self.tiering = config.get('tiering', False)
         self.ruleset_map = {}
-        self.cur_ruleset = 1;
+        self.cur_ruleset = 1
         self.idle_duration = config.get('idle_duration', 0)
 
     def initialize(self): 
@@ -110,7 +110,7 @@ class Ceph(Cluster):
         mount_opts = sc.get('mount_opts', '')
 
         if fs == '':
-             shutdown("No OSD filesystem specified.  Exiting.")
+             settings.shutdown("No OSD filesystem specified.  Exiting.")
 
         for device in xrange (0,sc.get('osds_per_node')):
             osds = settings.getnodes('osds')
