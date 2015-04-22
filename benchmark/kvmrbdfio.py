@@ -51,9 +51,9 @@ class KvmRbdFio(Benchmark):
         super(KvmRbdFio, self).initialize()
         for i in xrange(1):
              letter = string.ascii_lowercase[i+1]
-             common.pdsh(settings.getnodes('clients'), 'sudo mkfs.ext4 /dev/vd%s' % letter).communicate()
-             common.pdsh(settings.getnodes('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
-             common.pdsh(settings.getnodes('clients'), 'sudo mount -t ext4 -o noatime /dev/vd%s /srv/rbdfio-`hostname -s`-%d' %(letter, i)).communicate()
+             common.pdsh(settings.getnodes('clients'), 'sudo mkfs.ext4 /dev/vd%s' % letter)
+             common.pdsh(settings.getnodes('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i)
+             common.pdsh(settings.getnodes('clients'), 'sudo mount -t ext4 -o noatime /dev/vd%s /srv/rbdfio-`hostname -s`-%d' %(letter, i))
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
@@ -61,7 +61,7 @@ class KvmRbdFio(Benchmark):
         # populate the fio files
         print 'Attempting to populating fio files...'
         pre_cmd = 'sudo fio --rw=write -ioengine=sync --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.numjobs, self.vol_size, self.names)
-        common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), pre_cmd)
 
 
     def run(self):
@@ -106,22 +106,22 @@ class KvmRbdFio(Benchmark):
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
         print 'Running rbd fio %s test.' % self.mode
-        common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), fio_cmd)
         monitoring.stop(self.run_dir)
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def cleanup(self):
          super(KvmRbdFio, self).cleanup()
-         common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*').communicate()
+         common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*')
 
     def set_client_param(self, param, value):
          cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)
-         common.pdsh(settings.getnodes('clients'), cmd).communicate()
+         common.pdsh(settings.getnodes('clients'), cmd)
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(KvmRbdFio, self).__str__())
 
     def recovery_callback(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall fio')
 
