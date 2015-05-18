@@ -146,7 +146,7 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --random_distribution=%s' % self.random_distribution
         if self.log_avg_msec is not None:
             fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
-        if self.rate_iops is no None:
+        if self.rate_iops is not None:
             fio_cmd += ' --rate_iops=%s' % self.rate_iops
 
         # End the fio_cmd
