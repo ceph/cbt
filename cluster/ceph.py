@@ -317,7 +317,7 @@ class Ceph(Cluster):
 	    common.pdsh(settings.getnodes('head'), 'ceph -c %s osd erasure-code-profile set %s ruleset-failure-domain=osd k=%s m=%s' % (self.tmp_conf, name, k, m)).communicate()
             self.set_ruleset(name)
 
-    def mkpool(self, name, profile_name):
+    def mkpool(self, name, profile_name, base_name=None):
         pool_profiles = self.config.get('pool_profiles', {'default': {}})
         profile = pool_profiles.get(profile_name, {})
 
@@ -325,8 +325,9 @@ class Ceph(Cluster):
         pgp_size = profile.get('pgp_size', 1024)
         erasure_profile = profile.get('erasure_profile', '')
         replication = str(profile.get('replication', None))
-        cache = profile.get('cache', None)
+        cache_profile = profile.get('cache_profile', None)
         crush_profile = profile.get('crush_profile', None)
+        cache_mode = profile.get('cache_mode', None)
         hit_set_type = profile.get('hit_set_type', None)
         hit_set_count = profile.get('hit_set_count', None)
         hit_set_period = profile.get('hit_set_period', None)
@@ -341,8 +342,19 @@ class Ceph(Cluster):
         else:
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d' % (self.tmp_conf, name, pg_size, pgp_size)).communicate()
 
+        print 'Checking Healh after pool creation.'
+        self.check_health()
+
         if replication and replication.isdigit():
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s size %s' % (self.tmp_conf, name, replication)).communicate()
+            print 'Checking Health after setting pool replciation level.'
+            self.check_health()
+
+        if base_name and cache_mode:
+            print "Adding %s as cache tier for %s." % (name, base_name)
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier add %s %s' % (self.tmp_conf, base_name, name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier cache-mode %s %s' % (self.tmp_conf, name, cache_mode)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier set-overlay %s %s' % (self.tmp_conf, base_name, name)).communicate()
 
         if crush_profile:
             ruleset = self.get_ruleset(crush_profile)
@@ -357,25 +369,20 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_objects %s' % (self.tmp_conf, name, target_max_objects)).communicate()
         if target_max_bytes:
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_bytes %s' % (self.tmp_conf, name, target_max_bytes)).communicate()
-        print 'Checking Healh after pool creation.'
+
+        print 'Final Pool Health Check.'
         self.check_health()
 
         # If there is a cache profile assigned, make a cache pool
-        if cache:
-            cache_profile = cache.get('pool_profile', 'default')
-            cache_mode = cache.get('mode', 'writeback')
+        if cache_profile:
             cache_name = '%s-cache' % name
-            self.mkpool(cache_name, cache_profile)
-            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier add %s %s' % (self.tmp_conf, name, cache_name)).communicate()
-            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier cache-mode %s %s' % (self.tmp_conf, cache_name, cache_mode)).communicate()
-            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier set-overlay %s %s' % (self.tmp_conf, name, cache_name)).communicate()
+            self.mkpool(cache_name, cache_profile, name)
 
     def rmpool(self, name, profile_name):
         pool_profiles = self.config.get('pool_profiles', {'default': {}})
         profile = pool_profiles.get(profile_name, {})
-        cache = profile.get('cache', None)
-        if cache:
-            cache_profile = cache.get('pool_profile', 'default')
+        cache_profile = profile.get('cache_profile', None)
+        if cache_profile:
             cache_name = '%s-cache' % name
 
             # flush and remove the overlay and such
