@@ -34,7 +34,7 @@ class LibrbdFio(Benchmark):
         self.volumes_per_client = config.get('volumes_per_client', 1)
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
-        slef.rate_iops = config.get('rate_iops', None)
+        self.rate_iops = config.get('rate_iops', None)
         self.poolname = "cbt-librbdfio"
 
         self.total_procs = self.procs_ver_volume * volumes_per_client * len(settings.getnodes('clients').split(','))
