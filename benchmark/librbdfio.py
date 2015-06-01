@@ -95,7 +95,6 @@ class LibrbdFio(Benchmark):
         monitoring.start(self.run_dir)
 
         time.sleep(5)
-        out_file = '%s/output' % self.run_dir
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
@@ -121,6 +120,8 @@ class LibrbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def mkfiocmd(self, rbdname):
+        out_file = '%s/output' % self.run_dir
+
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.poolname, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
