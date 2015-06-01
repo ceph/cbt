@@ -104,7 +104,7 @@ class LibrbdFio(Benchmark):
         print 'Running rbd fio %s test.' % self.mode
         ps = []
         for i in xrange(self.volumes_per_client):
-            fio_cmd = self.mkfiocmd('cbt-librbdfio-`hostname -s`-%d' % i)
+            fio_cmd = self.mkfiocmd(i)
             p = common.pdsh(settings.getnodes('clients'), fio_cmd)
             ps.append(p)
         for p in ps:
@@ -119,8 +119,9 @@ class LibrbdFio(Benchmark):
         self.cluster.dump_historic_ops(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-    def mkfiocmd(self, rbdname):
-        out_file = '%s/output' % self.run_dir
+    def mkfiocmd(self, volnum):
+        rbdname = 'cbt-librbdfio-`hostname -s`-%d' % volnum
+        out_file = '%s/output.%d' % (self.run_dir, volnum)
 
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.poolname, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
