@@ -37,7 +37,7 @@ class LibrbdFio(Benchmark):
         self.rate_iops = config.get('rate_iops', None)
         self.poolname = "cbt-librbdfio"
 
-	self.total_procs = self.procs_per_volume * volumes_per_client * len(settings.getnodes('clients').split(','))
+	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
