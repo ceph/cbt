@@ -31,7 +31,7 @@ class LibrbdFio(Benchmark):
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
         self.vol_order = config.get('vol_order', 22)
-        self.volumes_per_client('volumes_per_client', 1)
+        self.volumes_per_client = config.get('volumes_per_client', 1)
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
         slef.rate_iops = config.get('rate_iops', None)
