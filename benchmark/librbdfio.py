@@ -76,7 +76,7 @@ class LibrbdFio(Benchmark):
         ps = []
         print 'Attempting to populating fio files...'
         for i in xrange(self.volumes_per_client):
-            pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-$d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
+            pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
             p = common.pdsh(settings.getnodes('clients'), pre_cmd)
             ps.append(p)
         for p in ps:
