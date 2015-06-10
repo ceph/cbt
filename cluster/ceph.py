@@ -22,6 +22,14 @@ class Ceph(Cluster):
         self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
+        self.use_existing = config.get('use_existing', True)
+
+        # If making the cluster, use the ceph.conf file distributed by initialize to the tmp_dir
+        self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
+        # If using an existing cluster, defualt to /etc/ceph/ceph.conf
+        if self.use_existing:
+            self.tmp_conf = '/etc/ceph/ceph.conf'
+
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         self.osd_valgrind = config.get('osd_valgrind', None)
         self.mon_valgrind = config.get('mon_valgrind', None)
@@ -30,8 +38,13 @@ class Ceph(Cluster):
         self.ruleset_map = {}
         self.cur_ruleset = 1
         self.idle_duration = config.get('idle_duration', 0)
+        self.use_existing = config.get('use_existing', True)
 
     def initialize(self): 
+        # safety check to make sure we don't blow away an existing cluster!
+        if self.use_existing:
+             raise RuntimeError('initialize was called on an existing cluster! Avoiding touching anything.') 
+
         super(Ceph, self).initialize()
 
         # unmount any kernel rbd volumes
