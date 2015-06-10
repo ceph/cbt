@@ -30,7 +30,6 @@ class Ceph(Cluster):
         if self.use_existing:
             self.tmp_conf = '/etc/ceph/ceph.conf'
 
-        self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         self.osd_valgrind = config.get('osd_valgrind', None)
         self.mon_valgrind = config.get('mon_valgrind', None)
         self.rgw_valgrind = config.get('rgw_valgrind', None)
