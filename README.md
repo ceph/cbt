@@ -1,67 +1,86 @@
-CBT - The Ceph Benchmarking Tool
+# CBT - The Ceph Benchmarking Tool
 
-INTRODUCTION
+## INTRODUCTION
 
 CBT is a python tool for building a ceph cluster and running benchmarks against it.  Several benchmarks are supported, included radosbench, fio and cosbench.  CBT also can record system metrics and profiles using a number of tools including perf, collectl, blktrace, and valgrind.  In addition various interesting ceph configurations and tests are supported, including automated OSD outages, erasure coded pools, and pool cache tier configurations.
 
-PREREQUISITES
+## PREREQUISITES
 
 CBT uses several libraries and tools to run:
 
-1) python-yaml - A YAML library for python used for reading configuration files.
-2) ssh (and scp) - remote secure command executation and data transfer
-3) pdsh (and pdcp) - a parallel ssh and scp implementation
-4) ceph - A scalable distributed storage system
+ 1. python-yaml - A YAML library for python used for reading 
+    configuration files.
+ 2. ssh (and scp) - remote secure command executation and data 
+    transfer
+ 3. pdsh (and pdcp) - a parallel ssh and scp implementation
+ 4. ceph - A scalable distributed storage system
 
 Optional tools and benchmarks can be used if desired:
 
-1) collectl - system data collection
-2) blktrace - block device io tracing
-3) seekwatcher - create graphs and movies from blktrace data
-4) perf - system and process profiling
-5) valgrind - runtime memory and cpu profiling of specific processes
-6) fio - benchmark suite with integrated posix, libaio, and librbd support
-7) cosbench - object storage benchmark from Intel
+ 1. collectl - system data collection
+ 2. blktrace - block device io tracing
+ 3. seekwatcher - create graphs and movies from blktrace data
+ 4. perf - system and process profiling
+ 5. valgrind - runtime memory and cpu profiling of specific processes
+ 6. fio - benchmark suite with integrated posix, libaio, and librbd 
+    support
+ 7. cosbench - object storage benchmark from Intel
 
-USER AND NODE SETUP
+## USER AND NODE SETUP
 
 In addition to the above software, a number of nodes must be available to run tests.  These are divided into several categories.  Multiple categories can contain the same host if it is assuming multiple roles (running OSDs and a mon for instance).
 
-1) head - node where general ceph commands are run
-2) clients - nodes that will run benchmarks or other client tools
-3) osds - nodes where OSDs will live
-4) rgws - nodes where rgw servers will live
-5) mons - nodes where mons will live
+ 1. head - node where general ceph commands are run
+ 2. clients - nodes that will run benchmarks or other client tools
+ 3. osds - nodes where OSDs will live
+ 4. rgws - nodes where rgw servers will live
+ 5. mons - nodes where mons will live
 
 A user may also be specified to run all remote commands.  The host that is used to run cbt must be able to issue passwordless ssh commands as the specified user.  This can be accomplished by creating a passwordless ssh key:
 
+```bash
 sshkey-gen -t dsa
+```
 
 and copying the resulting public key in the ~/.ssh to the ~/.ssh/authorized_key file on all remote hosts.
 
 This user must also be able to run certain commands with sudo.  The easiest method to enable this is to simply enable blanket passwordless sudo access for this user, though this is only appropriate in laboratory environments.  This may be acommplished by running visudo and adding something like:
 
+```bash
 # passwordless sudo for cbt
 <user>    ALL=(ALL)       NOPASSWD:ALL
+```
 
-Where <user> is the user that will have password sudo access.  Please see your OS documentation for specific details.
+Where `<user>` is the user that will have password sudo access.  
+Please see your OS documentation for specific details.
 
-DISK PARTITIONING
+## DISK PARTITIONING
 
-Currently CBT looks for specific partition labels in /dev/disk/by-partlabel for the Ceph OSD data and journal partitions.  At some point in the future this will be made more flexible, for now this is the expected behavior.  Specifically on each OSD host partitions should be specified with the following gpt labels:
+Currently CBT looks for specific partition labels in 
+`/dev/disk/by-partlabel` for the Ceph OSD data and journal partitions.  
+At some point in the future this will be made more flexible, for now 
+this is the expected behavior.  Specifically on each OSD host 
+partitions should be specified with the following gpt labels:
 
+```
 osd-device-<num>-data
 osd-device-<num>-journal
+```
 
-where <num> is a device ordered starting at 0 and ending with the last device on the system.  Currently cbt assumes that all nodes in the system have the same number of devices.  A script is available that shows an example of how we create partition labels in our test lab here:
+where `<num>` is a device ordered starting at 0 and ending with the 
+last device on the system.  Currently cbt assumes that all nodes in 
+the system have the same number of devices.  A script is available 
+that shows an example of how we create partition labels in our test 
+lab here:
 
-https://github.com/ceph/cbt/blob/master/tools/mkpartmagna.sh
+<https://github.com/ceph/cbt/blob/master/tools/mkpartmagna.sh>
 
 
-CREATING A YAML FILE
+## CREATING A YAML FILE
 
 CBT yaml files have a basic structure where you define a cluster and a set of benchmarks to run against it.  For example, the following yaml file creates a single node cluster on a node with hostname "burnupiX". A pool profile is defined for a 1x replication pool using 256 PGs, and that pool is used to run RBD performance tests using fio with the librbd engine.
 
+```yaml
 cluster:
   user: 'nhm'
   head: "burnupiX"
@@ -95,9 +114,11 @@ benchmarks:
     osd_ra: [4096]
     cmd_path: '/home/nhm/src/fio/fio'
     pool_profile: 'rbd'
+```
 
 An associated ceph.conf.1osd file is also defined with various settings that are to be used in this test:
 
+```ini
 [global]
         osd pool default size = 1
         auth cluster required = none
@@ -134,17 +155,23 @@ An associated ceph.conf.1osd file is also defined with various settings that are
         host = burnupiX
         osd data = /tmp/cbt/mnt/osd-device-0-data
         osd journal = /dev/disk/by-partlabel/osd-device-0-journal
+```
 
-To run this benchmark suite, cbt is launched with an output archive direcctory to store the results and the yaml configuration file to use:
+To run this benchmark suite, cbt is launched with an output archive 
+directory to store the results and the yaml configuration file to use:
 
+```bash
 cbt.py --archive=<archive dir> ./mytests.yaml
+```
 
 You can also specify the ceph.conf file to use by specifying it on the commandline:
 
+```bash
 cbt.py --archive=<archive dir> --conf=./ceph.conf.1osd ./mytests.yaml
+```
 
 In this way you can mix and match ceph.conf files and yaml test configuration files to create parametric sweeps of tests.  A script in the tools directory called mkcephconf.py lets you automatically generate hundreds or thousands of ceph.conf files from defined ranges of different options that can then be used with cbt in this way.
 
-CONCLUSION
+## CONCLUSION
 
 There are many additional and powerful ways you can use cbt that are not yet covered in this document.  As time goes on we will try to provide better examples and documentation for these features.  For now, it's best to look at the examples, look at the code, and ask questions!
