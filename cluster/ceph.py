@@ -345,6 +345,7 @@ class Ceph(Cluster):
         hit_set_period = profile.get('hit_set_period', None)
         target_max_objects = profile.get('target_max_objects', None)
         target_max_bytes = profile.get('target_max_bytes', None)
+        min_read_recency_for_promote = profile.get('min_read_recency_for_promote', None)
 
 #        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
         common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d %s' % (self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
@@ -381,7 +382,8 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_objects %s' % (self.tmp_conf, name, target_max_objects)).communicate()
         if target_max_bytes:
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_bytes %s' % (self.tmp_conf, name, target_max_bytes)).communicate()
-
+        if min_read_recency_for_promote:
+            common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s min_read_recency_for_promote %s' % (self.tmp_conf, name, min_read_recency_for_promote)).communicate()
         print 'Final Pool Health Check.'
         self.check_health()
 
