@@ -29,30 +29,30 @@ class CephTestRados(Benchmark):
         self.write_append_excl = str('write_append_excl', True)
 
         self.weights = {}
-        self.weights['snap_create'] = int(config.get('snap_create_weight', None)
-        self.weights['snap_remove'] = int(config.get('snap_remove_weight', None)
-        self.weights['rollback'] = int(config.get('rollback_weight', None)
-        self.weights['setattr'] = int(config.get('settattr_weight', None)
-        self.weights['rmattr'] = int(config.get('rmattr_weight', None)
-        self.weights['watch'] = int(config.get('watch_weight', None)
-        self.weights['copy_from'] = int(config.get('copy_from_weight', None)
-        self.weights['hit_set_list'] = int(config.get('hit_set_list_weight', None)
-        self.weights['is_dirty'] = int(config.get('is_dirty_weight', None)
-        self.weights['cache_flush'] = int(config.get('cache_flush_weight', None)
-        self.weights['cache_try_flush'] = int(config.get('cache_try_flush_weight', None)
-        self.weights['cache_evict'] = int(config.get('cache_evict_weight', None)
-        self.weights['append'] = int(config.get('append_weight', None)
+        self.weights['snap_create'] = int(config.get('snap_create_weight', None))
+        self.weights['snap_remove'] = int(config.get('snap_remove_weight', None))
+        self.weights['rollback'] = int(config.get('rollback_weight', None))
+        self.weights['setattr'] = int(config.get('settattr_weight', None))
+        self.weights['rmattr'] = int(config.get('rmattr_weight', None))
+        self.weights['watch'] = int(config.get('watch_weight', None))
+        self.weights['copy_from'] = int(config.get('copy_from_weight', None))
+        self.weights['hit_set_list'] = int(config.get('hit_set_list_weight', None))
+        self.weights['is_dirty'] = int(config.get('is_dirty_weight', None))
+        self.weights['cache_flush'] = int(config.get('cache_flush_weight', None))
+        self.weights['cache_try_flush'] = int(config.get('cache_try_flush_weight', None))
+        self.weights['cache_evict'] = int(config.get('cache_evict_weight', None))
+        self.weights['append'] = int(config.get('append_weight', None))
         if self.write_append_excl and self.weights['append_weight']:
             self.weights['append'] = self.weights['write'] / 2
             self.weights['append_excl'] = self.weights['write']
 
-        self.weights['write'] = int(config.get('write_weight', 100)
+        self.weights['write'] = int(config.get('write_weight', 100))
         if self.write_append_excl and self.weights['wriite_weight']:
             self.weights['write'] = self.weights['write'] / 2
             self.weights['write_excl'] = self.weights['write']
 
-        self.weights['read'] = int(config.get('read_weight', 100)
-        self.weights['delete'] = int(config.get('delete_weight', 10)
+        self.weights['read'] = int(config.get('read_weight', 100))
+        self.weights['delete'] = int(config.get('delete_weight', 10))
 
 #        self.weights = {k:v for k,v in self.weights.items() if v}
         
