@@ -25,7 +25,7 @@ class CephTestRados(Benchmark):
         self.size = int(config.get('object_size', 4000000))
         self.min_stride_size = str(config.get('min_stride_size', object_size / 10))
         self.max_stride_size = str(config.get('max_stride_size', object_size / 5))
-        self.max_seconds = str(config.get('max_seconds'), 0))
+        self.max_seconds = str(config.get('max_seconds', 0))
         self.write_append_excl = str('write_append_excl', True)
 
         self.weights = {}
