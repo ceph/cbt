@@ -16,55 +16,43 @@ class CephTestRados(Benchmark):
 
         self.tmp_conf = self.cluster.tmp_conf
 
-        self.object_size = int(config.get('object_size', 4000000))
-        self.ec_pool = config.get('ec_pool', False)
-        self.write_fadvise_dontneed = config.get('write_fadvise_dontneed', False)
-        self.pool_snaps = config.get('pool_snaps', False)
-        self.max_ops = str(config.get('ops', 10000))
-        self.objects = str(config.get('objects', 500))
-        self.max_in_flight = str(config.get('max_in_flight', 16))
-        self.size = int(config.get('object_size', 4000000))
-        self.min_stride_size = str(config.get('min_stride_size', self.object_size / 10))
-        self.max_stride_size = str(config.get('max_stride_size', self.object_size / 5))
-        self.max_seconds = str(config.get('max_seconds', 0))
-        self.write_append_excl = str(config.get('write_append_excl', True))
+        self.bools = {}
+        if config.get('ec_pool', False):  self.bools['ec_pool'] = True
+        if config.get('write_fadvise_dontneed', False): self.bools['write_fadvise_dontneed'] = True
+        if config.get('pool_snaps', False): self.bools['pool_snaps'] = True
+        if config.get('write_append_excl', True): self.bools['write_append_excl'] = True
 
-        self.weights = {}
-        self.weights['snap_create'] = int(config.get('snap_create_weight', None))
-        self.weights['snap_remove'] = int(config.get('snap_remove_weight', None))
-        self.weights['rollback'] = int(config.get('rollback_weight', None))
-        self.weights['setattr'] = int(config.get('settattr_weight', None))
-        self.weights['rmattr'] = int(config.get('rmattr_weight', None))
-        self.weights['watch'] = int(config.get('watch_weight', None))
-        self.weights['copy_from'] = int(config.get('copy_from_weight', None))
-        self.weights['hit_set_list'] = int(config.get('hit_set_list_weight', None))
-        self.weights['is_dirty'] = int(config.get('is_dirty_weight', None))
-        self.weights['cache_flush'] = int(config.get('cache_flush_weight', None))
-        self.weights['cache_try_flush'] = int(config.get('cache_try_flush_weight', None))
-        self.weights['cache_evict'] = int(config.get('cache_evict_weight', None))
-        self.weights['append'] = int(config.get('append_weight', None))
-        if self.write_append_excl and self.weights['append_weight']:
+        self.variables = {}
+        self.variables['object_size'] = int(config.get('object_size', 4000000))
+        self.variables['max_ops'] = str(config.get('ops', 10000))
+        self.variables['objects'] = str(config.get('objects', 500))
+        self.variables['max_in_flight'] = str(config.get('max_in_flight', 16))
+        self.variables['size'] = int(config.get('object_size', 4000000))
+        self.variables['min_stride_size'] = str(config.get('min_stride_size', self.variables['object_size'] / 10))
+        self.variables['max_stride_size'] = str(config.get('max_stride_size', self.variables['object_size'] / 5))
+        self.variables['max_seconds'] = str(config.get('max_seconds', 0))
+
+
+        self.weights = {'read': 100, 'write':100, 'delete':10}
+        for weight in ['snap_create', 'snap_remove', 'rollback', 'setattr', 'rmattr', 'watch', 'copy_from', 'hit_set_list', 'is_dirty', 'cache_flush', 'cache_try_flush', 'cache_evict' 'append', 'write', 'read', 'delete']:
+            self.addweight(weight)
+        if 'write_append_excl' in self.bools and 'append' in self.weights:
             self.weights['append'] = self.weights['write'] / 2
             self.weights['append_excl'] = self.weights['write']
 
-        self.weights['write'] = int(config.get('write_weight', 100))
-        if self.write_append_excl and self.weights['wriite_weight']:
+        if 'write_append_excl' in self.bools and 'write' in self.weights:
             self.weights['write'] = self.weights['write'] / 2
             self.weights['write_excl'] = self.weights['write']
 
-        self.weights['read'] = int(config.get('read_weight', 100))
-        self.weights['delete'] = int(config.get('delete_weight', 10))
-
-#        self.weights = {k:v for k,v in self.weights.items() if v}
-        
-        for k,v in self.weights.items():
-            
-            weights[field] = op_weights[field]
-        
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
+        self.run_dir = '%s/osd_ra-%08d/object_size-%08d' % (self.run_dir, int(self.osd_ra), int(self.variables['object_size']))
+        self.out_dir = '%s/osd_ra-%08d/object_size-%08d' % (self.archive_dir, int(self.osd_ra), int(self.variables['object_size']))
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', '/usr/bin/ceph_test_rados')
+
+    def addweight(self, weight):
+        value = self.config.get("%s_weight" % weight, None)
+        if value is not None:
+            self.weights[weight] = int(value)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -92,7 +80,7 @@ class CephTestRados(Benchmark):
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        print 'Running rbd fio %s test.' % self.mode
+        print 'Running ceph_test_rados.'
         ps = []
         for i in xrange(1):
             p = common.pdsh(settings.getnodes('clients'), self.mkcmd())
@@ -110,18 +98,22 @@ class CephTestRados(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def mkcmd(self):
-        cmd = [self.cmd_path]       
+        cmd = [self.cmd_path]
         out_file = '%s/output' % self.run_dir
-        for var in ['ec_pool', 'write_fadvise_dontneed', 'pool_snaps', 'max_ops', 'objects', 'max_in_flight', 'size', 'min_stride_size', 'max_stride_size', 'max_seconds']:
-            value = locals()[var]
+
+        for flag in ['ec_pool', 'write_fadvise_dontneed', 'pool_snaps']:
+            if flag in self.bools:
+                cmd.append('--%s' % flag.replace('_', '-'))
+        for variable in ['max_ops', 'objects', 'max_in_flight', 'size', 'min_stride_size', 'max_stride_size', 'max_seconds']:
+            value = self.variables[variable]
             if value:
-                cmd.extend(['--%s' % var.replace('_', '-'), value])
+                cmd.extend(['--%s' % variable.replace('_', '-'), str(value)])
         for op, weight in self.weights.iteritems():
-            if weight:
-                self.cmd.extend(['--op', str(weight)])
+            cmd.extend(['--op', op, str(weight)])
         cmd.extend(['--pool', 'ceph_test_rados'])
-        cmd.extend(['>', out_file])
-        return cmd.join(' ')
+        cmd.extend(['|', 'awk \'{ print strftime("%Y-%m-%d %H:%M:%S"), $0; fflush(); }\'' '>', out_file])
+        print cmd
+        return ' '.join(cmd)
         
     def mkpool(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
@@ -130,7 +122,7 @@ class CephTestRados(Benchmark):
         monitoring.stop()
 
     def recovery_callback(self): 
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 ceph_test_rados').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados').communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(CephTestRados, self).__str__())
