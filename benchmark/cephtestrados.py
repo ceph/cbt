@@ -16,6 +16,7 @@ class CephTestRados(Benchmark):
 
         self.tmp_conf = self.cluster.tmp_conf
 
+        self.object_size = int(config.get('object_size', 4000000))
         self.ec_pool = config.get('ec_pool', False)
         self.write_fadvise_dontneed = config.get('write_fadvise_dontneed', False)
         self.pool_snaps = config.get('pool_snaps', False)
@@ -23,8 +24,8 @@ class CephTestRados(Benchmark):
         self.objects = str(config.get('objects', 500))
         self.max_in_flight = str(config.get('max_in_flight', 16))
         self.size = int(config.get('object_size', 4000000))
-        self.min_stride_size = str(config.get('min_stride_size', object_size / 10))
-        self.max_stride_size = str(config.get('max_stride_size', object_size / 5))
+        self.min_stride_size = str(config.get('min_stride_size', self.object_size / 10))
+        self.max_stride_size = str(config.get('max_stride_size', self.object_size / 5))
         self.max_seconds = str(config.get('max_seconds', 0))
         self.write_append_excl = str('write_append_excl', True)
 
