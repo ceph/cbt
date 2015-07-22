@@ -38,6 +38,9 @@ class Ceph(Cluster):
         self.cur_ruleset = 1
         self.idle_duration = config.get('idle_duration', 0)
         self.use_existing = config.get('use_existing', True)
+        self.stoprequest = threading.Event()
+        self.haltrequest = threading.Event()
+
 
     def initialize(self): 
         # safety check to make sure we don't blow away an existing cluster!
@@ -242,14 +245,18 @@ class Ceph(Cluster):
             common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
 
-    def check_health(self, logfile=None):
+    def check_health(self, check_list=None, logfile=None):
         logline = ""
         if logfile:
             logline = "| tee -a %s" % logfile
         ret = 0
 
+        # Match any of these things to continue checking health
+        check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'ceph -c %s health %s' % (self.tmp_conf, logline)).communicate()
+            if check_list and not set(check_list).intersection(stdout.split()):
+                break
             if "HEALTH_OK" in stdout:
                 break
             else:
@@ -284,11 +291,15 @@ class Ceph(Cluster):
     def create_recovery_test(self, run_dir, callback):
         rt_config = self.config.get("recovery_test", {})
         rt_config['run_dir'] = run_dir
-        self.rt = RecoveryTestThread(rt_config, self, callback)
+        self.rt = RecoveryTestThread(rt_config, self, callback, self.stoprequest, self.haltrequest)
         self.rt.start()
 
     def wait_recovery_done(self):
-        self.rt.join()
+        self.stoprequest.set()
+        while True:
+            threads = threading.enumerate()
+            if len(theads) == 1: break
+            self.rt.join(1)
 
     # FIXME: This is a total hack that assumes there is only 1 existing ruleset!
     # Will change pending a fix for http://tracker.ceph.com/issues/8060
@@ -414,17 +425,19 @@ class Ceph(Cluster):
 #        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 class RecoveryTestThread(threading.Thread):
-    def __init__(self, config, cluster, callback):
+    def __init__(self, config, cluster, callback, stoprequest, haltrequest):
         threading.Thread.__init__(self)
         self.config = config
         self.cluster = cluster
         self.callback = callback
         self.state = 'pre'
-        self.states = {'pre': self.pre, 'osdout': self.osdout, 'osdin':self.osdin, 'done':self.done}
-        self.stoprequest = threading.Event()
+        self.states = {'pre': self.pre, 'markdown': self.markdown, 'osdout': self.osdout, 'osdin':self.osdin, 'post':self.post, 'done':self.done}
+        self.stoprequest = stoprequest
+        self.haltrequest = haltrequest
         self.outhealthtries = 0
         self.inhealthtries = 0
         self.maxhealthtries = 60
+        self.health_checklist = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
 
     def logcmd(self, message):
         return 'echo "[`date`] %s" >> %s/recovery.log' % (message, self.config.get('run_dir'))
@@ -435,6 +448,9 @@ class RecoveryTestThread(threading.Thread):
         time.sleep(pre_time)
         lcmd = self.logcmd("Setting the ceph osd noup flag")
         common.pdsh(settings.getnodes('head'), 'ceph -c %s ceph osd set noup;%s' % (self.cluster.tmp_conf, lcmd)).communicate()
+        self.state = 'markdown'
+
+    def markdown(self):
         for osdnum in self.config.get('osds'):
             lcmd = self.logcmd("Marking OSD %s down." % osdnum)
             common.pdsh(settings.getnodes('head'), 'ceph -c %s osd down %s;%s' % (self.cluster.tmp_conf, osdnum, lcmd)).communicate()
@@ -445,7 +461,7 @@ class RecoveryTestThread(threading.Thread):
         self.state = 'osdout'
 
     def osdout(self):
-        ret = self.cluster.check_health("%s/recovery.log" % self.config.get('run_dir'))
+        ret = self.cluster.check_health(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
         common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
 
         if self.outhealthtries < self.maxhealthtries and ret == 0:
@@ -469,7 +485,7 @@ class RecoveryTestThread(threading.Thread):
 
     def osdin(self):
         # Wait until the cluster is healthy.
-        ret = self.cluster.check_health("%s/recovery.log" % self.config.get('run_dir'))
+        ret = self.cluster.check_health(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
         if self.inhealthtries < self.maxhealthtries and ret == 0:
             self.inhealthtries = self.inhealthtries + 1
             return # Cluster hasn't become unhealthy yet.
@@ -478,6 +494,22 @@ class RecoveryTestThread(threading.Thread):
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
         else:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+        self.state = "post"
+
+    def post(self):
+        if self.stoprequest.isSet():
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, but stoprequest is set, finishing now.')).communicate()
+            self.haltrequest.set()
+            return
+
+        if self.config.get("repeat", False):
+            # reset counters
+            self.outhealthtries = 0
+            self.inhealthtries = 0
+
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, but repeat is set.  Moving to "markdown" state.')).communicate()
+            self.state = "markdown"
+            return
 
         post_time = self.config.get("post_time", 60)
         common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
@@ -487,15 +519,15 @@ class RecoveryTestThread(threading.Thread):
     def done(self):
         common.pdsh(settings.getnodes('head'), self.logcmd("Done.  Calling parent callback function.")).communicate()
         self.callback()
-        self.stoprequest.set()
+        self.haltrequest.set()
 
     def join(self, timeout=None):
         common.pdsh(settings.getnodes('head'), self.logcmd('Received notification that parent is finished and waiting.')).communicate()
         super(RecoveryTestThread, self).join(timeout)
 
     def run(self):
-        self.stoprequest.clear()
-        while not self.stoprequest.isSet():
+        self.haltrequest.clear()
+        while not self.haltrequest.isSet():
           self.states[self.state]()
         common.pdsh(settings.getnodes('head'), self.logcmd('Exiting recovery test thread.  Last state was: %s' % self.state)).communicate()
 
