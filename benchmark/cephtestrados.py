@@ -63,7 +63,7 @@ class CephTestRados(Benchmark):
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
         super(CephTestRados, self).initialize()
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+#        common.sync_files('%s/*' % self.run_dir, self.out_dir)
         return True
 
     def run(self):
