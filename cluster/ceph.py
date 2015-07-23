@@ -252,7 +252,7 @@ class Ceph(Cluster):
         ret = 0
 
         # Match any of these things to continue checking health
-        check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
+        check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery", "stale"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'ceph -c %s health %s' % (self.tmp_conf, logline)).communicate()
             if check_list and not set(check_list).intersection(stdout.split()):
