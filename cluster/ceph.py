@@ -298,7 +298,7 @@ class Ceph(Cluster):
         self.stoprequest.set()
         while True:
             threads = threading.enumerate()
-            if len(theads) == 1: break
+            if len(threads) == 1: break
             self.rt.join(1)
 
     # FIXME: This is a total hack that assumes there is only 1 existing ruleset!
