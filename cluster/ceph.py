@@ -527,6 +527,7 @@ class RecoveryTestThread(threading.Thread):
 
     def run(self):
         self.haltrequest.clear()
+        self.stoprequest.clear()
         while not self.haltrequest.isSet():
           self.states[self.state]()
         common.pdsh(settings.getnodes('head'), self.logcmd('Exiting recovery test thread.  Last state was: %s' % self.state)).communicate()
