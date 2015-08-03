@@ -2,7 +2,12 @@
 
 ## INTRODUCTION
 
-CBT is a python tool for building a ceph cluster and running benchmarks against it.  Several benchmarks are supported, included radosbench, fio and cosbench.  CBT also can record system metrics and profiles using a number of tools including perf, collectl, blktrace, and valgrind.  In addition various interesting ceph configurations and tests are supported, including automated OSD outages, erasure coded pools, and pool cache tier configurations.
+CBT is a python tool for building a ceph cluster and running benchmarks against
+it. Several benchmarks are supported, included radosbench, fio and cosbench. CBT
+also can record system metrics and profiles using a number of tools including
+perf, collectl, blktrace, and valgrind.  In addition various interesting ceph
+configurations and tests are supported, including automated OSD outages, erasure
+coded pools, and pool cache tier configurations.
 
 ## PREREQUISITES
 
@@ -28,7 +33,10 @@ Optional tools and benchmarks can be used if desired:
 
 ## USER AND NODE SETUP
 
-In addition to the above software, a number of nodes must be available to run tests.  These are divided into several categories.  Multiple categories can contain the same host if it is assuming multiple roles (running OSDs and a mon for instance).
+In addition to the above software, a number of nodes must be available to run
+tests.  These are divided into several categories.  Multiple categories can
+contain the same host if it is assuming multiple roles (running OSDs and a mon
+for instance).
 
  1. head - node where general ceph commands are run
  2. clients - nodes that will run benchmarks or other client tools
@@ -36,15 +44,21 @@ In addition to the above software, a number of nodes must be available to run te
  4. rgws - nodes where rgw servers will live
  5. mons - nodes where mons will live
 
-A user may also be specified to run all remote commands.  The host that is used to run cbt must be able to issue passwordless ssh commands as the specified user.  This can be accomplished by creating a passwordless ssh key:
+A user may also be specified to run all remote commands.  The host that is used
+to run cbt must be able to issue passwordless ssh commands as the specified
+user.  This can be accomplished by creating a passwordless ssh key:
 
 ```bash
 sshkey-gen -t dsa
 ```
 
-and copying the resulting public key in the ~/.ssh to the ~/.ssh/authorized_key file on all remote hosts.
+and copying the resulting public key in the ~/.ssh to the ~/.ssh/authorized_key
+file on all remote hosts.
 
-This user must also be able to run certain commands with sudo.  The easiest method to enable this is to simply enable blanket passwordless sudo access for this user, though this is only appropriate in laboratory environments.  This may be acommplished by running visudo and adding something like:
+This user must also be able to run certain commands with sudo.  The easiest
+method to enable this is to simply enable blanket passwordless sudo access for
+this user, though this is only appropriate in laboratory environments.  This
+may be acommplished by running visudo and adding something like:
 
 ```bash
 # passwordless sudo for cbt
@@ -78,7 +92,11 @@ lab here:
 
 ## CREATING A YAML FILE
 
-CBT yaml files have a basic structure where you define a cluster and a set of benchmarks to run against it.  For example, the following yaml file creates a single node cluster on a node with hostname "burnupiX". A pool profile is defined for a 1x replication pool using 256 PGs, and that pool is used to run RBD performance tests using fio with the librbd engine.
+CBT yaml files have a basic structure where you define a cluster and a set of
+benchmarks to run against it.  For example, the following yaml file creates a
+single node cluster on a node with hostname "burnupiX". A pool profile is
+defined for a 1x replication pool using 256 PGs, and that pool is used to run
+RBD performance tests using fio with the librbd engine.
 
 ```yaml
 cluster:
@@ -116,7 +134,8 @@ benchmarks:
     pool_profile: 'rbd'
 ```
 
-An associated ceph.conf.1osd file is also defined with various settings that are to be used in this test:
+An associated ceph.conf.1osd file is also defined with various settings that
+are to be used in this test:
 
 ```ini
 [global]
@@ -164,14 +183,22 @@ directory to store the results and the yaml configuration file to use:
 cbt.py --archive=<archive dir> ./mytests.yaml
 ```
 
-You can also specify the ceph.conf file to use by specifying it on the commandline:
+You can also specify the ceph.conf file to use by specifying it on the
+commandline:
 
 ```bash
 cbt.py --archive=<archive dir> --conf=./ceph.conf.1osd ./mytests.yaml
 ```
 
-In this way you can mix and match ceph.conf files and yaml test configuration files to create parametric sweeps of tests.  A script in the tools directory called mkcephconf.py lets you automatically generate hundreds or thousands of ceph.conf files from defined ranges of different options that can then be used with cbt in this way.
+In this way you can mix and match ceph.conf files and yaml test configuration
+files to create parametric sweeps of tests.  A script in the tools directory
+called mkcephconf.py lets you automatically generate hundreds or thousands of
+ceph.conf files from defined ranges of different options that can then be used
+with cbt in this way.
 
 ## CONCLUSION
 
-There are many additional and powerful ways you can use cbt that are not yet covered in this document.  As time goes on we will try to provide better examples and documentation for these features.  For now, it's best to look at the examples, look at the code, and ask questions!
+There are many additional and powerful ways you can use cbt that are not yet
+covered in this document. As time goes on we will try to provide better examples
+and documentation for these features. For now, it's best to look at the
+examples, look at the code, and ask questions!
