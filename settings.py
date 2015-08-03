@@ -1,29 +1,33 @@
-import argparse
-import yaml
-import sys
 import os
+import sys
+import logging
+import argparse
+
+import yaml
+
+logger = logging.getLogger("cbt")
 
 cluster = {}
 benchmarks = {}
 
+
 def initialize(ctx):
     global cluster, benchmarks
- 
+
     config = {}
     try:
         with file(ctx.config_file) as f:
-            g = yaml.safe_load_all(f)
-            for new in g:
-                config.update(new)
-    except IOError, e:
+            map(config.update, yaml.safe_load_all(f))
+    except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 
     cluster = config.get('cluster', {})
     benchmarks = config.get('benchmarks', {})
 
-    if not (cluster):
+    if not cluster:
         shutdown('No cluster section found in config file, bailing.')
-    if not (benchmarks):
+
+    if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
 
     # set the tmp_dir if not set.
@@ -39,6 +43,7 @@ def initialize(ctx):
     if ctx.archive:
         cluster['archive_dir'] = ctx.archive
 
+
 def getnodes(*nodelists):
     nodes = []
     for nodelist in nodelists:
@@ -47,23 +52,24 @@ def getnodes(*nodelists):
             cur = [cur]
         if isinstance(cur, dict):
             cur = cur.keys()
-        if cur:
-            nodes = nodes + cur
-    print nodes
-    return ','.join(uniquenodes(nodes))
+
+        nodes.extend(cur)
+
+    nodes_str = ','.join(uniquenodes(nodes))
+    logger.debug("Nodes : %s", nodes_str)
+    return nodes_str
+
 
 def uniquenodes(nodes):
     user = cluster.get('user')
-    ret = [] 
-    for node in nodes:
-        if node:
-            if user:
-                node = '%s@%s' % (user, node)
-            if not node in ret:
-                ret.append(node)
-    print ret
-    return ret
- 
+
+    nodes = [node for node in nodes if node]
+    if user:
+        nodes = ['%s@%s' % (user, node) for node in nodes]
+
+    uniq_nodes = list(set(nodes))
+    return uniq_nodes
+
+
 def shutdown(message):
     sys.exit(message)
-
