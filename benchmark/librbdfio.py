@@ -5,9 +5,13 @@ import monitoring
 import os
 import time
 import threading
+import logging
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
+
+logger = logging.getLogger("cbt")
+
 
 class LibrbdFio(Benchmark):
 
@@ -48,19 +52,19 @@ class LibrbdFio(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            logger.info('Skipping existing test in %s.', self.out_dir)
             return True
         return False
 
     def initialize(self): 
         super(LibrbdFio, self).initialize()
 
-        print 'Running scrub monitoring.'
+        logger.info('Running scrub monitoring.')
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
         monitoring.stop()
 
-        print 'Pausing for 60s for idle monitoring.'
+        logger.info('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
         monitoring.stop()
@@ -74,7 +78,7 @@ class LibrbdFio(Benchmark):
 
         # populate the fio files
         ps = []
-        print 'Attempting to populating fio files...'
+        logger.info('Attempting to populating fio files...')
         for i in xrange(self.volumes_per_client):
             pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
             p = common.pdsh(settings.getnodes('clients'), pre_cmd)
@@ -101,7 +105,7 @@ class LibrbdFio(Benchmark):
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        print 'Running rbd fio %s test.' % self.mode
+        logger.info('Running rbd fio %s test.', self.mode)
         ps = []
         for i in xrange(self.volumes_per_client):
             fio_cmd = self.mkfiocmd(i)
