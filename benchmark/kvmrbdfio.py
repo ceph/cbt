@@ -5,8 +5,11 @@ import monitoring
 import os
 import time
 import string
+import logging
 
 from benchmark import Benchmark
+
+logger = logging.getLogger("cbt")
 
 class KvmRbdFio(Benchmark):
 
@@ -43,7 +46,7 @@ class KvmRbdFio(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            logger.info('Skipping existing test in %s.', self.out_dir)
             return True
         return False
 
@@ -59,7 +62,7 @@ class KvmRbdFio(Benchmark):
         common.make_remote_dir(self.run_dir)
 
         # populate the fio files
-        print 'Attempting to populating fio files...'
+        logger.info('Attempting to populating fio files...')
         pre_cmd = 'sudo fio --rw=write -ioengine=sync --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.numjobs, self.vol_size, self.names)
         common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
 
@@ -105,7 +108,7 @@ class KvmRbdFio(Benchmark):
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        print 'Running rbd fio %s test.' % self.mode
+        logger.info('Running rbd fio %s test.', self.mode)
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
         monitoring.stop(self.run_dir)
 

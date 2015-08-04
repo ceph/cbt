@@ -4,8 +4,11 @@ import settings
 import monitoring
 import os
 import time
+import logging
 
 from benchmark import Benchmark
+
+logger = logging.getLogger("cbt")
 
 class RbdFio(Benchmark):
 
@@ -47,19 +50,19 @@ class RbdFio(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            logger.info('Skipping existing test in %s.', self.out_dir)
             return True
         return False
 
     def initialize(self): 
         super(RbdFio, self).initialize()
 
-        print 'Running scrub monitoring.'
+        logger.info('Running scrub monitoring.')
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
         monitoring.stop()
 
-        print 'Pausing for 60s for idle monitoring.'
+        logger.info('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
         monitoring.stop()
@@ -72,7 +75,7 @@ class RbdFio(Benchmark):
         common.make_remote_dir(self.run_dir)
 
         # populate the fio files
-        print 'Attempting to populating fio files...'
+        logger.info('Attempting to populating fio files...')
         pre_cmd = 'sudo %s --ioengine=%s --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.ioengine, self.numjobs, self.vol_size*0.9, self.names)
         common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
 
@@ -122,7 +125,7 @@ class RbdFio(Benchmark):
         fio_cmd += ' %s > %s' % (self.names, out_file)
         if self.log_avg_msec is not None:
             fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
-        print 'Running rbd fio %s test.' % self.mode
+        logger.info('Running rbd fio %s test.', self.mode)
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
 
         # If we were doing recovery, wait until it's done.

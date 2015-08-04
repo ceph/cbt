@@ -5,6 +5,9 @@ import monitoring
 import os
 import time
 import threading
+import logging
+
+logger = logging.getLogger('cbt')
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
@@ -79,7 +82,7 @@ class CephTestRados(Benchmark):
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        print 'Running ceph_test_rados.'
+        logger.info('Running ceph_test_rados.')
         ps = []
         for i in xrange(1):
             p = common.pdsh(settings.getnodes('clients'), self.mkcmd())
@@ -111,9 +114,9 @@ class CephTestRados(Benchmark):
             cmd.extend(['--op', op, str(weight)])
         cmd.extend(['--pool', 'ceph_test_rados'])
         cmd.extend(['|', 'awk \'{ print strftime("%Y-%m-%d %H:%M:%S"), $0; fflush(); }\'' '>', out_file])
-        print cmd
+        logger.debug("%s", cmd)
         return ' '.join(cmd)
-        
+
     def mkpool(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
         self.cluster.rmpool('ceph_test_rados', self.pool_profile)

@@ -6,8 +6,13 @@ import os
 import time
 import uuid
 import threading
+import logging
 
 from cluster import Cluster
+
+
+logger = logging.getLogger("cbt")
+
 
 class Ceph(Cluster):
     def __init__(self, config):
@@ -115,7 +120,7 @@ class Ceph(Cluster):
 
     def cleanup(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
-        print 'Deleting %s' % self.tmp_dir
+        logger.info('Deleting %s', self.tmp_dir)
         common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
 
     def setup_fs(self):
@@ -134,9 +139,9 @@ class Ceph(Cluster):
             common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
 
             if fs == 'tmpfs':
-                print 'using tmpfs osds, not creating a file system.'
+                logger.info('using tmpfs osds, not creating a file system.')
             elif fs == 'zfs':
-                print 'ruhoh, zfs detected.  No mkfs for you!'
+                logger.info('ruhoh, zfs detected.  No mkfs for you!')
                 common.pdsh(osds, 'sudo zpool destroy osd-device-%s-data' % device).communicate()
                 common.pdsh(osds, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data /dev/disk/by-partlabel/osd-device-%s-data' % (device, device)).communicate()
                 common.pdsh(osds, 'sudo zpool add osd-device-%s-data log /dev/disk/by-partlabel/osd-device-%s-zil' % (device, device)).communicate()
@@ -149,7 +154,7 @@ class Ceph(Cluster):
     def distribute_conf(self):
         nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
         conf_file = self.config.get("conf_file")
-        print "Distributing %s." % conf_file
+        logger.info("Distributing %s.", conf_file)
         common.pdcp(nodes, '', conf_file, self.tmp_conf).communicate()
         common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak').communicate()
         common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
@@ -165,7 +170,7 @@ class Ceph(Cluster):
         mons = settings.getnodes('mons').split(',')
         cmd = 'monmaptool --create --clobber'
         monhosts = settings.cluster.get('mons')
-        print monhosts
+        logger.info(monhosts)
         for monhost, mons in monhosts.iteritems():
            for mon, addr in mons.iteritems():
                 cmd = cmd + ' --add %s %s' % (mon, addr)
@@ -261,18 +266,18 @@ class Ceph(Cluster):
                 break
             else:
                 ret = ret + 1
-            print stdout
+            logger.info("%s", stdout)
             time.sleep(1)
         return ret
 
     def check_scrub(self):
-        print 'Waiting until Scrubbing completes...'
+        logger.info('Waiting until Scrubbing completes...')
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'ceph -c %s pg dump | cut -f 16 | grep "0.000000" | wc -l' % self.tmp_conf).communicate()
             if " 0\n" in stdout:
                 break
             else:
-                print stdout
+                logger.info(stdout)
             time.sleep(1)
 
     def dump_config(self, run_dir):
@@ -312,7 +317,7 @@ class Ceph(Cluster):
 
     def get_ruleset(self, name):
         name = str(name)
-        print self.ruleset_map
+        logger.info("%s", self.ruleset_map)
         return self.ruleset_map[name]
 
     def make_profiles(self):
@@ -366,16 +371,16 @@ class Ceph(Cluster):
         else:
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool create %s %d %d' % (self.tmp_conf, name, pg_size, pgp_size)).communicate()
 
-        print 'Checking Healh after pool creation.'
+        logger.info('Checking Healh after pool creation.')
         self.check_health()
 
         if replication and replication.isdigit():
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s size %s' % (self.tmp_conf, name, replication)).communicate()
-            print 'Checking Health after setting pool replciation level.'
+            logger.info('Checking Health after setting pool replication level.')
             self.check_health()
 
         if base_name and cache_mode:
-            print "Adding %s as cache tier for %s." % (name, base_name)
+            logger.info("Adding %s as cache tier for %s.", name, base_name)
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier add %s %s' % (self.tmp_conf, base_name, name)).communicate()
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier cache-mode %s %s' % (self.tmp_conf, name, cache_mode)).communicate()
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd tier set-overlay %s %s' % (self.tmp_conf, base_name, name)).communicate()
@@ -395,7 +400,7 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s target_max_bytes %s' % (self.tmp_conf, name, target_max_bytes)).communicate()
         if min_read_recency_for_promote:
             common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool set %s min_read_recency_for_promote %s' % (self.tmp_conf, name, min_read_recency_for_promote)).communicate()
-        print 'Final Pool Health Check.'
+        logger.info('Final Pool Health Check.')
         self.check_health()
 
         # If there is a cache profile assigned, make a cache pool

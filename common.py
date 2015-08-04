@@ -3,38 +3,41 @@ import subprocess
 import time
 import os
 import errno
+import logging
+
+logger = logging.getLogger("cbt")
 
 def pdsh(nodes, command):
     args = ['pdsh', '-R', 'ssh', '-w', nodes, command]
-    print('pdsh: %s' % args)
+    logger.debug('pdsh: %s' % args)
     return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def pdcp(nodes, flags, localfile, remotefile):
     args = ['pdcp', '-f', '1', '-R', 'ssh', '-w', nodes, localfile, remotefile]
     if flags:
         args = ['pdcp', '-f', '1', '-R', 'ssh', '-w', nodes, flags, localfile, remotefile]
-    print('pdcp: %s' % args)
+    logger.debug('pdcp: %s', args)
     return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def rpdcp(nodes, flags, remotefile, localfile):
     args = ['rpdcp', '-f', '1', '-R', 'ssh', '-w', nodes, remotefile, localfile]
     if flags:
         args = ['rpdcp', '-f', '1', '-R', 'ssh', '-w', nodes, flags, remotefile, localfile]
-    print('rpdcp: %s'  % args)
+    logger.debug('rpdcp: %s', args)
     return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def scp(node, localfile, remotefile):
     args = ['scp', localfile, '%s:%s' % (node, remotefile)]
-    print('scp: %s' % args)
+    logger.debug('scp: %s', args)
     return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def rscp(node, remotefile, localfile):
     args = ['scp', '%s:%s' % (node, remotefile), localfile]
-    print('rscp: %s' % args)
+    logger.debug('rscp: %s', args)
     return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
 def make_remote_dir(remote_dir):
-    print 'Making remote directory: %s' % remote_dir
+    logger.info('Making remote directory: %s', remote_dir)
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
     pdsh(nodes, 'mkdir -p -m0755 -- %s' % remote_dir).communicate()
 
@@ -66,5 +69,5 @@ def setup_valgrind(mode, name, tmp_dir):
     if mode == 'memcheck':
         return 'valgrind --tool=memcheck --soname-synonyms=somalloc=*tcmalloc* --log-file=%s ' % (logfile)
 
-    print 'valgrind mode: %s is not supported.' % mode
+    logger.debug('valgrind mode: %s is not supported.', mode)
     return ''
