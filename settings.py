@@ -2,6 +2,10 @@ import argparse
 import yaml
 import sys
 import os
+import logging
+
+
+logger = logging.getLogger("cbt")
 
 cluster = {}
 benchmarks = {}
@@ -49,7 +53,7 @@ def getnodes(*nodelists):
             cur = cur.keys()
         if cur:
             nodes = nodes + cur
-    print nodes
+    logger.debug("Nodes : %s", nodes)
     return ','.join(uniquenodes(nodes))
 
 def uniquenodes(nodes):
@@ -61,7 +65,7 @@ def uniquenodes(nodes):
                 node = '%s@%s' % (user, node)
             if not node in ret:
                 ret.append(node)
-    print ret
+    logger.debug("Nodes : %s", ret)
     return ret
  
 def shutdown(message):

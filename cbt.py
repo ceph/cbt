@@ -5,8 +5,12 @@ import yaml
 import os
 import settings
 import common
+import logging
 import benchmarkfactory
 from cluster.ceph import Ceph
+from log_support import setup_loggers
+
+logger = logging.getLogger("cbt")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Continuously run ceph tests.')
@@ -29,11 +33,12 @@ def parse_args():
     return args
 
 if __name__ == '__main__':
+    setup_loggers()
     ctx = parse_args()
     settings.initialize(ctx)
 
     iteration = 0
-    print settings.cluster
+    logger.debug("Settings.cluster: %s", settings.cluster)
     global_init = {} 
     # FIXME: Create ClusterFactory and parametrically match benchmarks and clusters.
     cluster = Ceph(settings.cluster)
