@@ -8,9 +8,12 @@ import threading
 import lxml.etree as ET
 import re
 import time
+import logging
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
+
+logger = logging.getLogger("cbt")
 
 class Cosbench(Benchmark):
 
@@ -41,24 +44,22 @@ class Cosbench(Benchmark):
                 cosconf[key] = value
             except:
                 pass
-        print cosconf
+        logger.debug("%s", cosconf)
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
             stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"curl -D - -H 'X-Auth-User: %s' -H 'X-Auth-Key: %s' %s" % (cosconf["username"], cosconf["password"], cosconf["url"])).communicate()
         else:
-            print "[ERROR]Auth Configuration in Yaml file is not in correct format"
+            logger.error("Auth Configuration in Yaml file is not in correct format")
             sys.exit()
         if re.search('(refused|error)', stderr):
-            print "[ERROR]Cosbench connect to Radosgw Connection Failed"
-            print stderr
+            logger.error("Cosbench connect to Radosgw Connection Failed\n%s", stderr)
             sys.exit()
         if re.search("AccessDenied", stdout):
-            print "[ERROR]Cosbench connect to Radosgw Auth Failed"
-            print stdout
+            logger.error("Cosbench connect to Radosgw Auth Failed\n%s", stdout)
             sys.exit()
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            logger.debug('Skipping existing test in %s.', self.out_dir)
             return True
         return False
 
@@ -112,15 +113,15 @@ class Cosbench(Benchmark):
     def initialize(self):
         super(Cosbench, self).initialize()
 
-        print 'Running cosbench and radosgw check.'
+        logger.debug('Running cosbench and radosgw check.')
         self.prerun_check()
 
-        print 'Running scrub monitoring.'
+        logger.debug('Running scrub monitoring.')
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
         monitoring.stop()
 
-        print 'Pausing for 60s for idle monitoring.'
+        logger.debug('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
         monitoring.stop()
@@ -146,7 +147,7 @@ class Cosbench(Benchmark):
         self.config["xml_name"] = leaves["name"]
         tree = ET.ElementTree(root)
         tree.write("%s/%s.xml" % (conf["cosbench_xml_dir"], leaves["name"]),pretty_print=True)
-        print "Write xml conf to %s/%s.xml" % (conf["cosbench_xml_dir"], leaves["name"])
+        logger.info("Write xml conf to %s/%s.xml", conf["cosbench_xml_dir"], leaves["name"])
 
     def add_leaf_to_tree(self, leaves, parent):
         for leaf, leaf_content in leaves.iteritems():
@@ -169,10 +170,10 @@ class Cosbench(Benchmark):
         try:
             self._run()
         except KeyboardInterrupt:
-            print "[WARNING] accept keyboard interrupt, cancel this run"
+            logger.warning("accept keyboard interrupt, cancel this run")
             conf = self.config
             stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
-            print "[LOG]%s" % stdout
+            logger.info("%s", stdout)
 
         self.check_workload_status()
         self.check_cosbench_res_dir()
@@ -191,7 +192,7 @@ class Cosbench(Benchmark):
         while wait:
             stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info | grep %s | awk '{print $8}'" % (self.config["cosbench_dir"], self.runid)).communicate()
             if stderr:
-                print "Cosbench Deamon is not running on %s" % self.config["controller"]
+                logger.info("Cosbench Deamon is not running on %s", self.config["controller"])
                 return False
             try:
                 status = stdout.split(':')[1]
@@ -201,7 +202,7 @@ class Cosbench(Benchmark):
                 wait = False
             time.sleep(1)
         stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
-        print stdout
+        logger.debug(stdout)
         return True
 
     def check_cosbench_res_dir(self):
@@ -221,14 +222,14 @@ class Cosbench(Benchmark):
         stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh submit %s/%s.xml' % (conf["cosbench_dir"], conf["cosbench_xml_dir"], conf["xml_name"])).communicate()
         m = re.findall('Accepted with ID:\s*(\w+)', stdout )
         if not m:
-            print "[ERROR] cosbench start failing with error: %s" % stderr
+            logger.error("cosbench start failing with error: %s", stderr)
             sys.exit()
         self.runid = m[0]
-        print "[LOG] cosbench job start, job number %s" % self.runid
+        logger.info("cosbench job start, job number %s", self.runid)
         wait_time = conf["rampup"]+conf["rampdown"]+conf["runtime"] 
-        print "====== cosbench job: %s started ======" % (conf["xml_name"])
-        print "wait %d secs to finish the test" % (wait_time)
-        print "You can monitor the runtime status and results on http://localhost:19088/controller"
+        logger.info("====== cosbench job: %s started ======", conf["xml_name"])
+        logger.info("wait %d secs to finish the test", wait_time)
+        logger.info("You can monitor the runtime status and results on http://localhost:19088/controller")
         time.sleep(wait_time)
 
     def __str__(self):

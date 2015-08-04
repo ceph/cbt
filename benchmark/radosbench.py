@@ -5,9 +5,13 @@ import monitoring
 import os
 import time
 import threading
+import logging
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
+
+logger = logging.getLogger("cbt")
+
 
 class Radosbench(Benchmark):
 
@@ -27,7 +31,7 @@ class Radosbench(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            logger.info('Skipping existing test in %s.', self.out_dir)
             return True
         return False
 
@@ -35,12 +39,12 @@ class Radosbench(Benchmark):
     def initialize(self): 
         super(Radosbench, self).initialize()
 
-        print 'Running scrub monitoring.'
+        logger.info('Running scrub monitoring.')
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
         monitoring.stop()
 
-        print 'Pausing for 60s for idle monitoring.'
+        logger.info('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
         monitoring.stop()
@@ -81,7 +85,7 @@ class Radosbench(Benchmark):
 
         # Run rados bench
         monitoring.start(run_dir)
-        print 'Running radosbench read test.'
+        logger.info('Running radosbench read test.')
         ps = []
         for i in xrange(self.concurrent_procs):
             out_file = '%s/output.%s' % (run_dir, i)
