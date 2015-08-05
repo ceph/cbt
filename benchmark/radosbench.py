@@ -89,7 +89,7 @@ class Radosbench(Benchmark):
             p = common.pdsh(settings.getnodes('clients'), '%s -c %s -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (self.cmd_path_full, self.tmp_conf, i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
             ps.append(p)
         for p in ps:
-            p.wait()
+            p.communicate()
         monitoring.stop(run_dir)
 
         # If we were doing recovery, wait until it's done.
