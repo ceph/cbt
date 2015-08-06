@@ -1,0 +1,60 @@
+cluster:
+  user: 'nhm'
+  head: "burnupiX"
+  clients: ["burnupiY"]
+  osds: ["burnupiX"]
+  mons:
+    burnupiY:
+      a: "192.168.10.2:6789"
+  osds_per_node: 4 
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048 -n size=64k'
+  mount_opts: '-o inode64,noatime,logbsize=256k'
+  conf_file: '/home/nhm/src/cbt/example/wip-mark-testing/ceph.conf'
+  iterations: 1
+  use_existing: False
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  pool_profiles:
+    radosbench:
+      pg_size: 1024
+      pgp_size: 1024
+      replication: 3
+    rbd:
+      pg_size: 4096
+      pgp_size: 4096
+      replication: 3
+benchmarks:
+  radosbench:
+    op_size: [4194304, 131072, 4096]
+    write_only: False
+    time: 300
+    concurrent_ops: [32]
+    concurrent_procs: 4
+    osd_ra: [4096]
+    pool_profile: 'radosbench'
+  librbdfio:
+    time: 10
+    vol_size: 2048 
+    mode: ['read', 'write', 'randread', 'randwrite', 'rw', 'randrw']
+    rwmixread: 50
+    op_size: [4194304, 131072, 4096]
+    procs_per_volume: [1]
+    volumes_per_client: [1]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/home/nhm/src/fio/fio'
+    pool_profile: 'rbd'
+    log_avg_msec: 100
+  rbdfio:
+    time: 10
+    vol_size: 2048 
+    mode: ['read', 'write', 'randread', 'randwrite', 'rw', 'randrw']
+    rwmixread: 50
+    op_size: [4194304, 131072, 4096]
+    concurrent_procs: [1]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/home/nhm/src/fio/fio'
+    pool_profile: 'rbd'
+    log_avg_msec: 100
