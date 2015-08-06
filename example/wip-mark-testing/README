@@ -1,0 +1,4 @@
+This directory contains the current set of tests that are run to verify
+that new PRs don't break CBT.  It's very incomplete at the moment, but
+a start!  It also may serve as one of the examples for how to run basic
+tests with CBT.
