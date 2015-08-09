@@ -10,24 +10,24 @@ logger = logging.getLogger("cbt")
 cluster = {}
 benchmarks = {}
 
+
 def initialize(ctx):
     global cluster, benchmarks
- 
+
     config = {}
     try:
         with file(ctx.config_file) as f:
-            g = yaml.safe_load_all(f)
-            for new in g:
-                config.update(new)
+            map(config.update, yaml.safe_load_all(f))
     except IOError, e:
         raise argparse.ArgumentTypeError(str(e))
 
     cluster = config.get('cluster', {})
     benchmarks = config.get('benchmarks', {})
 
-    if not (cluster):
+    if not cluster:
         shutdown('No cluster section found in config file, bailing.')
-    if not (benchmarks):
+
+    if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
 
     # set the tmp_dir if not set.
@@ -38,36 +38,41 @@ def initialize(ctx):
     if ctx.conf:
         cluster['conf_file'] = ctx.conf
     elif 'conf_file' not in cluster:
-        cluster['conf_file'] = "%s/ceph.conf" % cluster.get('conf_file')
+        cluster['conf_file'] = "%s/ceph.conf" % (cluster.get('conf_file'),)
 
     if ctx.archive:
         cluster['archive_dir'] = ctx.archive
 
+
 def getnodes(*nodelists):
     nodes = []
+
     for nodelist in nodelists:
         cur = cluster.get(nodelist, [])
         if isinstance(cur, str):
-            cur = [cur]
-        if isinstance(cur, dict):
-            cur = cur.keys()
-        if cur:
-            nodes = nodes + cur
-    logger.debug("Nodes : %s", nodes)
-    return ','.join(uniquenodes(nodes))
+            nodes.append(cur)
+        elif isinstance(cur, dict):
+            nodes.extend(cur.keys())
+        elif isinstance(cur, list):
+            nodes.extend(cur)
+        else:
+            raise ValueError("Can't process nodes of type %s - unknown set type: %r",
+                             nodelist, cur)
+
+    str_nodes = ','.join(uniquenodes(nodes))
+    logger.debug("Nodes : %s", str_nodes)
+    return str_nodes
+
 
 def uniquenodes(nodes):
+    ret = [node for node in nodes if node]
+
     user = cluster.get('user')
-    ret = [] 
-    for node in nodes:
-        if node:
-            if user:
-                node = '%s@%s' % (user, node)
-            if not node in ret:
-                ret.append(node)
-    logger.debug("Nodes : %s", ret)
-    return ret
- 
+    if user is not None:
+        ret = ['%s@%s' % (user, node) for node in ret]
+
+    return set(ret)
+
+
 def shutdown(message):
     sys.exit(message)
-
