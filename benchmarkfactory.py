@@ -1,43 +1,50 @@
-import settings
-import common
 import copy
+import itertools
+
+import settings
 from benchmark.radosbench import Radosbench
-from benchmark.rbdfio import RbdFio 
+from benchmark.rbdfio import RbdFio
 from benchmark.kvmrbdfio import KvmRbdFio
 from benchmark.librbdfio import LibrbdFio
 from benchmark.nullbench import Nullbench
 from benchmark.cosbench import Cosbench
 from benchmark.cephtestrados import CephTestRados
 
-def getAll(cluster, iteration):
-    objects = []
+
+def get_all(cluster, iteration):
     for benchmark, config in sorted(settings.benchmarks.iteritems()):
-        objects.extend(get(cluster, benchmark, config, iteration))
-    return objects
+        default = {"benchmark": benchmark,
+                   "iteration": iteration}
 
-def get(cluster, benchmark, config, iteration):
-    objects = []
-    default = {"benchmark":benchmark, "iteration":iteration}
+        for current in all_configs(config):
+            current.update(default)
+            yield get_object(cluster, benchmark, current)
 
-    permutations = [default]
+
+def all_configs(config):
+    """
+    return all parameter combinations for config
+    config: dict - list of params
+    iterate over all top-level lists in config
+    """
+    cycle_over_lists = []
+    cycle_over_names = []
+    default = {}
+
     for param, value in config.iteritems():
-        if (isinstance(value, list)):
-            localperms = []
-            for lv in value:
-                for p in permutations:
-                    lp = copy.deepcopy(p)
-                    lp[param] = lv
-                    localperms.append(lp)
-            permutations = localperms
+        if isinstance(value, list):
+            cycle_over_lists.append(value)
+            cycle_over_names.append(param)
         else:
-            for p in permutations:
-                p[param] = value
+            default[param] = value
 
-    for p in permutations:
-        objects.append(getObject(cluster, benchmark, p))
-    return objects
+    for permutation in itertools.product(*cycle_over_lists):
+        current = copy.deepcopy(default)
+        current.update(zip(cycle_over_names, permutation))
+        yield current
 
-def getObject(cluster, benchmark, bconfig):
+
+def get_object(cluster, benchmark, bconfig):
     if benchmark == "nullbench":
         return Nullbench(cluster, bconfig)
     if benchmark == "radosbench":
