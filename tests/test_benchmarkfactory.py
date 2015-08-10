@@ -3,7 +3,7 @@ import unittest
 import benchmarkfactory
 
 
-class TestStringMethods(unittest.TestCase):
+class TestBenchmarkFactory(unittest.TestCase):
     def test_permutations_1(self):
         config = dict(
             x=12,
