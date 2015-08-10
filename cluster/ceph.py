@@ -62,7 +62,6 @@ class Ceph(Cluster):
 
         # Cleanup old junk and create new junk
         self.cleanup()
-        common.mkdir_p(self.tmp_dir)
         common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
@@ -105,17 +104,9 @@ class Ceph(Cluster):
     def shutdown(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
 
-        common.pdsh(nodes, 'sudo killall -9 massif-amd64-li').communicate()
-        common.pdsh(nodes, 'sudo killall -9 memcheck-amd64-').communicate()
-        common.pdsh(nodes, 'sudo killall -9 ceph-osd').communicate()
-        common.pdsh(nodes, 'sudo killall -9 ceph-mon').communicate()
-        common.pdsh(nodes, 'sudo killall -9 ceph-mds').communicate()
-        common.pdsh(nodes, 'sudo killall -9 rados').communicate()
-        common.pdsh(nodes, 'sudo killall -9 rest-bench').communicate()
-        common.pdsh(nodes, 'sudo killall -9 radosgw').communicate()
-        common.pdsh(nodes, 'sudo killall -9 radosgw-admin').communicate()
-        common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop').communicate()
-        common.pdsh(nodes, 'sudo killall -9 pdsh').communicate()
+        for pattern in [ 'massif-amd64-li', 'memcheck-amd64-', 'ceph-osd', 'ceph-mon', 'ceph-mds', 'rados', 'rest-bench', 'radosgw', 'radosgw-admin', 'pdsh' ]:
+                 common.killall(nodes, '-9', pattern)
+        common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop', continue_if_error=True).communicate()
         monitoring.stop()
 
     def cleanup(self):
@@ -134,7 +125,7 @@ class Ceph(Cluster):
 
         for device in xrange (0,sc.get('osds_per_node')):
             osds = settings.getnodes('osds')
-            common.pdsh(osds, 'sudo umount /dev/disk/by-partlabel/osd-device-%s-data' % device).communicate()
+            common.pdsh(osds, 'sudo umount /dev/disk/by-partlabel/osd-device-%s-data' % device, continue_if_error=True).communicate()
             common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
             common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
 
@@ -156,13 +147,15 @@ class Ceph(Cluster):
         conf_file = self.config.get("conf_file")
         logger.info("Distributing %s.", conf_file)
         common.pdcp(nodes, '', conf_file, self.tmp_conf).communicate()
-        common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak').communicate()
+        common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak',continue_if_error=True).communicate()
         common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
 
     def make_mons(self):
         # Build and distribute the keyring
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % self.keyring_fn).communicate()
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow %s' % self.keyring_fn).communicate()
+        keyring_dir = os.path.dirname(self.keyring_fn)
+        common.pdsh(settings.getnodes('head'), 'mkdir -p %s ; ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % (keyring_dir, self.keyring_fn)).communicate()
+        common.pdsh(settings.getnodes('head'), 'mkdir -p %s ; ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow %s' % \
+            (os.path.dirname(self.keyring_fn), self.keyring_fn)).communicate()
         common.rscp(settings.getnodes('head'), self.keyring_fn, '%s.tmp' % self.keyring_fn).communicate()
         common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds'), '', '%s.tmp' % self.keyring_fn, self.keyring_fn).communicate()
 
@@ -281,7 +274,7 @@ class Ceph(Cluster):
             time.sleep(1)
 
     def dump_config(self, run_dir):
-        common.pdsh(settings.getnodes('osds'), 'sudo ceph -c %s --admin-daemon /var/run/ceph/ceph-osd.0.asok config show > %s/ceph_settings.out' % (self.tmp_conf, run_dir)).communicate()
+        common.pdsh(settings.getnodes('osds'), 'sudo ceph -c %s --admin-daemon /var/run/ceph/ceph-osd.0.asok config show > %s/ceph_settings.out' % (self.tmp_conf, run_dir), continue_if_error=True).communicate()
 
     def dump_historic_ops(self, run_dir):
         common.pdsh(settings.getnodes('osds'), 'find /var/run/ceph/*.asok -maxdepth 1 -exec sudo ceph --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % run_dir).communicate()
@@ -426,7 +419,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
 
     def rbd_unmount(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;', continue_if_error=True).communicate()
 #        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 class RecoveryTestThread(threading.Thread):
