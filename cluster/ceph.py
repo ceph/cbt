@@ -17,6 +17,7 @@ logger = logging.getLogger("cbt")
 class Ceph(Cluster):
     def __init__(self, config):
         super(Ceph, self).__init__(config)
+        self.fsid = config.get('fsid')
         self.ceph_osd_cmd = config.get('ceph-osd_cmd', '/usr/bin/ceph-osd')
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
@@ -105,7 +106,7 @@ class Ceph(Cluster):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
 
         for pattern in [ 'massif-amd64-li', 'memcheck-amd64-', 'ceph-osd', 'ceph-mon', 'ceph-mds', 'rados', 'rest-bench', 'radosgw', 'radosgw-admin', 'pdsh' ]:
-                 common.killall(nodes, '-9', pattern)
+                 common.killall(nodes, 'KILL', pattern)
         common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop', continue_if_error=True).communicate()
         monitoring.stop()
 
@@ -151,13 +152,14 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
 
     def make_mons(self):
+        clusterid = self.config.get('clusterid')
         # Build and distribute the keyring
         keyring_dir = os.path.dirname(self.keyring_fn)
-        common.pdsh(settings.getnodes('head'), 'mkdir -p %s ; ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % (keyring_dir, self.keyring_fn)).communicate()
-        common.pdsh(settings.getnodes('head'), 'mkdir -p %s ; ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow %s' % \
-            (os.path.dirname(self.keyring_fn), self.keyring_fn)).communicate()
-        common.rscp(settings.getnodes('head'), self.keyring_fn, '%s.tmp' % self.keyring_fn).communicate()
-        common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds'), '', '%s.tmp' % self.keyring_fn, self.keyring_fn).communicate()
+        common.pdsh(settings.getnodes('head'), 'mkdir -p %s ; ceph-authtool --create-keyring %s --gen-key --name=mon. --cap mon \'allow *\'' % (self.keyring_fn, keyring_dir)).communicate()
+        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring %s/%s.client.admin.keyring --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow '%\
+          (keyring_dir, clusterid)).communicate()
+        common.pdsh(settings.getnodes('head'), 'ceph-authtool %s --import-keyring %s/%s.client.admin.keyring'%(self.keyring_fn, keyring_dir, clusterid)).communicate()
+        common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds'), '', self.keyring_fn, self.keyring_fn).communicate()
 
         # Build the monmap, retrieve it, and distribute it
         mons = settings.getnodes('mons').split(',')
@@ -167,10 +169,9 @@ class Ceph(Cluster):
         for monhost, mons in monhosts.iteritems():
            for mon, addr in mons.iteritems():
                 cmd = cmd + ' --add %s %s' % (mon, addr)
-        cmd = cmd + ' --print %s' % self.monmap_fn
+        cmd = cmd + ' --fsid %s %s' %(self.fsid, self.monmap_fn)
         common.pdsh(settings.getnodes('head'), cmd).communicate()
-        common.rscp(settings.getnodes('head'), self.monmap_fn, '%s.tmp' % self.monmap_fn).communicate()
-        common.pdcp(settings.getnodes('mons'), '', '%s.tmp' % self.monmap_fn, self.monmap_fn).communicate()
+        common.pdcp(settings.getnodes('mons'), '', self.monmap_fn, self.monmap_fn).communicate()
 
         # Build the ceph-mons
         user = settings.cluster.get('user')
@@ -178,7 +179,8 @@ class Ceph(Cluster):
             if user:
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
-                common.pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (self.tmp_dir, mon)).communicate()
+                common.pdsh(monhost, 'sudo rm -rf %s/mon.%s /var/tmp/ceph/ceph-mon.%s.asok /var/lib/ceph/mon/%s-%s' % (self.tmp_dir, mon, mon, clusterid, mon)).communicate()
+                common.pdsh(monhost, 'sudo mkdir /var/lib/ceph/mon/%s-%s' % (clusterid, mon)).communicate()
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, self.keyring_fn)).communicate()
                 common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (self.keyring_fn, self.tmp_dir, mon)).communicate()
@@ -186,18 +188,20 @@ class Ceph(Cluster):
         # Start the mons
         for monhost, mons in monhosts.iteritems():
             if user:
-                monhost = '%s@%s' % (user, monhost)
+                user_monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
                 pidfile="%s/%s.pid" % (self.pid_dir, monhost)
-                cmd = 'sudo sh -c "ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.keyring_fn, pidfile)
+                cmd = 'sh -c "ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.keyring_fn, pidfile)
                 if self.mon_valgrind:
-                    cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
-                else:
-                    cmd = 'ceph-run %s' % cmd
-                common.pdsh(monhost, 'sudo %s' % cmd).communicate()
+                    cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % user_monhost, self.tmp_dir), cmd)
+                #else:
+                #    cmd = 'ceph-run %s' % cmd
+                common.pdsh(user_monhost, 'sudo %s' % cmd).communicate()
+                time.sleep(1)
 
     def make_osds(self):
         osdnum = 0
+        clusterid = self.config.get('clusterid')
         osdhosts = settings.cluster.get('osds')
 
         for host in osdhosts:
@@ -208,9 +212,12 @@ class Ceph(Cluster):
             for i in xrange(0, settings.cluster.get('osds_per_node')):            
                 # Build the OSD
                 osduuid = str(uuid.uuid4())
-                key_fn = '%s/osd-device-%s-data/keyring' % (self.mnt_dir, i)
+                osddir='/var/lib/ceph/osd/%s-%d'%(clusterid, osdnum)
+                key_fn = '%s/keyring'%osddir
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd create %s' % (self.tmp_conf, osduuid)).communicate()
                 common.pdsh(pdshhost, 'sudo ceph -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.tmp_conf, osdnum, host)).communicate()
+                common.pdsh(pdshhost, 'sudo rm -rf %s'%osddir).communicate()
+                common.pdsh(pdshhost, 'sudo mkdir %s'%osddir).communicate()
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s"' % (self.ceph_osd_cmd, self.tmp_conf, osdnum, osduuid)).communicate()
                 common.pdsh(pdshhost, 'sudo ceph -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd"' % (self.tmp_conf, key_fn, osdnum)).communicate()
 
@@ -222,7 +229,7 @@ class Ceph(Cluster):
                 else:
                     cmd = 'ceph-run %s' % cmd
 
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
+                common.pdsh(pdshhost, 'sudo %s' % cmd, continue_if_error=True).communicate()
                 osdnum = osdnum+1
 
 
@@ -335,7 +342,7 @@ class Ceph(Cluster):
         for name,profile in erasure_profiles.items():
             k = profile.get('erasure_k', 6)
             m = profile.get('erasure_m', 2)
-	    common.pdsh(settings.getnodes('head'), 'ceph -c %s osd erasure-code-profile set %s ruleset-failure-domain=osd k=%s m=%s' % (self.tmp_conf, name, k, m)).communicate()
+            common.pdsh(settings.getnodes('head'), 'ceph -c %s osd erasure-code-profile set %s ruleset-failure-domain=osd k=%s m=%s' % (self.tmp_conf, name, k, m)).communicate()
             self.set_ruleset(name)
 
     def mkpool(self, name, profile_name, base_name=None):
