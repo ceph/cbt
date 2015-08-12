@@ -62,30 +62,17 @@ def setup_loggers(def_level=logging.DEBUG, log_fname=None):
     sh = logging.StreamHandler()
     sh.setLevel(def_level)
 
-    log_format = '%(asctime)s - %(levelname)s - %(name)-15s - %(message)s'
+    log_format = '%(asctime)s - %(levelname)s - %(name)-8s - %(message)s'
     colored_formatter = ColoredFormatter(log_format, datefmt="%H:%M:%S")
 
     sh.setFormatter(colored_formatter)
     logger.addHandler(sh)
 
-    # logger_other = logging.getLogger("cbt.other")
-
     if log_fname is not None:
         fh = logging.FileHandler(log_fname)
-        log_format = '%(asctime)s - %(levelname)8s - %(name)-15s - %(message)s'
         formatter = logging.Formatter(log_format, datefmt="%H:%M:%S")
         fh.setFormatter(formatter)
         fh.setLevel(logging.DEBUG)
         logger.addHandler(fh)
-        # logger_other.addHandler(fh)
     else:
         fh = None
-
-    # logger_other.addHandler(sh)
-    # logger_other.setLevel(logging.WARNING)
-
-    logger = logging.getLogger('paramiko')
-    logger.setLevel(logging.WARNING)
-    # logger.addHandler(sh)
-    if fh is not None:
-        logger.addHandler(fh)
