@@ -67,7 +67,7 @@ def rscp(node, remotefile, localfile):
 
 # we don't want to stop the run if no such process exists, hence continue_if_error
 def killall(nodelist, signalstr, process_name_pattern):
-    pdsh(nodelist, 'sudo killall -s -q %s %s'%(signalstr, process_name_pattern), continue_if_error=True).communicate()
+    pdsh(nodelist, 'sudo killall -s %s -q %s'%(signalstr, process_name_pattern), continue_if_error=True).communicate()
 
 # this is used in some places instead of killall for looser matching
 # again we don't care if there aren't any such processes
