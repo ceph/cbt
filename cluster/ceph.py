@@ -7,11 +7,37 @@ import time
 import uuid
 import threading
 import logging
+import json
 
 from cluster import Cluster
 
 
 logger = logging.getLogger("cbt")
+
+
+def discover_osd_nodes(root_node_url):
+    "discover all osd nodes"
+    osd_proc = common.pdsh(root_node_url, "ceph osd tree --format json")
+
+    res = "".join(line.split(":", 1)[1]
+                  for line in osd_proc.communicate()[0].split("\n")
+                  if ':' in line)
+
+    return [str(node['name'])
+            for node in json.loads(res.strip())['nodes']
+            if node['type'] == 'host']
+
+
+def discover_mon_nodes(root_node_url):
+    "discover all monitor nodes"
+    mon_proc = common.pdsh(root_node_url, "ceph mon_status")
+
+    res = "".join(line.split(":", 1)[1]
+                  for line in mon_proc.communicate()[0].split("\n")
+                  if ':' in line)
+
+    return [str(node['name'])
+            for node in json.loads(res.strip())['monmap']['mons']]
 
 
 class Ceph(Cluster):
