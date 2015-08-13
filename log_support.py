@@ -84,8 +84,9 @@ def setup_loggers(def_level=logging.DEBUG, log_fname=None):
     # logger_other.addHandler(sh)
     # logger_other.setLevel(logging.WARNING)
 
-    logger = logging.getLogger('paramiko')
-    logger.setLevel(logging.WARNING)
-    # logger.addHandler(sh)
-    if fh is not None:
-        logger.addHandler(fh)
+    for logger_name, level in {'paramiko': logging.WARNING}.items():
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(level)
+        logger.addHandler(sh)
+        if fh is not None:
+            logger.addHandler(fh)
