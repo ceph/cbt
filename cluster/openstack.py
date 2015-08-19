@@ -5,6 +5,7 @@ import time
 import urllib
 import os.path
 import logging
+import warnings
 import threading
 import subprocess
 import collections
@@ -38,9 +39,10 @@ NOVA_CONNECTION = None
 CINDER_CONNECTION = None
 
 
-OSCreds = collections.namedtuple("OSCreds",
-                                 ["name", "passwd",
-                                  "tenant", "auth_url", "insecure"])
+OSCreds_fields = ["username", "password",
+                  "tenant_name", "auth_url",
+                  "insecure", "region"]
+OSCreds = collections.namedtuple("OSCreds", OSCreds_fields)
 
 
 def run_locally(cmd, input_data="", timeout=20):
@@ -97,27 +99,32 @@ def get_OS_credentials_from_openrc(path):
     params:
         path: str, openrc file path
 
-    returns:
-        (user:str, passwd:str, tenant:str, auth_url:str, insecure:bool)
+    returns: OSCreds
     """
 
     fc = open(path).read()
 
-    echo = 'echo "$OS_INSECURE:$OS_TENANT_NAME:$OS_USERNAME:$OS_PASSWORD@$OS_AUTH_URL"'
+    for sep in (":::", "@@@", "###"):
+        echo = 'echo "{0}"'.format(
+            sep.join("$OS_" + field.upper() for field in OSCreds_fields)
+        )
 
-    try:
-        data = run_locally(['/bin/bash'], input_data=fc + "\n" + echo)
-        data = data.strip()
-        insecure_str, user, tenant, passwd_auth_url = data.split(':', 3)
-        insecure = (insecure_str in ('1', 'True', 'true'))
-        passwd, auth_url = passwd_auth_url.rsplit("@", 1)
-        assert (auth_url.startswith("https://") or
-                auth_url.startswith("http://"))
-    except:
-        logger.exception("Failed to get creads from openrc file: " + data)
-        raise
+        try:
+            data = run_locally(['/bin/bash'], input_data=fc + "\n" + echo)
+            data = data.strip()
+            if data.count(sep) > len(OSCreds_fields) - 1:
+                continue
 
-    return user, passwd, tenant, auth_url, insecure
+            vals = dict(zip(OSCreds_fields, data.split(sep)))
+            vals['insecure'] = (vals['insecure'] in ('1', 'True', 'true'))
+            assert (vals['auth_url'].startswith("https://") or
+                    vals['auth_url'].startswith("http://"))
+            return OSCreds(**vals)
+        except:
+            logger.exception("Failed to get creads from openrc file: " + data)
+            raise
+
+    raise RuntimeError("Can't extract password from creds file!")
 
 
 def get_OS_credentials(params):
@@ -140,6 +147,7 @@ def get_OS_credentials(params):
         OS_TENANT_NAME: str
         OS_AUTH_URL: str
         [OS_INSECURE: bool]
+        [OS_REGION: str]
 
     returns:
         OSCreds
@@ -154,24 +162,28 @@ def get_OS_credentials(params):
                            os.environ['OS_PASSWORD'],
                            os.environ['OS_TENANT_NAME'],
                            os.environ['OS_AUTH_URL'],
-                           os.environ.get('OS_INSECURE', False))
-    if isinstance(creds, basestring):
+                           os.environ.get('OS_INSECURE', False),
+                           os.environ.get('OS_REGION'))
+    elif isinstance(creds, basestring):
         logger.debug("Using OS credentials from %s rc file", creds)
         if not os.path.isfile(creds):
             raise ValueError("Can't find file %s with openstack credentials", creds)
-        os_creds = OSCreds(*get_OS_credentials_from_openrc(creds))
+        os_creds = get_OS_credentials_from_openrc(creds)
     elif isinstance(creds, dict):
         logger.debug("Using OS credentials, provided expicitly in config")
-        os_creds = OSCreds(creds['OS_USERNAME'].strip(),
-                           creds['OS_PASSWORD'].strip(),
-                           creds['OS_TENANT_NAME'].strip(),
-                           creds['OS_AUTH_URL'].strip(),
-                           creds.get('OS_INSECURE', False))
+        os_creds = OSCreds(creds['OS_USERNAME'],
+                           creds['OS_PASSWORD'],
+                           creds['OS_TENANT_NAME'],
+                           creds['OS_AUTH_URL'],
+                           creds.get('OS_INSECURE', False),
+                           os.environ.get('OS_REGION'))
     else:
         raise ValueError("Can't found any OS credentials in config")
 
-    logger.info(("OS_CREDS: user={0.name} tenant={0.tenant}" +
-                 "auth_url={0.auth_url} insecure={0.insecure}").format(os_creds))
+    logger.info(("OS_CREDS: " + " ".join(
+        "{0}={1!r}".format(attr, getattr(os_creds, attr))
+        for attr in OSCreds_fields))
+    )
 
     return os_creds
 
@@ -192,11 +204,12 @@ def nova_connect(os_creds=None):
 
     if NOVA_CONNECTION is None:
         NOVA_CONNECTION = n_client('1.1',
-                                   os_creds.name,
-                                   os_creds.passwd,
-                                   os_creds.tenant,
+                                   os_creds.username,
+                                   os_creds.password,
+                                   os_creds.tenant_name,
                                    os_creds.auth_url,
-                                   insecure=os_creds.insecure)
+                                   insecure=os_creds.insecure,
+                                   region_name=os_creds.region)
     return NOVA_CONNECTION
 
 
@@ -215,11 +228,12 @@ def cinder_connect(os_creds=None):
     global CINDER_CONNECTION
 
     if CINDER_CONNECTION is None:
-        CINDER_CONNECTION = c_client(os_creds.name,
-                                     os_creds.passwd,
-                                     os_creds.tenant,
+        CINDER_CONNECTION = c_client(os_creds.username,
+                                     os_creds.password,
+                                     os_creds.tenant_name,
                                      os_creds.auth_url,
-                                     insecure=os_creds.insecure)
+                                     insecure=os_creds.insecure,
+                                     region_name=os_creds.region)
     return CINDER_CONNECTION
 
 
@@ -243,7 +257,7 @@ def find(nova, name_prefix):
                         break
 
 
-def prepare_OS(nova, params, max_vm_per_compute=8):
+def prepare_OS(os_creds, nova, params, max_vm_per_compute=8):
     """prepare openstack for futher usage
 
     Creates server groups, security rules, keypair, flavor
@@ -252,6 +266,7 @@ def prepare_OS(nova, params, max_vm_per_compute=8):
     Don't check, that existing object has required attributes
 
     params:
+        os_creds: OSCreds
         nova: novaclient connection
         params: dict {
             security_group:str - security group name with allowed ssh and ping
@@ -289,7 +304,7 @@ def prepare_OS(nova, params, max_vm_per_compute=8):
                    params['keypair_file_public'],
                    params['keypair_file_private'])
 
-    create_image(nova, params['image']['name'],
+    create_image(os_creds, nova, params['image']['name'],
                  params['image']['url'])
 
     create_flavor(nova, **params['flavor'])
@@ -358,8 +373,8 @@ def get_or_create_aa_group(nova, name):
     try:
         group = nova.server_groups.find(name=name)
     except NotFound:
-        group = nova.server_groups.create({'name': name,
-                                           'policies': ['anti-affinity']})
+        group = nova.server_groups.create(name=name,
+                                          policies=['anti-affinity'])
 
     return group.id
 
@@ -378,28 +393,27 @@ def allow_ssh(nova, group_name):
     except NotFound:
         secgroup = nova.security_groups.create(group_name,
                                                "allow ssh/ping to node")
+        nova.security_group_rules.create(secgroup.id,
+                                         ip_protocol="tcp",
+                                         from_port="22",
+                                         to_port="22",
+                                         cidr="0.0.0.0/0")
 
-    nova.security_group_rules.create(secgroup.id,
-                                     ip_protocol="tcp",
-                                     from_port="22",
-                                     to_port="22",
-                                     cidr="0.0.0.0/0")
-
-    nova.security_group_rules.create(secgroup.id,
-                                     ip_protocol="icmp",
-                                     from_port=-1,
-                                     cidr="0.0.0.0/0",
-                                     to_port=-1)
+        nova.security_group_rules.create(secgroup.id,
+                                         ip_protocol="icmp",
+                                         from_port=-1,
+                                         cidr="0.0.0.0/0",
+                                         to_port=-1)
     return secgroup.id
 
 
-def create_image(nova, os_creds, name, url):
+def create_image(os_creds, nova, name, url):
     """upload image into glance from given URL, if given image doesn't exisis yet
 
     parameters:
-        nova: nova connection
         os_creds: OSCreds object - openstack credentials, should be same,
                                    as used when connectiong given novaclient
+        nova: nova connection
         name: str - image name
         url: str - image download url
 
@@ -411,15 +425,19 @@ def create_image(nova, os_creds, name, url):
     except NotFound:
         pass
 
-    tempnam = os.tempnam()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        tempnam = os.tempnam()
 
     try:
         urllib.urlretrieve(url, tempnam)
 
-        cmd = "OS_USERNAME={0.name}"
-        cmd += " OS_PASSWORD={0.passwd}"
-        cmd += " OS_TENANT_NAME={0.tenant}"
+        cmd = "OS_USERNAME={0.username}"
+        cmd += " OS_PASSWORD={0.password}"
+        cmd += " OS_TENANT_NAME={0.tenant_name}"
         cmd += " OS_AUTH_URL={0.auth_url}"
+        if os_creds.region:
+            cmd += " OS_REGION={0.region}"
         cmd += " glance {1} image-create --name {2} $opts --file {3}"
         cmd += " --disk-format qcow2 --container-format bare --is-public true"
 
@@ -427,6 +445,9 @@ def create_image(nova, os_creds, name, url):
                          '--insecure' if os_creds.insecure else "",
                          name,
                          tempnam)
+
+        timeout = os.stat(tempnam).st_size
+        run_locally(cmd, timeout=timeout)
     finally:
         if os.path.exists(tempnam):
             os.unlink(tempnam)
@@ -445,7 +466,7 @@ def create_flavor(nova, name, ram_size, hdd_size, cpu_count):
     returns: None
     """
     try:
-        nova.flavors.find(name)
+        nova.flavors.find(name=name)
         return
     except NotFound:
         pass
@@ -503,7 +524,7 @@ def wait_for_server_active(nova, server, timeout=300):
             return True
 
         if sstate == 'error':
-            return False
+            return True
 
         if time.time() - t > timeout:
             return False
@@ -545,6 +566,8 @@ def launch_vms(nova, params, already_has_count=0):
             flavor: dict {'name': str - flavor name}
             group_name: str - group name, used to create uniq server name
             keypair_name: str - ssh keypais name
+            keypair_file_private: str - path to private key
+            user: str - vm user name
             vol_sz: int or None - volume size, or None, if no volume
             network_zone_name: str - network zone name
             flt_ip_pool: str - floating ip pool
