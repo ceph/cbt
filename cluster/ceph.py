@@ -19,6 +19,7 @@ class Ceph(Cluster):
         super(Ceph, self).__init__(config)
         self.ceph_osd_cmd = config.get('ceph-osd_cmd', '/usr/bin/ceph-osd')
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
+        self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
@@ -196,11 +197,11 @@ class Ceph(Cluster):
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
                 pidfile="%s/%s.pid" % (self.pid_dir, monhost)
-                cmd = 'sudo sh -c "ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.keyring_fn, pidfile)
+                cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.keyring_fn, pidfile)
                 if self.mon_valgrind:
                     cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
                 else:
-                    cmd = 'ceph-run %s' % cmd
+                    cmd = '%s %s' % (self.ceph_run_cmd, cmd)
                 common.pdsh(monhost, 'sudo %s' % cmd).communicate()
 
     def make_osds(self):
@@ -227,7 +228,7 @@ class Ceph(Cluster):
                 if self.osd_valgrind:
                     cmd = "%s %s" % (common.setup_valgrind(self.osd_valgrind, 'osd.%d' % osdnum, self.tmp_dir), cmd)
                 else:
-                    cmd = 'ceph-run %s' % cmd
+                    cmd = '%s %s' % (self.ceph_run_cmd, cmd)
 
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
                 osdnum = osdnum+1
@@ -245,7 +246,7 @@ class Ceph(Cluster):
             if self.rgw_valgrind:
                 cmd = "%s %s" % (common.setup_valgrind(self.rgw_valgrind, 'rgw.%s' % host, self.tmp_dir), cmd)
             else:
-                cmd = 'ceph-run %s' % cmd
+                cmd = '%s %s' % (self.ceph_run_cmd, cmd)
 
             common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
