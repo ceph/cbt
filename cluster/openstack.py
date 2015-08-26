@@ -471,7 +471,7 @@ def create_flavor(nova, name, ram_size, hdd_size, cpu_count):
     except NotFound:
         pass
 
-    nova.flavors.create(name, cpu_count, ram_size, hdd_size)
+    nova.flavors.create(name=name, vcpus=cpu_count, ram=ram_size, disk=hdd_size)
 
 
 def create_volume(cinder, size, name):
@@ -551,11 +551,12 @@ def get_floating_ips(nova, pool, amount):
     return [ip for ip in ip_list if ip.instance_id is None][:amount]
 
 
-def launch_vms(nova, params, already_has_count=0):
+def launch_vms(nova, cinder, params, already_has_count=0):
     """launch virtual servers
 
     Parameters:
         nova: nova client
+        cinder: conder client
         params: dict {
             count: str or int - server count. If count is string it should be in
                                 one of bext forms: "=INT" or "xINT". First mean
@@ -625,7 +626,7 @@ def launch_vms(nova, params, already_has_count=0):
     private_key_path = params['keypair_file_private']
     user = params['user']
 
-    for ip, os_node in create_vms_mt(nova, count, **vm_params):
+    for ip, os_node in create_vms_mt(nova, cinder, count, **vm_params):
         yield "{0}@{1}:{2}".format(user, ip, private_key_path), os_node.id
 
 
@@ -650,7 +651,7 @@ class Allocate(object):
     pass
 
 
-def create_vms_mt(nova, amount, group_name, keypair_name, img_name,
+def create_vms_mt(nova, cinder, amount, group_name, keypair_name, img_name,
                   flavor_name, vol_sz=None, network_zone_name=None,
                   flt_ip_pool=None, name_templ='cbt-{group}-{id}',
                   scheduler_hints=None, security_group=None,
@@ -718,7 +719,7 @@ def create_vms_mt(nova, amount, group_name, keypair_name, img_name,
             if scheduler_hints is None:
                 scheduler_hints = orig_scheduler_hints.copy()
 
-            params = (nova, name, keypair_name, img, fl,
+            params = (nova, cinder, name, keypair_name, img, fl,
                       nics, vol_sz, flt_ip, scheduler_hints,
                       flt_ip_pool, [security_group])
 
@@ -728,7 +729,7 @@ def create_vms_mt(nova, amount, group_name, keypair_name, img_name,
         return res
 
 
-def create_vm(nova, name, keypair_name, img,
+def create_vm(nova, cinder, name, keypair_name, img,
               fl, nics, vol_sz=None,
               flt_ip=False,
               scheduler_hints=None,
@@ -768,7 +769,7 @@ def create_vm(nova, name, keypair_name, img,
         raise RuntimeError("Failed to start server")
 
     if vol_sz is not None:
-        vol = create_volume(vol_sz, name)
+        vol = create_volume(cinder, vol_sz, name)
         nova.volumes.create_server_volume(srv.id, vol.id, None)
 
     if flt_ip is Allocate:
@@ -780,7 +781,7 @@ def create_vm(nova, name, keypair_name, img,
     return flt_ip.ip, nova.servers.get(srv.id)
 
 
-def clear_all(nova, ids=None, name_templ=None):
+def clear_all(nova, cinder, ids=None, name_templ=None):
     """delete given vm's with volumes.
 
     Delete vm and attached volumes either by name template
@@ -788,7 +789,8 @@ def clear_all(nova, ids=None, name_templ=None):
 
     parameters:
         nova: nova connection
-        ids - list of vm id's
+        cinder: cinder connection
+        ids: list - list of vm id's
         name_templ:str - regular expression for VM name
 
     returns: None
@@ -801,7 +803,6 @@ def clear_all(nova, ids=None, name_templ=None):
             return srv.id in ids
 
     volumes_to_delete = []
-    cinder = cinder_connect()
     for vol in cinder.volumes.list():
         for attachment in vol.attachments:
             if attachment['server_id'] in ids:
