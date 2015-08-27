@@ -133,6 +133,7 @@ class Ceph(Cluster):
         if fs == '':
              settings.shutdown("No OSD filesystem specified.  Exiting.")
 
+        mkfs_threads = []
         for device in xrange (0,sc.get('osds_per_node')):
             osds = settings.getnodes('osds')
             common.pdsh(osds, 'sudo umount /dev/disk/by-partlabel/osd-device-%s-data' % device).communicate()
@@ -148,9 +149,14 @@ class Ceph(Cluster):
                 common.pdsh(osds, 'sudo zpool add osd-device-%s-data log /dev/disk/by-partlabel/osd-device-%s-zil' % (device, device)).communicate()
                 common.pdsh(osds, 'sudo mount %s -t zfs osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, device, self.mnt_dir, device)).communicate()
             else: 
-                common.pdsh(osds, 'sudo mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)).communicate()
-                common.pdsh(osds, 'sudo mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, fs, device, self.mnt_dir, device)).communicate()
-
+                # do mkfs and mount in 1 long command
+                # alternative is to wait until make_osds to mount it
+                mkfs_cmd='sudo sh -c "mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data ; ' % (fs, mkfs_opts, device)
+                mkfs_cmd += 'mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data"' % (mount_opts, fs, device, self.mnt_dir, device)
+                mkfs_threads.append((device, common.pdsh(osds, mkfs_cmd)))
+        for device, t in mkfs_threads:  # for tmpfs and zfs cases, thread list is empty
+            logger.info('for device %d on all hosts awaiting mkfs and mount'%device)
+            t.communicate()
 
     def distribute_conf(self):
         nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
