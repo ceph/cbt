@@ -40,6 +40,7 @@ class LibrbdFio(Benchmark):
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
         self.poolname = "cbt-librbdfio"
+        self.use_existing_rbds = config.get('use_existing_rbds', False)
 
 	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
@@ -79,12 +80,13 @@ class LibrbdFio(Benchmark):
         # populate the fio files
         ps = []
         logger.info('Attempting to populating fio files...')
-        for i in xrange(self.volumes_per_client):
-            pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
-            p = common.pdsh(settings.getnodes('clients'), pre_cmd)
-            ps.append(p)
-        for p in ps:
-            p.wait()
+        if (self.use_existing_rbds == False):
+          for i in xrange(self.volumes_per_client):
+              pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
+              p = common.pdsh(settings.getnodes('clients'), pre_cmd)
+              ps.append(p)
+          for p in ps:
+              p.wait()
         return True
 
     def run(self):
@@ -161,12 +163,13 @@ class LibrbdFio(Benchmark):
 
     def mkimages(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
-        self.cluster.rmpool(self.poolname, self.pool_profile)
-        self.cluster.mkpool(self.poolname, self.pool_profile)
-        for node in settings.getnodes('clients').split(','):
-            for volnum in xrange(0, self.volumes_per_client):
-                node = node.rpartition("@")[2]
-                common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s-%d --size %s --pool %s --order %s' % (node, volnum, self.vol_size, self.poolname, self.vol_order)).communicate()
+        if (self.use_existing_rbds == False):
+          self.cluster.rmpool(self.poolname, self.pool_profile)
+          self.cluster.mkpool(self.poolname, self.pool_profile)
+          for node in settings.getnodes('clients').split(','):
+              for volnum in xrange(0, self.volumes_per_client):
+                  node = node.rpartition("@")[2]
+                  common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s-%d --size %s --pool %s --order %s' % (node, volnum, self.vol_size, self.poolname, self.vol_order)).communicate()
         monitoring.stop()
 
     def recovery_callback(self): 
