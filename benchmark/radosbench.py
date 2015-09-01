@@ -22,6 +22,7 @@ class Radosbench(Benchmark):
         self.time =  str(config.get('time', '300'))
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.concurrent_ops = config.get('concurrent_ops', 16)
+        self.pool_per_proc = config.get('pool_per_proc', False)  # default behavior used to be True
         self.write_only = config.get('write_only', False)
         self.op_size = config.get('op_size', 4194304)
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
@@ -90,7 +91,15 @@ class Radosbench(Benchmark):
         for i in xrange(self.concurrent_procs):
             out_file = '%s/output.%s' % (run_dir, i)
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
-            p = common.pdsh(settings.getnodes('clients'), '%s -c %s -p rados-bench-`hostname -s`-%s %s bench %s %s %s --no-cleanup 2> %s > %s' % (self.cmd_path_full, self.tmp_conf, i, op_size_str, self.time, mode, concurrent_ops_str, objecter_log, out_file))
+            # default behavior is to use a single storage pool 
+            pool_name = 'rados-bench-cbt'
+            run_name = '--run-name `hostname -s`-%s'%i
+            if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
+                pool_name = 'rados-bench-`hostname -s`-%s'%i
+                run_name = ''
+            rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s --no-cleanup 2> %s > %s' % \
+                 (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, run_name, objecter_log, out_file)
+            p = common.pdsh(settings.getnodes('clients'), rados_bench_cmd)
             ps.append(p)
         for p in ps:
             p.wait()
@@ -106,11 +115,15 @@ class Radosbench(Benchmark):
 
     def mkpools(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
-        for i in xrange(self.concurrent_procs):
-            for node in settings.getnodes('clients').split(','):
-                node = node.rpartition("@")[2]
-                self.cluster.rmpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
-                self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
+        if self.pool_per_proc: # allow use of a separate storage pool per process
+            for i in xrange(self.concurrent_procs):
+                for node in settings.getnodes('clients').split(','):
+                    node = node.rpartition("@")[2]
+                    self.cluster.rmpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
+                    self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
+        else: # the default behavior is to use a single Ceph storage pool for all rados bench processes
+            self.cluster.rmpool('rados-bench-cbt', self.pool_profile)
+            self.cluster.mkpool('rados-bench-cbt', self.pool_profile)
         monitoring.stop()
 
     def recovery_callback(self): 
