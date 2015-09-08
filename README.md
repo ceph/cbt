@@ -2,12 +2,50 @@
 
 ## INTRODUCTION
 
-CBT is a python tool for building a ceph cluster and running benchmarks against
-it. Several benchmarks are supported, included radosbench, fio and cosbench. CBT
-also can record system metrics and profiles using a number of tools including
-perf, collectl, blktrace, and valgrind.  In addition various interesting ceph
-configurations and tests are supported, including automated OSD outages, erasure
-coded pools, and pool cache tier configurations.
+CBT is a testing harness written in python that can automate a variety of tasks
+related to testing the performance of Ceph clusters. CBT does not install Ceph
+packages, it is expected that this will be done prior to utilizing CBT. CBT can
+create OSDs at the beginning of a test run, optionally recreate OSDs between
+test runs, or simply run against an existing cluster. CBT records system
+metrics with collectl, it can optionally collect more information using a
+number of tools including perf, blktrace, and valgrind. In addition to basic
+benchmarks, CBT can also do advanced testing that includes automated OSD
+outages, erasure coded pools, and cache tier configurations. The main benchmark
+modules are explained below.
+
+### radosbench
+
+RADOS bench testing uses the rados binary that comes with the ceph-common
+package. It contains a benchmarking facility that exercises the cluster by way
+of librados, the low level native object storage API provided by Ceph.
+Currently, the RADOS bench module creates a pool for each client.
+
+### librbdfio
+
+The librbdfio benchmark module is the simplest way of testing block storage
+performance of a Ceph cluster. Recent releases of the flexible IO tester (fio)
+provide a RBD ioengine. This allows fio to test block storage performance of
+RBD volumes without KVM/QEMU configuration, through the userland librbd
+libraries. These libraries are the same ones used by the, QEMU backend, so it
+allows a approximation to KVM/QEMU performance.
+
+### kvmrbdfio
+
+The kvmrbdfio benchmark uses the flexible IO tester (fio) to exercise a RBD
+volume that has been attached to a KVM instance. It requires that the instances
+be created and have RBD volumes attached prior to using CBT. This module is
+commonly used to benchmark RBD backed Cinder volumes that have been attached
+to instances created with OpenStack. Alternatively the instances could be
+provisioned using something along the lines of Vagrant or Virtual Machine
+Manager.
+
+### rbdfio
+
+The rbdfio benchmark uses the flexible IO tester (fio) to excercise a RBD
+volume that has been mapped to a block device using the KRBD kernel driver.
+This module is most relevant for simulating the data path for applications
+that need a block device, but wont for whatever reason be ran inside a virtual
+machine.
 
 ## PREREQUISITES
 
@@ -19,6 +57,14 @@ CBT uses several libraries and tools to run:
     transfer
  3. pdsh (and pdcp) - a parallel ssh and scp implementation
  4. ceph - A scalable distributed storage system
+
+Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributations 
+at this time, though the rawhide pdsh packages install and are usable.  The
+RPMs for these packages are available here:
+
+ - ftp://rpmfind.net/linux/fedora/linux/development/rawhide/x86_64/os/Packages/p/pdsh-2.31-4.fc23.x86_64.rpm 
+ - ftp://rpmfind.net/linux/fedora/linux/development/rawhide/x86_64/os/Packages/p/pdsh-rcmd-rsh-2.31-4.fc23.x86_64.rpm
+ - ftp://rpmfind.net/linux/fedora/linux/development/rawhide/x86_64/os/Packages/p/pdsh-rcmd-ssh-2.31-4.fc23.x86_64.rpm
 
 Optional tools and benchmarks can be used if desired:
 
