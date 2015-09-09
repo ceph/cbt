@@ -124,7 +124,7 @@ class CephTestRados(Benchmark):
         monitoring.stop()
 
     def recovery_callback(self): 
-        common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados', continue_if_error=True).communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(CephTestRados, self).__str__())
