@@ -84,7 +84,7 @@ class LibrbdFio(Benchmark):
             p = common.pdsh(settings.getnodes('clients'), pre_cmd)
             ps.append(p)
         for p in ps:
-            p.wait()
+            p.communicate()
         return True
 
     def run(self):
@@ -112,7 +112,7 @@ class LibrbdFio(Benchmark):
             p = common.pdsh(settings.getnodes('clients'), fio_cmd)
             ps.append(p)
         for p in ps:
-            p.wait()
+            p.communicate()
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
