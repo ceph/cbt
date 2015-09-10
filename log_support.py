@@ -1,5 +1,6 @@
 import logging
-
+import os
+import sys
 import yaml
 
 
@@ -55,12 +56,32 @@ class ColoredFormatter(logging.Formatter):
         record.__dict__ = orig
         return res
 
+# if LOGLEVEL env var not defined, return def_level, 
+# otherwise return user-specified log level
 
-def setup_loggers(def_level=logging.DEBUG, log_fname=None):
+def loglevel_from_env_var(def_level):
+    level = def_level
+    loglevel_env_var = os.getenv('LOGLEVEL')
+    loglevel_choices = { 
+        'INFO':logging.INFO,
+        'DEBUG':logging.DEBUG,
+        'WARN':logging.WARN,
+        'ERROR':logging.ERROR
+    }
+    if loglevel_env_var:
+        try:
+            level = loglevel_choices[loglevel_env_var]
+        except KeyError as e:
+            print('LOGLEVEL env.var. can be one of: INFO, DEBUG, WARN, ERROR')
+            sys.exit(1)
+    return level
+
+def setup_loggers(def_level=logging.INFO, log_fname=None):
     logger = logging.getLogger('cbt')
     logger.setLevel(logging.DEBUG)
     sh = logging.StreamHandler()
-    sh.setLevel(def_level)
+    level = loglevel_from_env_var(def_level)
+    sh.setLevel(level)
 
     log_format = '%(asctime)s - %(levelname)s - %(name)-15s - %(message)s'
     colored_formatter = ColoredFormatter(log_format, datefmt="%H:%M:%S")
