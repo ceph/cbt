@@ -1,8 +1,7 @@
 import logging
-import os
+
 import yaml
 
-has_a_tty = os.isatty(1) # test stdout
 
 def load_run_params(run_params_file):
     with open(run_params_file) as fd:
@@ -29,9 +28,8 @@ class ColoredFormatter(logging.Formatter):
     colors = {
         'WARNING': color_me(YELLOW),
         'DEBUG': color_me(BLUE),
-        'CRITICAL': color_me(RED),
-        'ERROR': color_me(RED),
-        'INFO': color_me(GREEN)
+        'CRITICAL': color_me(YELLOW),
+        'ERROR': color_me(RED)
     }
 
     def __init__(self, msg, use_color=True, datefmt=None):
@@ -44,7 +42,7 @@ class ColoredFormatter(logging.Formatter):
         levelname = record.levelname
 
         prn_name = levelname + ' ' * (8 - len(levelname))
-        if (levelname in self.colors) and has_a_tty:
+        if levelname in self.colors:
             record.levelname = self.colors[levelname](prn_name)
         else:
             record.levelname = prn_name
