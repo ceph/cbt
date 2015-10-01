@@ -37,6 +37,7 @@ class RbdFio(Benchmark):
         self.random_distribution = config.get('random_distribution', None)
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options', 'share')
+        self.osd_ra = config.get('osd_ra', 128)
         self.client_ra = config.get('client_ra', 128)
         self.poolname = "cbt-kernelrbdfio"
 
