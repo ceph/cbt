@@ -1,6 +1,11 @@
 #!/bin/bash
 
 SYSPART=`df | grep "/$" | cut -d" " -f1 | cut -d"/" -f3`
+if [[ $SYSPART=="mapper" ]]
+then
+        echo "System disk is on an LVM - determining underlying block device..."
+        SYSPART=`pvscan | grep -i root | awk -F " " '{print $2}' | awk -F "/" '{print $3}' | cut -c1,2,3`
+fi
 diskid='wwn'
 echo "System on $SYSPART"
 
