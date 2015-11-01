@@ -95,7 +95,7 @@ to run cbt must be able to issue passwordless ssh commands as the specified
 user.  This can be accomplished by creating a passwordless ssh key:
 
 ```bash
-sshkey-gen -t dsa
+ssh-keygen -t dsa
 ```
 
 and copying the resulting public key in the ~/.ssh to the ~/.ssh/authorized_key
@@ -113,6 +113,13 @@ may be acommplished by running visudo and adding something like:
 
 Where `<user>` is the user that will have password sudo access.  
 Please see your OS documentation for specific details.
+
+In addition to the above, it will be required to add all osds and mons into the
+list of known hosts for ssh in order to perform properly. Otherwise, the
+benchmarking tests will not be able to run.
+
+Note that the pdsh command could have difficulties if the sudoers file requires
+tty. If this is the case, commend out the `Defaults requiretty` line in visudo.
 
 ## DISK PARTITIONING
 
