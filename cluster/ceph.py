@@ -21,6 +21,7 @@ class Ceph(Cluster):
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
+        self.ceph_mds_cmd = config.get('ceph-mds_cmd', '/usr/bin/ceph-mds')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
@@ -39,6 +40,7 @@ class Ceph(Cluster):
         self.osd_valgrind = config.get('osd_valgrind', None)
         self.mon_valgrind = config.get('mon_valgrind', None)
         self.rgw_valgrind = config.get('rgw_valgrind', None)
+        self.mds_valgrind = config.get('mds_valgrind', None)
         self.tiering = config.get('tiering', False)
         self.ruleset_map = {}
         self.cur_ruleset = 1
@@ -82,6 +84,7 @@ class Ceph(Cluster):
         self.make_mons()
         self.make_osds()
         self.start_rgw()
+        self.make_mdss()
         monitoring.stop()
 
         # Check Health
@@ -209,6 +212,43 @@ class Ceph(Cluster):
                 else:
                     cmd = '%s %s' % (self.ceph_run_cmd, cmd)
                 common.pdsh(monhost, 'sudo %s' % cmd).communicate()
+
+    def make_mdss(self):
+        # Build and distribute the keyring
+        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mds. %s --cap mds \'allow *\'' % self.keyring_fn).communicate()
+        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow %s' % self.keyring_fn).communicate()
+        common.rscp(settings.getnodes('head'), self.keyring_fn, '%s.tmp' % self.keyring_fn).communicate()
+        common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds'), '', '%s.tmp' % self.keyring_fn, self.keyring_fn).communicate()
+
+        # Build the monmap, retrieve it, and distribute it
+        mdss = settings.getnodes('mdss').split(',')
+        mdshosts = settings.cluster.get('mdss')
+        logger.info(mdshosts)
+
+        # Build the ceph-mdss
+        user = settings.cluster.get('user')
+        for mdshost, mdss in mdshosts.iteritems():
+            if user:
+                mdshost = '%s@%s' % (user, mdshost)
+            for mds, addr in mdss.iteritems():
+                common.pdsh(mdshost, 'sudo rm -rf %s/mds.%s' % (self.tmp_dir, mds)).communicate()
+                common.pdsh(mdshost, 'mkdir -p %s/mds.%s' % (self.tmp_dir, mds)).communicate()
+                common.pdsh(mdshost, 'sudo sh -c "ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s"' % (self.ceph_mds_cmd, self.tmp_conf, mds, self.keyring_fn)).communicate()
+                common.pdsh(mdshost, 'cp %s %s/mds.%s/keyring' % (self.keyring_fn, self.tmp_dir, mds)).communicate()
+            
+        # Start the mdss
+        for mdshost, mdss in mdshosts.iteritems():
+            if user:
+                mdshost = '%s@%s' % (user, mdshost)
+            for mds, addr in mdss.iteritems():
+                pidfile="%s/%s.pid" % (self.pid_dir, mdshost)
+                cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mds_cmd, self.tmp_conf, mds, self.keyring_fn, pidfile)
+                if self.mds_valgrind:
+                    cmd = "%s %s" % (common.setup_valgrind(self.mds_valgrind, 'mds.%s' % mdshost, self.tmp_dir), cmd)
+                else:
+                    cmd = '%s %s' % (self.ceph_run_cmd, cmd)
+                common.pdsh(mdshost, 'sudo %s' % cmd).communicate()
+
 
     def make_osds(self):
         osdnum = 0
