@@ -32,19 +32,21 @@ class LibrbdFio(Benchmark):
         self.log_avg_msec = config.get('log_avg_msec', None)
 #        self.ioengine = config.get('ioengine', 'libaio')
         self.op_size = config.get('op_size', 4194304)
+        self.bssplit = config.get('bssplit', None)
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
         self.vol_order = config.get('vol_order', 22)
         self.volumes_per_client = config.get('volumes_per_client', 1)
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
+        self.norandommap = config.get('norandommap', False);
         self.rate_iops = config.get('rate_iops', None)
         self.poolname = "cbt-librbdfio"
         self.use_existing_volumes = config.get('use_existing_volumes', False)
 
 	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
+        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s/readmix-%d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode, int(self.rwmixread))
+        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s/readmix-%d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode, int(self.rwmixread))
 
         # Make the file names string (repeated across volumes)
         self.names = ''
@@ -140,7 +142,11 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --ramp_time=%s' % self.ramp
         fio_cmd += ' --numjobs=%s' % self.numjobs
         fio_cmd += ' --direct=1'
-        fio_cmd += ' --bs=%dB' % self.op_size
+        #Testing block split for "Cassandra" workload
+        if self.bssplit is not None:
+            fio_cmd += '--bssplit=%s' % self.bssplit
+        else:
+            fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
         fio_cmd += ' --end_fsync=%s' % self.end_fsync
 #        if self.vol_size:
@@ -152,6 +158,8 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:
             fio_cmd += ' --random_distribution=%s' % self.random_distribution
+        if (self.norandommap == True):
+            fio_cmd += ' --norandommap'
         if self.log_avg_msec is not None:
             fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
         if self.rate_iops is not None:
