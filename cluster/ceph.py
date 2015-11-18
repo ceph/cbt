@@ -233,7 +233,7 @@ class Ceph(Cluster):
             for mds, addr in mdss.iteritems():
                 common.pdsh(mdshost, 'sudo rm -rf %s/mds.%s' % (self.tmp_dir, mds)).communicate()
                 common.pdsh(mdshost, 'mkdir -p %s/mds.%s' % (self.tmp_dir, mds)).communicate()
-                common.pdsh(mdshost, 'sudo sh -c "ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s"' % (self.ceph_mds_cmd, self.tmp_conf, mds, self.keyring_fn)).communicate()
+                #common.pdsh(mdshost, 'sudo sh -c "ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s"' % (self.ceph_mds_cmd, self.tmp_conf, mds, self.keyring_fn)).communicate()
                 common.pdsh(mdshost, 'cp %s %s/mds.%s/keyring' % (self.keyring_fn, self.tmp_dir, mds)).communicate()
             
         # Start the mdss
