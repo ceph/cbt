@@ -1,0 +1,102 @@
+cluster:
+  user: 'cbt'
+  head: "cadmin"
+  clients: ["cadmin"]
+  osds: ["inf1", "inf2", "inf3"]
+  mons: 
+    inf1:
+      a: "192.168.110.51:6789"
+    inf2:
+      b: "192.168.110.52:6789"
+    inf3:
+      c: "192.168.110.53:6789"
+  mdss: 
+    inf1:
+      a: "192.168.110.51"
+    inf2:
+      b: "192.168.110.52"
+    inf3:
+      c: "192.168.110.53"
+  rgws: ["inf1", "inf2", "inf3"]
+  osds_per_node: 1
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048 -n size=64k'
+  mount_opts: '-o inode64,noatime,logbsize=256k'
+  conf_file: '/home/cbt/cbt/runs/test5.ceph.conf'
+  iterations: 1
+  #rebuild_every_test: False
+  use_existing: False
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  pool_profiles:
+    rbd:
+      pg_size: 64
+      pgp_size: 64
+      replication: 2
+benchmarks:
+  librbdfio:
+    time: 300
+    vol_size: 512
+    #mode: [read, write, randread, randwrite]
+    mode: [read]
+    #op_size: [4194304, 2097152, 1048576]
+    op_size: [8192]
+    concurrent_procs: [8]
+    procs_per_volume: 8
+    iodepth: [64]
+    osd_ra: [4096]
+    cmd_path: '/usr/local/bin/fio'
+    pool_profile: 'rbd'
+  radosbench:
+    osd_ra: [4096]
+    op_size: 4194304
+    write_only: False
+    time: 300
+    concurrent_ops: 128
+    concurrent_procs: 8
+    use_existing: True
+    pool_profile: replicated
+  rbdfio:
+    time: 10
+    vol_size: 1024
+    mode: ['read', 'write']
+    rwmixread: 50
+    op_size: [4096]
+    concurrent_procs: [8]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/usr/local/bin/fio'
+    pool_profile: 'rbd'
+    log_avg_msec: 100
+  cephfsfio:
+    monaddr_mountpoint: '192.168.110.51,192.168.110.52,192.168.110.53:/'
+    time: 10
+    vol_size: 1024
+    mode: ['read', 'write']
+    rwmixread: 50
+    op_size: [4096]
+    concurrent_procs: [1]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/usr/local/bin/fio'
+    pool_profile: 'rbd'
+    log_avg_msec: 100
+  cosbench:
+    obj_size: [64KB]
+    osd_ra: [4096]
+    workers: 1
+    containers_max: 10
+    objects_max: 100
+    mode: [write]
+    cosbench_dir: '/home/cbt/cb/0.4.1.0' 
+    cosbench_xml_dir: '/home/cbt/cb/xml_dir'
+    controller: "cadmin"
+    auth:
+     config: username=cosbench:operator;password=intel2012;url=http://192.168.110.51:7480/auth/v1.0;retry=9
+    template: [default]
+    rampup: 10
+    runtime: 100
+    rampdown: 10
+    containers: ["u(1,100)"]
+    objects: ["u(1,100)"]
+    ratio: [100]

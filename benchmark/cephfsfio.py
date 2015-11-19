@@ -10,15 +10,16 @@ from benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
-class RbdFio(Benchmark):
+class CephFsFio(Benchmark):
 
     def __init__(self, cluster, config):
-        super(RbdFio, self).__init__(cluster, config)
+        super(CephFsFio, self).__init__(cluster, config)
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         self.pool_profile = config.get('pool_profile', 'default')
 
+        self.monaddr_mountpoint = config.get('monaddr_mountpoint')
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
         self.time =  str(config.get('time', None))
@@ -38,15 +39,16 @@ class RbdFio(Benchmark):
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options', 'share')
         self.client_ra = config.get('client_ra', 128)
-        self.poolname = "cbt-kernelrbdfio"
+        self.datapoolname = "cbt-kernelcephfsfiodata"
+        self.metadatapoolname = "cbt-kernelcephfsfiometadata"
 
-        self.run_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
+        self.run_dir = '%s/cephfsfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
+        self.out_dir = '%s/cephfsfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
 
         # Make the file names string
         self.names = ''
         for i in xrange(self.concurrent_procs):
-            self.names += '--name=%s/cbt-kernelrbdfio-`hostname -s`/cbt-kernelrbdfio-%d ' % (self.cluster.mnt_dir, i)
+            self.names += '--name=%s/cbt-kernelcephfsfio-`hostname -s`/cbt-kernelcephfsfio-%d ' % (self.cluster.mnt_dir, i)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -55,7 +57,7 @@ class RbdFio(Benchmark):
         return False
 
     def initialize(self): 
-        super(RbdFio, self).initialize()
+        super(CephFsFio, self).initialize()
 
         logger.info('Running scrub monitoring.')
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
@@ -83,10 +85,10 @@ class RbdFio(Benchmark):
 
 
     def run(self):
-        super(RbdFio, self).run()
+        super(CephFsFio, self).run()
 
         # Set client readahead
-        self.set_client_param('read_ahead_kb', self.client_ra)
+        #self.set_client_param('read_ahead_kb', self.client_ra)
 
         # We'll always drop caches for rados bench
         self.dropcaches()
@@ -125,7 +127,7 @@ class RbdFio(Benchmark):
         fio_cmd += ' %s > %s' % (self.names, out_file)
         if self.log_avg_msec is not None:
             fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
-        logger.info('Running rbd fio %s test.', self.mode)
+        logger.info('Running cephfs fio %s test.', self.mode)
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
 
         # If we were doing recovery, wait until it's done.
@@ -139,26 +141,28 @@ class RbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def cleanup(self):
-        super(RbdFio, self).cleanup()
-        common.pdsh(settings.getnodes('clients'), 'sudo umount %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo rbd unmap cbt-kernelrbdfio-`hostname -s` --pool %s' % self.poolname).communicate()
-        common.pdsh(settings.getnodes('clients'), '/usr/bin/rbd rm cbt-kernelrbdfio-`hostname -s` --pool %s' % self.poolname).communicate()
+        super(CephFsFio, self).cleanup()
+	common.pdsh(settings.getnodes('clients'), 'sudo umount %s/cbt-kernelcephfsfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
 
-    def set_client_param(self, param, value):
-        common.pdsh(settings.getnodes('clients'), 'find /sys/block/rbd* -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
+    #def set_client_param(self, param, value):
+	#Not needed because this is no longer a rbd benchmark
+        #common.pdsh(settings.getnodes('clients'), 'find /sys/block/rbd* -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RbdFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(CephFsFio, self).__str__())
 
     def mkimages(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
-        self.cluster.rmpool(self.poolname, self.pool_profile)
-        self.cluster.mkpool(self.poolname, self.pool_profile)
-        common.pdsh(settings.getnodes('clients'), '/usr/bin/rbd create cbt-kernelrbdfio-`hostname -s` --size %s --pool %s' % (self.vol_size, self.poolname)).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo rbd map cbt-kernelrbdfio-`hostname -s` --pool %s --id admin' % self.poolname).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo mkfs.xfs /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s`').communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo mkdir -p -m0755 -- %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s` %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
+        self.cluster.rmpool(self.datapoolname, self.pool_profile)
+        self.cluster.rmpool(self.metadatapoolname, self.pool_profile)
+        self.cluster.mkpool(self.datapoolname, self.pool_profile)
+        self.cluster.mkpool(self.metadatapoolname, self.pool_profile)
+	stdout, self.adminkeyerror = common.pdsh(settings.getnodes('head'), 'ceph-authtool /tmp/cbt/ceph/keyring -p').communicate()
+	self.adminkey = stdout.split(':')[1]
+	self.adminkey = self.adminkey.strip()
+	common.pdsh(settings.getnodes('head'), 'ceph -c /tmp/cbt/ceph/ceph.conf fs new testfs %s %s' % (self.metadatapoolname, self.datapoolname)).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo mkdir -p -m0755 -- %s/cbt-kernelcephfsfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo mount -t ceph %s %s/cbt-kernelcephfsfio-`hostname -s` -o name=admin,secret=%s' % (self.monaddr_mountpoint, self.cluster.mnt_dir, self.adminkey)).communicate()
         monitoring.stop()
 
     def recovery_callback(self): 

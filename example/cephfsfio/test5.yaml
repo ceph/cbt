@@ -1,0 +1,49 @@
+cluster:
+  user: 'cbt'
+  head: "cadmin"
+  clients: ["cadmin"]
+  osds: ["inf1", "inf2", "inf3"]
+  mons: 
+    inf1:
+      a: "192.168.110.51:6789"
+    inf2:
+      b: "192.168.110.52:6789"
+    inf3:
+      c: "192.168.110.53:6789"
+  mdss: 
+    inf1:
+      a: "192.168.110.51"
+    inf2:
+      b: "192.168.110.52"
+    inf3:
+      c: "192.168.110.53"
+  rgws: ["inf1", "inf2", "inf3"]
+  osds_per_node: 1
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048 -n size=64k'
+  mount_opts: '-o inode64,noatime,logbsize=256k'
+  conf_file: '/home/cbt/cbt/runs/test5.ceph.conf'
+  iterations: 1
+  #rebuild_every_test: False
+  use_existing: False
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  pool_profiles:
+    rbd:
+      pg_size: 64
+      pgp_size: 64
+      replication: 2
+benchmarks:
+  cephfsfio:
+    monaddr_mountpoint: '192.168.110.51,192.168.110.52,192.168.110.53:/'
+    time: 10
+    vol_size: 1024
+    mode: ['read', 'write']
+    rwmixread: 50
+    op_size: [4096]
+    concurrent_procs: [1]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/usr/local/bin/fio'
+    pool_profile: 'rbd'
+    log_avg_msec: 100

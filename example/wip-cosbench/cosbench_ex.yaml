@@ -1,0 +1,47 @@
+cluster:
+  user: 'cbt'
+  head: "cadmin"
+  clients: ["cadmin"]
+  osds: ["inf1", "inf2", "inf3"]
+  mons: 
+    inf1:
+      a: "192.168.110.51:6789"
+    inf2:
+      b: "192.168.110.52:6789"
+    inf3:
+      c: "192.168.110.53:6789"
+  rgws: ["inf1", "inf2", "inf3"]
+  osds_per_node: 1
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048 -n size=64k'
+  mount_opts: '-o inode64,noatime,logbsize=256k'
+  conf_file: '/home/cbt/cbt/runs/test2.ceph.conf'
+  iterations: 1
+  use_existing: True
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  pool_profiles:
+    rbd:
+      pg_size: 64
+      pgp_size: 64
+      replication: 2
+benchmarks:
+   cosbench:
+     obj_size: [64KB]
+     osd_ra: [4096]
+     workers: 1
+     containers_max: 10
+     objects_max: 100
+     mode: [write]
+     cosbench_dir: '/home/cbt/cb/0.4.1.0' 
+     cosbench_xml_dir: '/home/cbt/cb/xml_dir'
+     controller: "cadmin"
+     auth:
+      config: username=cosbench:operator;password=intel2012;url=http://192.168.110.51:7480/auth/v1.0;retry=9
+     template: [default]
+     rampup: 10
+     runtime: 100
+     rampdown: 10
+     containers: ["u(1,100)"]
+     objects: ["u(1,100)"]
+     ratio: [100]
