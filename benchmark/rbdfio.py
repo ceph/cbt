@@ -140,6 +140,9 @@ class RbdFio(Benchmark):
 
     def cleanup(self):
         super(RbdFio, self).cleanup()
+        common.pdsh(settings.getnodes('clients'), 'sudo umount %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo rbd unmap cbt-kernelrbdfio-`hostname -s` --pool %s' % self.poolname).communicate()
+        common.pdsh(settings.getnodes('clients'), '/usr/bin/rbd rm cbt-kernelrbdfio-`hostname -s` --pool %s' % self.poolname).communicate()
 
     def set_client_param(self, param, value):
         common.pdsh(settings.getnodes('clients'), 'find /sys/block/rbd* -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
