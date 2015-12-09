@@ -36,6 +36,9 @@ def stop(directory=None):
 
 
 def make_movies(directory):
+    use_existing = settings.cluster.get('use_existing', True)
+    if use_existing:
+        return None
     sc = settings.cluster
     seekwatcher = '/home/%s/bin/seekwatcher' % sc.get('user')
     blktrace_dir = '%s/blktrace' % directory
