@@ -194,6 +194,9 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
 
     def setup_fs(self):
+        use_existing = settings.cluster.get('use_existing', True)
+        if use_existing:
+            return None
         sc = settings.cluster
         fs = sc.get('fs')
         mkfs_opts = sc.get('mkfs_opts', '')
