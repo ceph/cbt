@@ -7,6 +7,7 @@ def start(directory):
     collectl_dir = '%s/collectl' % directory
     # perf_dir = '%s/perf' % directory
     # blktrace_dir = '%s/blktrace' % directory
+    emon_dir = '%s/emon' % directory
 
     # collectl
     common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
@@ -22,6 +23,10 @@ def start(directory):
     #     common.pdsh(osds, 'cd %s;sudo blktrace -o device%s -d /dev/disk/by-partlabel/osd-device-%s-data'
     #                 % (blktrace_dir, device, device))
 
+    # emon
+    common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % emon_dir)
+    common.pdsh(nodes, 'emon -i hsw-ep-events.txt -f %s' % emon_dir)
+
 
 def stop(directory=None):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
@@ -29,6 +34,7 @@ def stop(directory=None):
     common.pdsh(nodes, 'pkill -SIGINT -f collectl').communicate()
     common.pdsh(nodes, 'sudo pkill -SIGINT -f perf_3.6').communicate()
     common.pdsh(settings.getnodes('osds'), 'sudo pkill -SIGINT -f blktrace').communicate()
+    common.pdsh(settings.getnodes('osds'), 'sudo emon -stop').communicate()
     if directory:
         sc = settings.cluster
         common.pdsh(nodes, 'cd %s/perf;sudo chown %s.%s perf.data' % (directory, sc.get('user'), sc.get('user')))
