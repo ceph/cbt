@@ -169,7 +169,8 @@ class LibrbdFio(Benchmark):
           for node in settings.getnodes('clients').split(','):
               for volnum in xrange(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]
-                  common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s-%d --size %s --pool %s --order %s' % (node, volnum, self.vol_size, self.poolname, self.vol_order)).communicate()
+#                  common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s-%d --size %s --pool %s --order %s' % (node, volnum, self.vol_size, self.poolname, self.vol_order)).communicate()
+                  self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.poolname, self.vol_order)
         monitoring.stop()
 
     def recovery_callback(self): 
