@@ -46,7 +46,7 @@ def make_remote_dir(remote_dir):
 
 
 def sync_files(remote_dir, local_dir):
-    nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
+    nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds', 'coscontrollers')
 
     if not os.path.exists(local_dir):
         os.makedirs(local_dir)

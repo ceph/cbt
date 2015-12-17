@@ -41,6 +41,10 @@ class LibrbdFio(Benchmark):
         self.rate_iops = config.get('rate_iops', None)
         self.poolname = "cbt-librbdfio"
         self.use_existing_volumes = config.get('use_existing_volumes', False)
+	self.latency_tune = config.get('latency_tune', None)
+	self.latency_target = config.get('latency_target', 10000000)
+	self.latency_window = config.get('latency_window', 50000000)
+	self.latency_percentile = config.get('latency_percentile', 50.0)
 
 	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
@@ -156,6 +160,9 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
         if self.rate_iops is not None:
             fio_cmd += ' --rate_iops=%s' % self.rate_iops
+	if self.latency_tune is not None:
+	    fio_cmd += ' --latency_target=%s --latency_window=%s --latency_percentile=%s' % (self.latency_target, self.latency_window, self.latency_percentile)
+		
 
         # End the fio_cmd
         fio_cmd += ' %s > %s' % (self.names, out_file)
