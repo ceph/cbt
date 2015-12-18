@@ -22,6 +22,7 @@ class Ceph(Cluster):
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
+        self.rbd_cmd = config.get('rbd_cmd', '/usr/bin/rbd')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
@@ -437,6 +438,10 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
 #        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
+
+    def mkimage(self, name, size, pool, order):
+        common.pdsh(settings.getnodes('head'), '%s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, name, size, pool, order)).communicate()
+
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
         threading.Thread.__init__(self)
