@@ -76,6 +76,7 @@ class RbdFio(Benchmark):
 
         # populate the fio files
         logger.info('Attempting to populating fio files...')
+        size = self.vol_size * 0.9 / self.concurrent_procs
         pre_cmd = 'sudo %s --ioengine=%s --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.ioengine, self.numjobs, self.vol_size*0.9, self.names)
         common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
 
