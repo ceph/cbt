@@ -490,9 +490,6 @@ class Ceph(Cluster):
         else:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size)).communicate()
 
-        logger.info('Checking Healh after pool creation.')
-        self.check_health()
-
         if replication and replication.isdigit():
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication)).communicate()
             logger.info('Checking Health after setting pool replication level.')
