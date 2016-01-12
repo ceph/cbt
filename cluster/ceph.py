@@ -31,6 +31,7 @@ class Ceph(Cluster):
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
         self.use_existing = config.get('use_existing', True)
+        self.newstore_block = config.get('newstore_block', False)
 
         # If making the cluster, use the ceph.conf file distributed by initialize to the tmp_dir
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
@@ -153,8 +154,14 @@ class Ceph(Cluster):
             else: 
                 # do mkfs and mount in 1 long command
                 # alternative is to wait until make_osds to mount it
-                mkfs_cmd='sudo sh -c "mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data ; ' % (fs, mkfs_opts, device)
-                mkfs_cmd += 'mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data"' % (mount_opts, fs, device, self.mnt_dir, device)
+                mkfs_cmd='sudo sh -c "mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)
+                mkfs_cmd += '; mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, fs, device, self.mnt_dir, device)
+                
+                # make a symlink for block if using newstore+block
+                if self.newstore_block:
+                    mkfs_cmd += ' ; sudo ln -s /dev/disk/by-partlabel/osd-device-%s-block %s/osd-device-%s-data/block' % (device, self.mnt_dir, device)
+                mkfs_cmd += '"'
+
                 mkfs_threads.append((device, common.pdsh(osds, mkfs_cmd)))
         for device, t in mkfs_threads:  # for tmpfs and zfs cases, thread list is empty
             logger.info('for device %d on all hosts awaiting mkfs and mount'%device)
