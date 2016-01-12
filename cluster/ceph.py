@@ -245,8 +245,9 @@ class Ceph(Cluster):
                     cmd = "%s %s" % (common.setup_valgrind(self.osd_valgrind, 'osd.%d' % osdnum, self.tmp_dir), cmd)
                 else:
                     cmd = '%s %s' % (self.ceph_run_cmd, cmd)
+                stderr_file = "%s/osd.%d.stderr" % (self.tmp_dir, osdnum)
 
-                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s 2> %s"' % (cmd, stderr_file)).communicate()
                 osdnum = osdnum+1
 
 
