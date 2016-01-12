@@ -92,7 +92,8 @@ class Ceph(Cluster):
         self.check_health()
         monitoring.stop()
 
-        # Wait for initial scrubbing to complete (This should only matter on pre-dumpling clusters)
+        # Disable scrub and wait for any scrubbing to complete 
+        self.disable_scrub()
         self.check_scrub()
 
         # Make the crush and erasure profiles
@@ -265,6 +266,9 @@ class Ceph(Cluster):
 
             common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
+
+    def disable_scrub(self):
+        common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
 
     def check_health(self, check_list=None, logfile=None):
         logline = ""
