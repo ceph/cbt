@@ -22,6 +22,7 @@ class Ceph(Cluster):
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
+        self.rados_cmd = config.get('rados_cmd', '/usr/bin/rados')
         self.rbd_cmd = config.get('rbd_cmd', '/usr/bin/rbd')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
@@ -375,6 +376,8 @@ class Ceph(Cluster):
         erasure_profile = profile.get('erasure_profile', '')
         replication = str(profile.get('replication', None))
         cache_profile = profile.get('cache_profile', None)
+
+        # Options for cache tiering
         crush_profile = profile.get('crush_profile', None)
         cache_mode = profile.get('cache_mode', None)
         hit_set_type = profile.get('hit_set_type', None)
@@ -383,6 +386,11 @@ class Ceph(Cluster):
         target_max_objects = profile.get('target_max_objects', None)
         target_max_bytes = profile.get('target_max_bytes', None)
         min_read_recency_for_promote = profile.get('min_read_recency_for_promote', None)
+
+        # Options for prefilling objects
+        prefill_objects = profile.get('prefill_objects', 0)
+        prefill_object_size = profile.get('prefill_object_size', 0)
+        prefill_time = profile.get('prefill_time', 0)
 
 #        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
         common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
@@ -395,6 +403,10 @@ class Ceph(Cluster):
         logger.info('Checking Healh after pool creation.')
         self.check_health()
 
+        if prefill_objects > 0 or prefill_time > 0:
+            logger.info('prefilling %s %sbyte objects into pool %s' % (prefill_objects, prefill_object_size, name))
+            common.pdsh(settings.getnodes('head'), 'sudo %s -p %s bench %s write -b %s --max-objects %s --no-cleanup' % (self.rados_cmd, name, prefill_time, prefill_object_size, prefill_objects)).communicate()
+            
         if replication and replication.isdigit():
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication)).communicate()
             logger.info('Checking Health after setting pool replication level.')
@@ -438,7 +450,7 @@ class Ceph(Cluster):
 
             # flush and remove the overlay and such
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd tier cache-mode %s forward' % (self.ceph_cmd, self.tmp_conf, cache_name)).communicate()
-            common.pdsh(settings.getnodes('head'), 'sudo rados -c %s -p %s cache-flush-evict-all' % (self.tmp_conf, cache_name)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s -p %s cache-flush-evict-all' % (self.rados_cmd, self.tmp_conf, cache_name)).communicate()
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd tier remove-overlay %s' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd tier remove %s %s' % (self.ceph_cmd, self.tmp_conf, name, cache_name)).communicate()
 
