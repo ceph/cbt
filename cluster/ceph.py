@@ -403,13 +403,14 @@ class Ceph(Cluster):
         logger.info('Checking Healh after pool creation.')
         self.check_health()
 
-        if prefill_objects > 0 or prefill_time > 0:
-            logger.info('prefilling %s %sbyte objects into pool %s' % (prefill_objects, prefill_object_size, name))
-            common.pdsh(settings.getnodes('head'), 'sudo %s -p %s bench %s write -b %s --max-objects %s --no-cleanup' % (self.rados_cmd, name, prefill_time, prefill_object_size, prefill_objects)).communicate()
-            
         if replication and replication.isdigit():
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication)).communicate()
             logger.info('Checking Health after setting pool replication level.')
+            self.check_health()
+
+        if prefill_objects > 0 or prefill_time > 0:
+            logger.info('prefilling %s %sbyte objects into pool %s' % (prefill_objects, prefill_object_size, name))
+            common.pdsh(settings.getnodes('head'), 'sudo %s -p %s bench %s write -b %s --max-objects %s --no-cleanup' % (self.rados_cmd, name, prefill_time, prefill_object_size, prefill_objects)).communicate()
             self.check_health()
 
         if base_name and cache_mode:
