@@ -38,6 +38,7 @@ class RbdFio(Benchmark):
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options', 'share')
         self.client_ra = config.get('client_ra', 128)
+        self.direct = config.get('direct', 1)
         self.poolname = "cbt-kernelrbdfio"
 
         self.run_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
@@ -110,7 +111,7 @@ class RbdFio(Benchmark):
         if self.ramp is not None:
             fio_cmd += ' --ramp_time=%s' % self.ramp
         fio_cmd += ' --numjobs=%s' % self.numjobs
-        fio_cmd += ' --direct=1'
+        fio_cmd += ' --direct=%s' % self.direct
         fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
         if self.vol_size:
