@@ -311,6 +311,15 @@ class Ceph(Cluster):
     def set_osd_param(self, param, value):
         common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
 
+    def collect_ceph_configs(self, run_dir, marker):
+        path = run_dir + '/' + marker
+        common.pdsh(settings.getnodes('head'), 'mkdir -p %s'% path)
+        common.pdsh(settings.getnodes('head'), '%s -c %s report > %s/ceph_report.txt'%( self.ceph_cmd, self.tmp_conf, path))
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd getcrushmap | crushtool -d - -o %s/crush_map'%( self.ceph_cmd, self.tmp_conf, path))
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd perf > %s/ceph_osd_perf.txt'%( self.ceph_cmd, self.tmp_conf, path))
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd df plain > %s/ceph_osd_df.txt'%( self.ceph_cmd, self.tmp_conf, path))
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd pool ls detail > %s/ceph_pool_ls.txt'%( self.ceph_cmd, self.tmp_conf, path))
+
 
     def __str__(self):
         return "foo"

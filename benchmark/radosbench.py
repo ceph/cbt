@@ -57,7 +57,6 @@ class Radosbench(Benchmark):
 
     def run(self):
         super(Radosbench, self).run()
-        
         # Remake the pools
         self.mkpools()
 
@@ -86,6 +85,7 @@ class Radosbench(Benchmark):
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
         # Run rados bench
+        self.cluster.collect_ceph_configs(run_dir, "ceph_settings_before")
         monitoring.start(run_dir)
         logger.info('Running radosbench read test.')
         ps = []
@@ -105,6 +105,7 @@ class Radosbench(Benchmark):
         for p in ps:
             p.wait()
         monitoring.stop(run_dir)
+        self.cluster.collect_ceph_configs(run_dir, "ceph_settings_after")
 
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
