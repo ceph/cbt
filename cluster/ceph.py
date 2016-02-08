@@ -237,6 +237,7 @@ class Ceph(Cluster):
         nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
         conf_file = self.config.get("conf_file")
         logger.info("Distributing %s.", conf_file)
+        common.pdsh(nodes, 'mkdir -p -m0755 /etc/ceph').communicate()
         common.pdcp(nodes, '', conf_file, self.tmp_conf).communicate()
         common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak').communicate()
         common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
@@ -551,7 +552,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 
     def mkimage(self, name, size, pool, order):
-        common.pdsh(settings.getnodes('head'), '%s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, name, size, pool, order)).communicate()
+        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, poo    l, order)).communicate()
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
