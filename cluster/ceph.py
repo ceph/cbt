@@ -552,7 +552,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 
     def mkimage(self, name, size, pool, order):
-        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, poo    l, order)).communicate()
+        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, order)).communicate()
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
