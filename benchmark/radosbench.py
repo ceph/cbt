@@ -25,11 +25,12 @@ class Radosbench(Benchmark):
         self.pool_per_proc = config.get('pool_per_proc', False)  # default behavior used to be True
         self.write_only = config.get('write_only', False)
         self.op_size = config.get('op_size', 4194304)
-
+        self.object_set_id = config.get('object_set_id', '')
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', '/usr/bin/rados')
+        self.pool = config.get('target_pool', 'rados-bench-cbt')
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -93,8 +94,8 @@ class Radosbench(Benchmark):
             out_file = '%s/output.%s' % (run_dir, i)
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
             # default behavior is to use a single storage pool 
-            pool_name = 'rados-bench-cbt'
-            run_name = '--run-name `hostname -s`-%s'%i
+            pool_name = self.pool
+            run_name = '--run-name %s`hostname -s`-%s'%(self.object_set_id, i)
             if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
                 pool_name = 'rados-bench-`hostname -s`-%s'%i
                 run_name = ''
