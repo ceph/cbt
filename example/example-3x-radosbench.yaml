@@ -5,7 +5,7 @@ cluster:
   mons: ["ceph@mon"]
   osds_per_node: 1
   fs: xfs
-  mkfs_opts: -f -i size=2048 -n size=64k
+  mkfs_opts: -f -i size=2048
   mount_opts: -o inode64,noatime,logbsize=256k
   conf_file: /home/ceph/ceph-tools/cbt/example/ceph.conf
   ceph.conf: /home/ceph/ceph-tools/cbt/example/ceph.conf
