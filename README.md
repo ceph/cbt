@@ -162,7 +162,7 @@ cluster:
       a: "127.0.0.1:6789"
   osds_per_node: 1
   fs: 'xfs'
-  mkfs_opts: '-f -i size=2048 -n size=64k'
+  mkfs_opts: '-f -i size=2048'
   mount_opts: '-o inode64,noatime,logbsize=256k'
   conf_file: '/home/nhm/src/ceph-tools/cbt/newstore/ceph.conf.1osd'
   iterations: 1

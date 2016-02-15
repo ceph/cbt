@@ -8,7 +8,7 @@ cluster:
       a: "192.168.10.2:6789"
   osds_per_node: 4 
   fs: 'xfs'
-  mkfs_opts: '-f -i size=2048 -n size=64k'
+  mkfs_opts: '-f -i size=2048'
   mount_opts: '-o inode64,noatime,logbsize=256k'
   conf_file: '/home/nhm/src/cbt/example/wip-mark-testing/ceph.conf'
   iterations: 1
