@@ -36,8 +36,8 @@ def parse_args(args):
 
 
 def main(argv):
-    setup_loggers()
     ctx = parse_args(argv)
+    setup_loggers(log_fname = ctx.config_file + ".log")
     settings.initialize(ctx)
 
     iteration = 0

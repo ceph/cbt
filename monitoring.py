@@ -10,7 +10,7 @@ def start(directory):
 
     # collectl
     common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
-    common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 -F0 -f %s' % collectl_dir)
+    common.pdsh(nodes, 'collectl -s+CDMJNYZ -o 2cu --utc --plot --rawtoo -i 1:10 -F0 -f %s' % collectl_dir)
 
     # perf
     # common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
