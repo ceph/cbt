@@ -87,7 +87,7 @@ class Radosbench(Benchmark):
 
         # Run rados bench
         monitoring.start(run_dir)
-        logger.info('Running radosbench read test.')
+        logger.info('Running radosbench %s test.' % mode)
         ps = []
         for i in xrange(self.concurrent_procs):
             out_file = '%s/output.%s' % (run_dir, i)
