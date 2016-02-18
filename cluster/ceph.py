@@ -571,6 +571,7 @@ class RecoveryTestThread(threading.Thread):
         self.inhealthtries = 0
         self.maxhealthtries = 60
         self.health_checklist = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
+        self.ceph_cmd = self.cluster.ceph_cmd
 
     def logcmd(self, message):
         return 'echo "[`date`] %s" >> %s/recovery.log' % (message, self.config.get('run_dir'))
