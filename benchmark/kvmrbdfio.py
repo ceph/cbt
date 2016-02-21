@@ -34,6 +34,7 @@ class KvmRbdFio(Benchmark):
         self.rbdadd_options = config.get('rbdadd_options')
         self.client_ra = config.get('client_ra', '128')
         self.fio_cmd = config.get('fio_cmd', '/usr/bin/fio')
+        self.osd_ra = config.get('osd_ra', 4096)
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
