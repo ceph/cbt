@@ -14,7 +14,7 @@ with open('/proc/interrupts','r') as f:
             irq_num_array.append(line.split()[0].strip(':'))
         else:
             pass
-          
+
 #get the number of cpus, hyperthreading and all
 cpu_count = 0
 with open('/proc/cpuinfo','r') as f:
