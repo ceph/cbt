@@ -48,9 +48,8 @@ class Cosbench(Benchmark):
                 pass
         logger.debug("%s", cosconf)
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
-
-	    if not self.use_existing:
-	        user, subuser = cosconf["username"].split(':')
+            if not self.use_existing:
+                user, subuser = cosconf["username"].split(':')
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user create --uid='%s' --display-name='%s'" % (user, user)).communicate()
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser create --uid=%s --subuser=%s --access=full" % (user, cosconf["username"])).communicate()
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin key create --uid=%s --subuser=%s --key-type=swift" % (user, cosconf["username"])).communicate()
@@ -68,6 +67,21 @@ class Cosbench(Benchmark):
         if re.search("AccessDenied", stdout):
             logger.error("Cosbench connect to Radosgw Auth Failed\n%s", stdout)
             sys.exit()
+        #3. check if container and obj created
+        target_name = "%s-%s-%s" % (self.config["obj_size"], self.config["mode"], self.config["objects_max"])
+        container_count = 0
+        stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])).communicate()
+        if stderr != "":
+            self.container_prepared = False
+            return
+
+        for container_name in stdout.split('\n'):
+            if target_name in container_name:
+                container_count += 1
+        if container_count >= int(self.config["containers_max"]):
+            self.container_prepared = True
+        else:
+            self.container_prepared = False
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -76,6 +90,27 @@ class Cosbench(Benchmark):
         return False
 
     def choose_template(self, temp_name, conf):
+        ratio = { "read": 0, "write": 0 }
+        if conf["mode"] == "read" or conf["mode"] == "write":
+            mode = [conf["mode"]]
+            ratio[conf["mode"]] = 100
+        elif conf["mode"]  == "mix":
+            mode = ["read", "write"]
+            ratio["read"] = conf["ratio"]
+            ratio["write"] = 100 - conf["ratio"]
+        else:
+            logger.error("Unknown benchmark mode: %s", conf["mode"])
+            sys.exit()
+
+        operation = []
+        for tmp_mode in mode:
+            operation.append({
+                "config":"containers=%s;objects=%s;cprefix=%s-%s-%s;sizes=c(%s)%s"
+                %(conf["containers"], conf["objects"], conf["obj_size"], conf["mode"], conf["objects_max"], conf["obj_size_num"], conf["obj_size_unit"]),
+                "ratio":ratio[tmp_mode],
+                "type":tmp_mode
+            })
+
         template = {
             "default":{
                 "description": conf["mode"],
@@ -84,16 +119,9 @@ class Cosbench(Benchmark):
                 "auth": {"type":"swauth", "config":"%s" % (conf["auth"]["config"])},
                 "workflow": {
                     "workstage": [{
-                        "name": "init",
-                        "work": {"type":"init", "workers":conf["workers"], "config":"containers=r(1,%s);cprefix=%s-%s" % (conf["containers_max"], conf["obj_size"], conf["mode"])}
-                    },{
                         "name": "main",
                         "work": {"rampup":conf["rampup"], "rampdown":conf["rampdown"], "name":conf["obj_size"], "workers":conf["workers"], "runtime":conf["runtime"],
-                            "operation":[ {
-                                "config":"containers=%s;objects=%s;cprefix=%s-%s;sizes=c(%s)%s" % (conf["containers"], conf["objects"], conf["obj_size"], conf["mode"], conf["obj_size_num"], conf["obj_size_unit"]),
-                                "ratio":conf["ratio"],
-                                "type":("read" if conf["mode"] == "mix" else conf["mode"])
-                            }]
+                            "operation":operation
                         }
                     }]
                 }
@@ -149,29 +177,28 @@ class Cosbench(Benchmark):
         self.config["workload"] = self.choose_template("default", conf)
 
         # add a "prepare" stage if mode is read or mix
-        if (self.mode != "write"):
-            workstage_prepare= { "name":"prepare",
-                                 "work": {
-                "type":"prepare",
-                "workers":conf["workers"],
-                "config":"containers=r(1,%s);objects=r(1,%s);cprefix=%s-%s;sizes=c(%s)%s" % 
-                (conf["containers_max"], conf["objects_max"], conf["obj_size"], conf["mode"], conf["obj_size_num"], conf["obj_size_unit"])
-             }}
-            self.config["workload"]["workflow"]["workstage"].insert(1, workstage_prepare)
-
-        # add a second (write)operation if mode is "mix"
-        # parameters same as for read except ratio = 100 - read_ratio
-        if (self.mode == "mix"):
-            operation_write = {
-               "config":"containers=%s;objects=%s;cprefix=%s-%s;sizes=c(%s)%s"
-                %(conf["containers"], conf["objects"], conf["obj_size"], conf["mode"], conf["obj_size_num"], conf["obj_size_unit"]),
-                "ratio":(100 - conf["ratio"]),
-                "type":"write"
+        if not self.container_prepare_check():
+            workstage_init = {
+                "name": "init",
+                "work": {"type":"init", "workers":conf["workers"], "config":"containers=r(1,%s);cprefix=%s-%s-%s" % (conf["containers_max"], conf["obj_size"], conf["mode"], conf["objects_max"])}
             }
-            self.config["workload"]["workflow"]["workstage"][2]["work"]["operation"].append(operation_write)
+            workstage_prepare = {
+                "name":"prepare",
+                "work": {
+                    "type":"prepare",
+                    "workers":conf["workers"],
+                    "config":"containers=r(1,%s);objects=r(1,%s);cprefix=%s-%s-%s;sizes=c(%s)%s" %
+                    (conf["containers_max"], conf["objects_max"], conf["obj_size"], conf["mode"], conf["objects_max"], conf["obj_size_num"], conf["obj_size_unit"])
+                }
+            }
+            self.config["workload"]["workflow"]["workstage"].insert(0, workstage_prepare)
+            self.config["workload"]["workflow"]["workstage"].insert(0, workstage_init)
 
         self.prepare_xml(self.config["workload"])
         return True
+
+    def container_prepare_check(self):
+        return self.container_prepared
 
     #function use_template, set_leaf and run_content, add_leaf_to_tree all used for generate a cosbench xml.
     def prepare_xml(self, leaves):
