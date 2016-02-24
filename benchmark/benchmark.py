@@ -20,6 +20,9 @@ class Benchmark(object):
         self.cmd_path_full = '' 
         if self.valgrind is not None:
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
+        if self.osd_ra is None:
+            self.osd_ra = common.get_osd_ra()
+            self.osd_ra_changed = False
 
 
     def getclass(self):
@@ -37,7 +40,7 @@ class Benchmark(object):
 
     def run(self):
         logger.info('Setting OSD Read Ahead to: %s', self.osd_ra)
-        if self.osd_ra:
+        if self.osd_ra and self.osd_ra_changed is not False:
             self.cluster.set_osd_param('read_ahead_kb', self.osd_ra)
         logger.debug('Cleaning existing temporary run directory: %s', self.run_dir)
         common.pdsh(settings.getnodes('clients', 'osds', 'mons', 'rgws'), 'sudo rm -rf %s' % self.run_dir).communicate()
