@@ -82,3 +82,14 @@ def setup_valgrind(mode, name, tmp_dir):
 
     logger.warning('valgrind mode: %s is not supported.', mode)
     return ''
+
+def get_osd_ra():
+    for root, directories, files in os.walk('/sys'):
+        for filename in files:
+            if 'block' in root and 'read_ahead_kb' in filename:
+                filename = os.path.join(root, filename)
+                try:
+                    osd_ra = int(open(filename, 'r').read())
+                    return osd_ra
+                except ValueError:
+                    continue
