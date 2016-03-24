@@ -495,6 +495,10 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication)).communicate()
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, name, pool_repl_size-1)).communicate()
 
+        if crush_profile:
+            ruleset = self.get_ruleset(crush_profile)
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, ruleset)).communicate()
+
         logger.info('Checking Healh after pool creation.')
         self.check_health()
 
@@ -509,9 +513,6 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd tier cache-mode %s %s' % (self.ceph_cmd, self.tmp_conf, name, cache_mode)).communicate()
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd tier set-overlay %s %s' % (self.ceph_cmd, self.tmp_conf, base_name, name)).communicate()
 
-        if crush_profile:
-            ruleset = self.get_ruleset(crush_profile)
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, ruleset)).communicate()
         if hit_set_type:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s hit_set_type %s' % (self.ceph_cmd, self.tmp_conf, name, hit_set_type)).communicate()
         if hit_set_count:
