@@ -53,10 +53,11 @@ CBT uses several libraries and tools to run:
 
  1. python-yaml - A YAML library for python used for reading 
     configuration files.
- 2. ssh (and scp) - remote secure command executation and data 
+ 2. python-lxml - Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API
+ 3. ssh (and scp) - remote secure command executation and data 
     transfer
- 3. pdsh (and pdcp) - a parallel ssh and scp implementation
- 4. ceph - A scalable distributed storage system
+ 4. pdsh (and pdcp) - a parallel ssh and scp implementation
+ 5. ceph - A scalable distributed storage system
 
 Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributations 
 at this time, though the rawhide pdsh packages install and are usable.  The
