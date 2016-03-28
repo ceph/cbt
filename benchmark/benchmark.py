@@ -42,7 +42,7 @@ class Benchmark(object):
         if self.osd_ra and self.osd_ra_changed is not False:
             logger.info('Setting OSD Read Ahead to: %s', self.osd_ra)
             self.cluster.set_osd_param('read_ahead_kb', self.osd_ra)
-        else
+        else:
             self.osd_ra = 'na'
 
         logger.debug('Cleaning existing temporary run directory: %s', self.run_dir)
