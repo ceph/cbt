@@ -476,7 +476,7 @@ class Ceph(Cluster):
         target_max_objects = profile.get('target_max_objects', None)
         target_max_bytes = profile.get('target_max_bytes', None)
         min_read_recency_for_promote = profile.get('min_read_recency_for_promote', None)
-
+        min_write_recency_for_promote = profile.get('min_write_recency_for_promote', None)
         # Options for prefilling objects
         prefill_objects = profile.get('prefill_objects', 0)
         prefill_object_size = profile.get('prefill_object_size', 0)
@@ -531,6 +531,9 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s target_max_bytes %s' % (self.ceph_cmd, self.tmp_conf, name, target_max_bytes)).communicate()
         if min_read_recency_for_promote:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_read_recency_for_promote %s' % (self.ceph_cmd, self.tmp_conf, name, min_read_recency_for_promote)).communicate()
+        if min_write_recency_for_promote:
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_write_recency_for_promote %s' % (self.ceph_cmd, self.tmp_conf, name, min_write_recency_for_promote)).communicate()
+
         logger.info('Final Pool Health Check.')
         self.check_health()
 
