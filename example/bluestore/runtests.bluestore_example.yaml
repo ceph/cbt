@@ -1,0 +1,44 @@
+cluster:
+  user: 'ubuntu'
+  head: "incerta01.front.sepia.ceph.com"
+  clients: ["incerta01.front.sepia.ceph.com", "incerta02.front.sepia.ceph.com", "incerta03.front.sepia.ceph.com", "incerta04.front.sepia.ceph.com"]
+  osds: ["incerta01.front.sepia.ceph.com", "incerta02.front.sepia.ceph.com", "incerta03.front.sepia.ceph.com", "incerta04.front.sepia.ceph.com"]
+  mons:
+    incerta01.front.sepia.ceph.com:
+      a: "10.0.10.101:6789"
+  osds_per_node: 4 
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048'
+  mount_opts: '-o inode64,noatime'
+  conf_file: '/home/nhm/incerta/ceph.conf.bluestore_example'
+  iterations: 1
+  use_existing: False
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  ceph-osd_cmd: "env -i TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728 /usr/local/bin/ceph-osd"
+  ceph-mon_cmd: "/usr/local/bin/ceph-mon"
+  ceph-run_cmd: "/usr/local/bin/ceph-run"
+  rados_cmd: "/usr/local/bin/rados"
+  ceph_cmd: "/usr/local/bin/ceph"
+  rbd_cmd: "/usr/local/bin/rbd"
+
+  pool_profiles:
+    rbd:
+      pg_size: 8192 
+      pgp_size: 8192
+      replication: 3
+
+benchmarks:
+  librbdfio:
+    time: 300 
+    vol_size: 32768 
+    mode: ['read', 'write', 'randread', 'randwrite', 'rw', 'randrw']
+    rwmixread: 50
+    op_size: [4194304, 2097152, 1048576, 524288, 262144, 131072, 65536, 32768, 16384, 8192, 4096]
+    procs_per_volume: [1]
+    volumes_per_client: [2]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/home/ubuntu/src/fio/fio'
+    pool_profile: 'rbd'
+    log_avg_msec: 100

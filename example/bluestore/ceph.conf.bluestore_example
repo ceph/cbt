@@ -1,0 +1,206 @@
+[global]
+        crushtool = /usr/local/bin/crushtool
+
+
+        enable experimental unrecoverable data corrupting features = bluestore rocksdb
+        osd objectstore = bluestore
+        rocksdb_log = /tmp/cbt/ceph/log/rocksdb.log
+
+        rbd readahead disable after bytes = 0
+        rbd readahead max bytes = 4194304
+        bluestore default buffered read = true
+        osd pool default size = 1
+
+        keyring = /tmp/cbt/ceph/keyring
+        osd pg bits = 8
+        osd pgp bits = 8
+        auth supported = none
+        log to syslog = false
+        log file = /tmp/cbt/ceph/log/$name.log
+        filestore xattr use omap = true
+        auth cluster required = none
+        auth service required = none
+        auth client required = none
+
+        public network = 10.0.10.0/24
+        cluster network = 10.0.10.0/24
+        rbd cache = true
+        rbd cache writethrough until flush = false
+        osd scrub load threshold = 0.01
+        osd scrub min interval = 137438953472
+        osd scrub max interval = 137438953472
+        osd deep scrub interval = 137438953472
+        osd max scrubs = 16
+
+        filestore merge threshold = 40
+        filestore split multiple = 8
+        osd op threads = 8
+
+        debug_bluefs = "0/0"
+        debug_bluestore = "0/0"
+        debug_bdev = "0/0"
+        debug_lockdep = "0/0" 
+        debug_context = "0/0"
+        debug_crush = "0/0"
+        debug_mds = "0/0"
+        debug_mds_balancer = "0/0"
+        debug_mds_locker = "0/0"
+        debug_mds_log = "0/0"
+        debug_mds_log_expire = "0/0"
+        debug_mds_migrator = "0/0"
+        debug_buffer = "0/0"
+        debug_timer = "0/0"
+        debug_filer = "0/0"
+        debug_objecter = "0/0"
+        debug_rados = "0/0"
+        debug_rbd = "0/0"
+        debug_journaler = "0/0"
+        debug_objectcacher = "0/0"
+        debug_client = "0/0"
+        debug_osd = "0/0"
+        debug_optracker = "0/0"
+        debug_objclass = "0/0"
+        debug_filestore = "0/0"
+        debug_journal = "0/0"
+        debug_ms = "0/0"
+        debug_mon = "0/0"
+        debug_monc = "0/0"
+        debug_paxos = "0/0"
+        debug_tp = "0/0"
+        debug_auth = "0/0"
+        debug_finisher = "0/0"
+        debug_heartbeatmap = "0/0"
+        debug_perfcounter = "0/0"
+        debug_rgw = "0/0"
+        debug_hadoop = "0/0"
+        debug_asok = "0/0"
+        debug_throttle = "0/0"
+
+        mon pg warn max object skew = 100000
+        mon pg warn min per osd = 0
+        mon pg warn max per osd = 32768
+
+[client]
+        log_file = /var/log/ceph/ceph-rbd.log
+        admin_socket = /var/run/ceph/ceph-rbd.asok
+
+[mon]
+	mon data = /tmp/cbt/ceph/mon.$id
+        
+[mon.a]
+	host = incerta01.front.sepia.ceph.com 
+        mon addr = 10.0.10.101:6789
+
+[osd.0]
+        host = incerta01.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-0-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-0-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-0-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-0-wal
+
+[osd.1]
+        host = incerta01.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-1-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-1-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-1-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-1-wal
+
+[osd.2]
+        host = incerta01.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-2-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-2-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-2-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-2-wal
+
+
+[osd.3]
+        host = incerta01.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-3-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-3-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-3-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-3-wal
+
+[osd.4]
+        host = incerta02.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-0-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-0-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-0-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-0-wal
+
+[osd.5]
+        host = incerta02.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-1-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-1-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-1-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-1-wal
+
+[osd.6]
+        host = incerta02.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-2-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-2-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-2-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-2-wal
+
+[osd.7]
+        host = incerta02.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-3-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-3-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-3-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-3-wal
+
+[osd.8]
+        host = incerta03.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-0-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-0-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-0-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-0-wal
+
+[osd.9]
+        host = incerta03.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-1-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-1-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-1-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-1-wal
+
+[osd.10]
+        host = incerta03.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-2-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-2-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-2-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-2-wal
+
+[osd.11]
+        host = incerta03.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-3-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-3-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-3-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-3-wal
+
+[osd.12]
+        host = incerta04.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-0-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-0-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-0-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-0-wal
+
+[osd.13]
+        host = incerta04.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-1-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-1-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-1-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-1-wal
+
+[osd.14]
+        host = incerta04.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-2-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-2-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-2-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-2-wal
+
+[osd.15]
+        host = incerta04.front.sepia.ceph.com
+        osd data = /tmp/cbt/mnt/osd-device-3-data
+        bluestore block path = /dev/disk/by-partlabel/osd-device-3-block
+        bluestore block db path = /dev/disk/by-partlabel/osd-device-3-db
+        bluestore block wal path = /dev/disk/by-partlabel/osd-device-3-wal
+
