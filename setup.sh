@@ -9,7 +9,7 @@ sudo yum install -y psmisc util-linux coreutils xfsprogs e2fsprogs findutils \
   git wget bzip2 make automake gcc gcc-c++ kernel-devel perf blktrace lsof \
   redhat-lsb sysstat screen python-yaml ipmitool dstat zlib-devel ntp
 
-MIRROR="http://mirror.hmc.edu/fedora/linux/releases/22/Everything/x86_64/os/Packages"
+MIRROR="http://mirror.hmc.edu/fedora/linux/releases/23/Everything/x86_64/os/Packages"
 
 wget ${MIRROR}/p/pdsh-2.31-3.fc22.x86_64.rpm
 wget ${MIRROR}/p/pdsh-2.31-3.fc22.x86_64.rpm
