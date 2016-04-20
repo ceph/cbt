@@ -7,7 +7,7 @@ sudo yum check-update
 sudo yum -y update
 sudo yum install -y psmisc util-linux coreutils xfsprogs e2fsprogs findutils \
   git wget bzip2 make automake gcc gcc-c++ kernel-devel perf blktrace lsof \
-  redhat-lsb sysstat screen python-yaml ipmitool dstat zlib-devel ntp
+  redhat-lsb sysstat screen python-lxml python-yaml ipmitool dstat zlib-devel ntp
 
 MIRROR="http://mirror.hmc.edu/fedora/linux/releases/23/Everything/x86_64/os/Packages"
 
@@ -23,9 +23,10 @@ git clone https://github.com/axboe/fio.git
 git clone https://github.com/andikleen/pmu-tools.git
 git clone https://github.com/brendangregg/FlameGraph
 
-cd ${HOME}/fio
-./configure
-make
+cd fio 
+sudo sh configure
+sudo make
+sudo make install
 
 # wget < Red Hat Ceph Storage ISO URL >
 # sudo mount -o loop Ceph-*-dvd.iso /mnt
