@@ -17,7 +17,6 @@ class KvmRbdFio(Benchmark):
         super(KvmRbdFio, self).__init__(cluster, config)
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
-
         self.time =  str(config.get('time', '300'))
         self.ramp = str(config.get('ramp', '0'))
         self.iodepth = config.get('iodepth', 16)
@@ -27,12 +26,14 @@ class KvmRbdFio(Benchmark):
         self.rwmixwrite = 100 - self.rwmixread
         self.ioengine = config.get('ioengine', 'libaio')
         self.op_size = config.get('op_size', 4194304)
-        self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536) * 0.9
-        self.rep_size = config.get('rep_size', 1)
-        self.rbdadd_mons = config.get('rbdadd_mons')
-        self.rbdadd_options = config.get('rbdadd_options')
+        self.direct = config.get('direct', 1)
         self.client_ra = config.get('client_ra', '128')
+        self.use_dir = config.get('use_dir', True)
+        self.client_dir = config.get('client_dir', '/srv')
+        self.client_dev = config.get('client_dev', '/dev/vdb')
+        self.client_mkfs = config.get('client_mkfs', False)
+        self.client_fs = config.get('client_fs', 'ext4')
         self.fio_cmd = config.get('fio_cmd', '/usr/bin/fio')
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
@@ -42,7 +43,7 @@ class KvmRbdFio(Benchmark):
         # Make the file names string
         self.names = ''
         for i in xrange(self.concurrent_procs):
-            self.names += '--name=/srv/rbdfio-`hostname -s`-0/cbt-kvmrbdfio-%d ' % i
+            self.names += '--name=%s/rbdfio-`hostname -s`-0/cbt-kvmrbdfio-%d ' % (self.client_dir, i)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -52,11 +53,12 @@ class KvmRbdFio(Benchmark):
 
     def initialize(self): 
         super(KvmRbdFio, self).initialize()
-        for i in xrange(1):
-             letter = string.ascii_lowercase[i+1]
-             common.pdsh(settings.getnodes('clients'), 'sudo mkfs.ext4 /dev/vd%s' % letter).communicate()
-             common.pdsh(settings.getnodes('clients'), 'sudo mkdir /srv/rbdfio-`hostname -s`-%d' % i).communicate()
-             common.pdsh(settings.getnodes('clients'), 'sudo mount -t ext4 -o noatime /dev/vd%s /srv/rbdfio-`hostname -s`-%d' %(letter, i)).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo mkdir -p %s/rbdfio-`hostname -s`' % self.client_dir).communicate()
+
+        # If we use a block device, we need format device before
+        if not self.use_dir and self.client_mkfs:
+            common.pdsh(settings.getnodes('clients'), 'sudo mkfs.%s %s' % (self.client_fs, self.client_dev)).communicate()
+            common.pdsh(settings.getnodes('clients'), 'sudo mount -t %s -o noatime %s %s/rbdfio-`hostname -s`' % (self.client_fs, self.client_dev, self.client_dir)).communicate()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
@@ -70,7 +72,7 @@ class KvmRbdFio(Benchmark):
     def run(self):
         super(KvmRbdFio, self).run()
         # Set client readahead
-        self.set_client_param('read_ahead_kb', self.client_ra)
+        self.set_client_param('read_ahead_kb', self.client_ra, self.client_dev)
 
         # We'll always drop caches for rados bench
         self.dropcaches()
@@ -78,30 +80,32 @@ class KvmRbdFio(Benchmark):
         monitoring.start(self.run_dir)
 
         time.sleep(5)
- #       names = ''
- #       for i in xrange(self.concurrent_procs):
- #           names += "--name=/srv/rbdfio-`hostname -s`-%d/cbt-kvmrbdfio " % i
- #           names += '--name=/srv/rbdfio-`hostname -s`-0/cbt-kvmrbdfio-%d ' % i 
         out_file = '%s/output' % self.run_dir
-#        pre_cmd = 'sudo fio --rw=write -ioengine=sync --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.numjobs, self.vol_size, self.names)
         fio_cmd = 'sudo %s' % self.fio_cmd
         fio_cmd += ' --rw=%s' % self.mode
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
             fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
         fio_cmd += ' --ioengine=%s' % self.ioengine
-        fio_cmd += ' --runtime=%s' % self.time
-        fio_cmd += ' --ramp_time=%s' % self.ramp
+        if self.time is not None:
+            fio_cmd += ' --runtime=%s' % self.time
+        if self.ramp is not None:
+            fio_cmd += ' --ramp_time=%s' % self.ramp
         fio_cmd += ' --numjobs=%s' % self.numjobs
-        fio_cmd += ' --direct=1'
+        fio_cmd += ' --direct=%s' % self.direct
         fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
-        fio_cmd += ' --size=%dM' % self.vol_size 
-        fio_cmd += ' --write_iops_log=%s' % out_file 
+        if self.vol_size:
+            fio_cmd += ' --size=%dM' % (int(self.vol_size) * 0.9)
+        fio_cmd += ' --write_iops_log=%s' % out_file
         fio_cmd += ' --write_bw_log=%s' % out_file
         fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         fio_cmd += ' %s > %s' % (self.names, out_file)
+        if self.log_avg_msec is not None:
+            fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
+        logger.info('Running rbd fio %s test.', self.mode)
+
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
@@ -118,8 +122,8 @@ class KvmRbdFio(Benchmark):
          super(KvmRbdFio, self).cleanup()
          common.pdsh(settings.getnodes('clients'), 'sudo umount /srv/*').communicate()
 
-    def set_client_param(self, param, value):
-         cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)
+    def set_client_param(self, param, value, dev='/dev/vdb'):
+         cmd = 'find /sys/block/%s -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (dev[5:], value, param)
          common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
