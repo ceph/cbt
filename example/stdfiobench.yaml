@@ -19,7 +19,7 @@ benchmarks:
     op_size: [40960]
     vol_size: 106444 
     fio_path: '/usr/local/bin/fio'
-    block_dev_name: '/dev/scinia'
+    block_device: 'scinia'
     mount_point_name: '/mnt/stdfiobench'
     filesystem: 'xfs'
     use_existing: True 

@@ -30,7 +30,8 @@ class StdFioBench(Benchmark):
         self.vol_size = config.get('vol_size', 65536) * 0.9
         self.client_ra = config.get('client_ra', '128')
         self.fio_cmd = config.get('fio_path', '/usr/bin/fio')
-        self.block_dev_name = config.get('block_dev_name', '/dev/vd')
+        self.block_dev_name = config.get('block_device', 'vd')
+        self.block_device = config.get('block_device', 'vd')
         self.mount_point_name = config.get('mount_point_name', '/mnt/stdfiobench')
         self.filesystem = config.get('filesystem', 'xfs')
         self.use_existing = config.get('use_existing', 'False')
@@ -43,6 +44,8 @@ class StdFioBench(Benchmark):
         self.names = ''
         for i in xrange(self.concurrent_procs):
             self.names += '--name=%s/`hostname -s`-0/cbt-kvmrbdfio-%d ' % (self.mount_point_name, i)
+    
+        self.block_dev_name = '/dev/' + self.block_dev_name
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -121,7 +124,7 @@ class StdFioBench(Benchmark):
            common.pdsh(settings.getnodes('clients'), 'sudo umount -f %s' % (self.block_dev_name)).communicate()
 
     def set_client_param(self, param, value):
-         cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)
+         cmd = 'find /sys/block/%s ! -iname %s -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (self.block_device, self.block_device, value, param)
          common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
