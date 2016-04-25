@@ -124,7 +124,8 @@ class StdFioBench(Benchmark):
            common.pdsh(settings.getnodes('clients'), 'sudo umount -f %s' % (self.block_dev_name)).communicate()
 
     def set_client_param(self, param, value):
-         cmd = 'find /sys/block/%s ! -iname %s -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (self.block_device, self.block_device, value, param)
+         #cmd = 'find /sys/block/%s ! -iname %s -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (self.block_device, self.block_device, value, param)
+         cmd = 'sudo sh -c "echo %s > /sys/block/%s/queue/%s"' % (value, self.block_device, param)
          common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
