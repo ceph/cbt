@@ -35,6 +35,7 @@ class StdFioBench(Benchmark):
         self.mount_point_name = config.get('mount_point_name', '/mnt/stdfiobench')
         self.filesystem = config.get('filesystem', 'xfs')
         self.use_existing = config.get('use_existing', 'False')
+        self.output_format = config.get('output_format', 'terse')
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
@@ -70,7 +71,7 @@ class StdFioBench(Benchmark):
         # populate the fio files
         logger.info('Attempting to populating fio files...')
         pre_cmd = 'sudo %s --rw=write --ioengine=sync --numjobs=%s --bs=8M --size %dM %s > /dev/null ' % (self.fio_cmd, self.numjobs, self.vol_size, self.names)
-        common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
+       # common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
 
 
     def run(self):
@@ -102,6 +103,7 @@ class StdFioBench(Benchmark):
         fio_cmd += ' --write_iops_log=%s' % out_file 
         fio_cmd += ' --write_bw_log=%s' % out_file
         fio_cmd += ' --write_lat_log=%s' % out_file
+        fio_cmd += ' --output-format=%s' % self.output_format 
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         fio_cmd += ' %s > %s 2> %s/error_log' % (self.names, out_file, self.run_dir)
@@ -113,8 +115,15 @@ class StdFioBench(Benchmark):
 
         logger.info('Running fio %s test.', self.mode)
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
-        monitoring.stop(self.run_dir)
+     
+        # FIO output Parsing logic
+        if 'terse' in self.output_format:
+	  hostname = '`hostname -s`'
+          parse_cmd = 'sudo sed "s/$/;%s;%s;%s;%s;%s;%s;%s/" ' % (hostname, self.mode, self.op_size, self.iodepth, self.numjobs, self.client_ra, self.concurrent_procs)
+          parse_cmd += ' %s > %s/terse_output' % (out_file, self.run_dir )
+          common.pdsh(settings.getnodes('clients'), parse_cmd).communicate()
 
+        monitoring.stop(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def cleanup(self):
