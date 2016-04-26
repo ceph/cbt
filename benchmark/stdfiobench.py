@@ -73,7 +73,7 @@ class StdFioBench(Benchmark):
         # populate the fio files
         logger.info('Attempting to populating fio files...')
         pre_cmd = 'sudo %s --rw=write --ioengine=sync --numjobs=%s --bs=8M --size %dM %s > /dev/null ' % (self.fio_cmd, self.numjobs, self.vol_size, self.names)
-       # common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
 
 
     def run(self):
