@@ -1,7 +1,7 @@
 cluster:
   head: "ceph@rhclient0"
-  #clients: ["ceph@rhclient0","ceph@rhclient1","ceph@rhclient2","ceph@rhclient3","ceph@rhclient4","ceph@rhclient5","ceph@rhclient6","ceph@rhclient7","ceph@rhclient8","ceph@rhclient9"]
-  clients: ["ceph@rhclient0"]
+  clients: ["ceph@rhclient0","ceph@rhclient1","ceph@rhclient2","ceph@rhclient3","ceph@rhclient4","ceph@rhclient5","ceph@rhclient6","ceph@rhclient7","ceph@rhclient8","ceph@rhclient9"]
+  #clients: ["ceph@rhclient0"]
   iterations: 1 
   rebuild_every_test: False
   use_existing: True
