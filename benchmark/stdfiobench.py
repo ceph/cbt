@@ -36,12 +36,9 @@ class StdFioBench(Benchmark):
         self.filesystem = config.get('filesystem', 'xfs')
         self.use_existing = config.get('use_existing', 'False')
 
-        self.err = 'error_log'
-
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.err_dir = self.run_dir + '/%s' % (self.err)
 
         # Make the file names string
         self.names = ''
@@ -107,14 +104,13 @@ class StdFioBench(Benchmark):
         fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
-        fio_cmd += ' %s > %s 2> %s/fio_error_%s' % (self.names, out_file, self.err_dir, time.strftime("%Y%m%d-%H%M%S"))
+        fio_cmd += ' %s > %s 2> %s/error_log' % (self.names, out_file, self.run_dir)
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        common.make_remote_dir(self.err_dir)
         logger.info('Running fio %s test.', self.mode)
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
         monitoring.stop(self.run_dir)
