@@ -15,7 +15,7 @@ def parse_args(args):
         )
 
     parser.add_argument(
-        '-y', '--config_file',
+        '-c', '--config_file',
         required=True,
         help='YAML config file that has been used previously with CBT to generate FIO terse output. ',
         )
@@ -57,7 +57,7 @@ def fio_parser(args):
             if benchmark_mode[i] in ('write','randwrite'): 
               command = "cat %s | awk -F ';' '{print $131,$132,$133,$48,$49,$135,$134,$81,$47,$50}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
             elif benchmark_mode[i] in ('read','randread'):
-              command = "cat %s | awk -F ';' '{print $131,$132,$133,$7,$8,$135,$134,$40,$6,$9,$40}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
+              command = "cat %s | awk -F ';' '{print $131,$132,$133,$7,$8,$135,$134,$40,$6,$9}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
             elif benchmark_mode[i] in ('readwrite','rw','randrw'):
               command = "cat %s | awk -F ';' '{print $131,$132,$133,$135,$134,$7,$8,$40,$6,$9,$48,$49,$81,$47,$50}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
 	    subprocess.call(command, shell=True)
