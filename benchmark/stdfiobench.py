@@ -44,7 +44,7 @@ class StdFioBench(Benchmark):
         # Make the file names string
         self.names = ''
         for i in xrange(self.concurrent_procs):
-            self.names += '--name=%s/`hostname -s`-0/cbt-kvmrbdfio-%d ' % (self.mount_point_name, i)
+            self.names += '--name=%s/`hostname -s`-0/cbt-stdfiobench-%d ' % (self.mount_point_name, i)
     
         self.block_dev_name = '/dev/' + self.block_dev_name
 
@@ -100,10 +100,11 @@ class StdFioBench(Benchmark):
         fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
         fio_cmd += ' --size=%dM' % self.vol_size 
-        fio_cmd += ' --write_iops_log=%s' % out_file 
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
-        fio_cmd += ' --output-format=%s' % self.output_format 
+        fio_cmd += ' --output-format=%s' % self.output_format
+        if (self.output_format == 'normal'):
+          fio_cmd += ' --write_iops_log=%s' % out_file 
+          fio_cmd += ' --write_bw_log=%s' % out_file
+          fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         fio_cmd += ' %s > %s 2> %s/error_log' % (self.names, out_file, self.run_dir)
