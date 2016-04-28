@@ -50,17 +50,17 @@ def fio_parser(args):
         for subdirname in dirnames:
           if subdirname == benchmark_mode[i]:
             path = os.path.join(dirname, subdirname)
-      for dirname, dirnames, filenames in os.walk(path):
-        for filename in sorted(filenames):
-          if re.search('terse_output*', filename):
-            output_file_name = os.path.join(dirname, filename)
-            if benchmark_mode[i] in ('write','randwrite'): 
-              command = "cat %s | awk -F ';' '{print $131,$132,$133,$48,$49,$135,$134,$81,$47,$50}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
-            elif benchmark_mode[i] in ('read','randread'):
-              command = "cat %s | awk -F ';' '{print $131,$132,$133,$7,$8,$135,$134,$40,$6,$9}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
-            elif benchmark_mode[i] in ('readwrite','rw','randrw'):
-              command = "cat %s | awk -F ';' '{print $131,$132,$133,$135,$134,$7,$8,$40,$6,$9,$48,$49,$81,$47,$50}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
-	    subprocess.call(command, shell=True)
+            for dirname, dirnames, filenames in os.walk(path):
+              for filename in sorted(filenames):
+                if re.search('terse_output*', filename):
+                  output_file_name = os.path.join(dirname, filename)
+                  if benchmark_mode[i] in ('write','randwrite'): 
+                    command = "cat %s | awk -F ';' '{print $131,$132,$133,$48,$49,$135,$134,$81,$47,$50}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
+                  elif benchmark_mode[i] in ('read','randread'):
+                    command = "cat %s | awk -F ';' '{print $131,$132,$133,$7,$8,$135,$134,$40,$6,$9}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
+                  elif benchmark_mode[i] in ('readwrite','rw','randrw'):
+                    command = "cat %s | awk -F ';' '{print $131,$132,$133,$135,$134,$7,$8,$40,$6,$9,$48,$49,$81,$47,$50}' >> %s/fio_%s_summary.out" % (output_file_name,args.archive,benchmark_mode[i])
+	          subprocess.call(command, shell=True)
 
 def main(argv):
     args = parse_args(argv)
