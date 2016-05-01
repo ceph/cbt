@@ -6,7 +6,6 @@ import os
 import time
 import string
 import logging
-
 from benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
@@ -17,7 +16,6 @@ class StdFioBench(Benchmark):
         super(StdFioBench, self).__init__(cluster, config)
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
-
         self.time =  str(config.get('run_time', '10'))
         self.ramp = str(config.get('ramp_time', '0'))
         self.iodepth = config.get('iodepth', 16)
@@ -41,7 +39,6 @@ class StdFioBench(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
-        # Make the file names string
         self.names = ''
         for i in xrange(self.concurrent_procs):
             self.names += '--name=%s/`hostname -s`-0/cbt-stdfiobench-%d ' % (self.mount_point_name, i)
@@ -118,7 +115,7 @@ class StdFioBench(Benchmark):
         common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
      
         # FIO output Parsing logic
-        if 'terse' in self.output_format:
+        if (self.output_format == 'terse'):
 	  hostname = '`hostname -s`'
           parse_cmd = 'sudo sed "s/$/;%s;%s;%s;%s;%s;%s;%s/" ' % (hostname, self.mode, self.op_size, self.iodepth, self.numjobs, self.client_ra, self.concurrent_procs)
           parse_cmd += ' %s > %s/terse_output' % (out_file, self.run_dir )
