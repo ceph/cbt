@@ -6,7 +6,7 @@ There are scenarios such as measuring baseline or measuring Ceph block device vs
 
 ## How to use this module
 
-If you are familiar with CBT and its YAML configuration files, then using stdfiobench is preety straight forward. Just call the module from
+If you are familiar with CBT and its YAML configuration files, then using stdfiobench is pretty straightforward. Just call the module from
 YAML file and provide values to its arguments as shown below.
 
 **Step:1  Design your test case in CBT YAML file**
@@ -47,6 +47,8 @@ Wait for CBT to finish your tests and collect the results under test1_results ar
 **Step:3  Parse your test results**
 
 stdfiobench module comes with a parser located at  ``tools/cbt_fio_terse_parser.py`` , which currently supports parsing FIO output generated **only in 'terse' format.**
+
+If you are using output format other then terse, then you need to parse output in your own ways ( looking forward for your contribution ) 
 
 To parse your CBT results which are in 'terse' format , execute the following command
 ```
@@ -96,3 +98,20 @@ rhclient8 read 40960 5631865 140790 1 32 226.878658 28164960 5001
 rhclient9 read 40960 4945658 123635 1 32 258.412485 24733240 5001
 [ceph@rhclient0 cbt]$
 ```
+## Additional information
+To get to know all the fields of FIO terse output check out [FIO minimal output explained](http://andypeace.com/fio_minimal.html)
+
+In addition to standard terse FIO output , i have introduced some new fields , which decodes as below
+```
+131 - Client hostname
+132 - Pattern / mode
+133 - Block Size
+134 - Queue Depth
+135 - Number of threads
+136 - Client Read Ahead value
+137 - Concurrent procs
+```
+
+
+
+
