@@ -11,7 +11,7 @@ def parse_args():
     parser.add_argument('-a', '--average', dest='average', action='store_true', default=False, help='print the average for each interval.')
     parser.add_argument('-s', '--sum', dest='sum', action='store_true', default=False, help='print the sum for each interval.')
 
-    parser.add_argument("FILE", help="sysctl output files to parse", nargs="+")
+    parser.add_argument("FILE", help="collectl log output files to parse", nargs="+")
     args = parser.parse_args()
 
     return args
