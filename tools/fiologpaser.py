@@ -5,7 +5,7 @@ import math
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--interval', required=False, type=int, default=5, help='interval of time in seconds.')
+    parser.add_argument('-i', '--interval', required=False, type=int, default=1000, help='interval of time in seconds.')
     parser.add_argument('-d', '--divisor', required=False, type=int, default=1, help='divide the results by this value.')
     parser.add_argument('-f', '--full', dest='full', action='store_true', default=False, help='print full output.')
     parser.add_argument('-a', '--average', dest='average', action='store_true', default=False, help='print the average for each interval.')
