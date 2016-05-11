@@ -31,7 +31,11 @@ class RbdFio(Benchmark):
         self.rwmixwrite = 100 - self.rwmixread
         self.log_avg_msec = config.get('log_avg_msec', None)
         self.ioengine = config.get('ioengine', 'libaio')
-        self.op_size = config.get('op_size', 4194304)
+        if config.get('bssplit'):
+          self.bssplit = config.get('bssplit')
+          self.op_size = 'bssplit'
+        else:
+          self.op_size = config.get('op_size', 4194304)
         self.vol_size = config.get('vol_size', 65536)
         self.vol_order = config.get('vol_order', 22)
         self.random_distribution = config.get('random_distribution', None)
@@ -113,7 +117,10 @@ class RbdFio(Benchmark):
             fio_cmd += ' --ramp_time=%s' % self.ramp
         fio_cmd += ' --numjobs=%s' % self.numjobs
         fio_cmd += ' --direct=%s' % self.direct
-        fio_cmd += ' --bs=%dB' % self.op_size
+        if self.bssplit:
+          fio_cmd += ' --bssplit=%s' % self.bssplit
+        else:
+          fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
         if self.vol_size:
             fio_cmd += ' --size=%dM' % (int(self.vol_size) * 0.9)
