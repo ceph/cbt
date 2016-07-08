@@ -9,8 +9,9 @@ def start(directory):
     # blktrace_dir = '%s/blktrace' % directory
 
     # collectl
+    rawdskfilt = 'cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ '
     common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
-    common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 -F0 -f %s' % collectl_dir)
+    common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 --rawdskfilt "%s" -F0 -f %s' % (rawdskfilt, collectl_dir))
 
     # perf
     # common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
