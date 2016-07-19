@@ -482,10 +482,6 @@ class Ceph(Cluster):
         prefill_object_size = profile.get('prefill_object_size', 0)
         prefill_time = profile.get('prefill_time', 0)
 
-#        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
-        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
-                    continue_if_error=False).communicate()
-
         if replication and replication == 'erasure':
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
                         continue_if_error=False).communicate()
