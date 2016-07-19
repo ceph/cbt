@@ -483,17 +483,22 @@ class Ceph(Cluster):
         prefill_time = profile.get('prefill_time', 0)
 
 #        common.pdsh(settings.getnodes('head'), 'sudo ceph -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.tmp_conf, name, name)).communicate()
-        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
+                    continue_if_error=False).communicate()
 
         if replication and replication == 'erasure':
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
+                        continue_if_error=False).communicate()
         else:
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
+                        continue_if_error=False).communicate()
 
         if replication and replication.isdigit():
             pool_repl_size = int(replication)
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication)).communicate()
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, name, pool_repl_size-1)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication),
+                        continue_if_error=False).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, name, pool_repl_size-1),
+                        continue_if_error=False).communicate()
 
         if crush_profile:
             try:
@@ -503,7 +508,8 @@ class Ceph(Cluster):
               ruleset = crush_profile
             except ValueError as e:
               ruleset = self.get_ruleset(crush_profile)
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile)).communicate()
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
+                        continue_if_error=False).communicate()
 
         logger.info('Checking Healh after pool creation.')
         self.check_health()
@@ -557,7 +563,8 @@ class Ceph(Cluster):
 
             # delete the cache pool
             self.rmpool(cache_name, cache_profile)
-        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name)).communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name),
+                    continue_if_error=False).communicate()
 
     def rbd_unmount(self):
         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
