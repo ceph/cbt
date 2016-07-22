@@ -1,0 +1,24 @@
+  kvmrbdfio:
+    time: 300
+    ramp: '0'
+    iodepth: [64]
+    numjobs: 1
+    mode: [ write, randwrite]
+    ioengine: libaio
+    op_size: [4194304, 2097152, 1048576]
+    vol_size: 65536
+    direct: 1
+    # Readahead settings
+    client_ra: 128
+    # Use directory from / if you set to False the script will format client_dev
+    use_dir: True
+    # When use_dir is true, we'r using the directory to make tests
+    client_dir: '/mnt'
+    # When use_dir is False we need a device to format and mount before make tests
+    client_dev: '/dev/vdb'
+    # Make filesyste when we use client_dev and use_dir is False
+    client_mkfs: True
+    # What is the filesystem
+    client_fs: xfs
+    concurrent_procs: 2
+    fio_cmd: '/usr/bin/fio'
