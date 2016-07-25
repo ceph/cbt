@@ -43,16 +43,35 @@ class CheckedPopen:
 # by default, do NOT abort if pdsh returns error status
 # this policy results in minimal code change to CBT while allowing
 # us to strengthen error checking where it's needed.
+#
+# we set fanout based on number of nodes in list so that
+# pdsh() calls that require full parallelism (workload generation)
+# work correctly.
+
+def expanded_node_list(nodes):
+    # nodes is a comma-separated list for pdsh "-w" parameter
+    # nodes may have some entries with '^' prefix, pdsh syntax meaning
+    # we should read list of actual hostnames/ips from a file 
+    node_list = []
+    for h in nodes.split(','):
+        if h.startswith('^'):  # pdsh syntax for file containing list of nodes
+            with open(h[1:], 'r') as nodefile:
+                list_from_file = [ h.strip() for h in nodefile.readlines() ]
+                node_list.extend(list_from_file)
+        else:
+            node_list.append(h)
+    #logger.info("full list of hosts: %s" % str(full_node_list))
+    return node_list
 
 def pdsh(nodes, command, continue_if_error=True):
-    args = ['pdsh', '-R', 'ssh', '-w', nodes, command]
+    args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
     # -S means pdsh fails if any host fails 
     if not continue_if_error: args.insert(1, '-S')
     return CheckedPopen(args,continue_if_error=continue_if_error)
  
 
 def pdcp(nodes, flags, localfile, remotefile):
-    args = ['pdcp', '-f', '1', '-R', 'ssh', '-w', nodes]
+    args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
     if flags:
         args += [flags]
     return CheckedPopen(args + [localfile, remotefile], 
@@ -60,7 +79,7 @@ def pdcp(nodes, flags, localfile, remotefile):
 
 
 def rpdcp(nodes, flags, remotefile, localfile):
-    args = ['rpdcp', '-f', '1', '-R', 'ssh', '-w', nodes]
+    args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
     if flags:
         args += [flags]
     return CheckedPopen(args + [remotefile, localfile], 
