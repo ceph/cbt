@@ -2,7 +2,6 @@ import subprocess
 
 import settings
 import common
-import monitoring
 
 class Cluster(object):
     def __init__(self, config):
