@@ -1,13 +1,12 @@
 import subprocess
 import common
 import settings
-import monitoring
 import os
 import time
 import uuid
 import threading
 import logging
-
+import monitoring_factory
 from cluster import Cluster
 
 
@@ -86,7 +85,22 @@ class Ceph(Cluster):
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
-        self.monitoring_dir = "%s/monitoring" % self.tmp_dir
+
+        monitoring_list = config.get('cluster_build_monitoring_list', '')
+        self.cluster_build_monitoring = monitoring_factory.factory( 
+                                        monitoring_list,
+                                        "%s/monitoring" % self.tmp_dir )
+
+        monitoring_list = config.get('health_check_monitoring_list', '')
+        self.health_check_monitoring = monitoring_factory.factory(
+                                       monitoring_list,
+                                       "%s/health_check" % self.tmp_dir )
+
+        monitoring_list = config.get('idle_monitoring_list', '')
+        self.idle_monitoring = monitoring_factory.factory(
+                                       monitoring_list,
+                                       "%s/idle" % self.tmp_dir )
+
         self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
@@ -114,7 +128,7 @@ class Ceph(Cluster):
         self.use_existing = config.get('use_existing', True)
         self.stoprequest = threading.Event()
         self.haltrequest = threading.Event()
-
+        self.monitor_list = None
 
     def initialize(self): 
         # safety check to make sure we don't blow away an existing cluster!
@@ -135,7 +149,6 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
         common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
         self.distribute_conf()
 
@@ -146,16 +159,18 @@ class Ceph(Cluster):
         self.setup_fs()
 
         # Build the cluster
-        monitoring.start('%s/creation' % self.monitoring_dir)
+
+
+        for m in self.cluster_build_monitoring: m.start()
         self.make_mons()
         self.make_osds()
         self.start_rgw()
-        monitoring.stop()
+        for m in self.cluster_build_monitoring: m.stop()
 
         # Check Health
-        monitoring.start('%s/initial_health_check' % self.monitoring_dir)
+        for m in self.health_check_monitoring: m.start()
         self.check_health()
-        monitoring.stop()
+        for m in self.health_check_monitoring: m.stop()
 
         # Disable scrub and wait for any scrubbing to complete 
         self.disable_scrub()
@@ -166,9 +181,9 @@ class Ceph(Cluster):
 
         # Peform Idle Monitoring
         if self.idle_duration > 0:
-            monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
+            for m in self.idle_monitoring: m.start()
             time.sleep(self.idle_duration)
-            monitoring.stop()
+            for m in self.idle_monitoring: m.stop()
 
         return True
 
@@ -186,12 +201,15 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo killall -9 radosgw-admin').communicate()
         common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop').communicate()
         common.pdsh(nodes, 'sudo killall -9 pdsh').communicate()
-        monitoring.stop()
+        for lst in [ self.cluster_build_monitoring, self.health_check_monitoring, self.idle_monitoring ]:
+            for m in lst:
+                m.stop()
 
     def cleanup(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
-        logger.info('Deleting %s', self.tmp_dir)
-        common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
+        if not self.use_existing:
+            logger.info('Deleting %s', self.tmp_dir)
+            common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
 
     def setup_fs(self):
         use_existing = settings.cluster.get('use_existing', True)
