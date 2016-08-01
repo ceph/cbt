@@ -1,49 +1,42 @@
 import common
 import settings
+import os
+import logging
 
+logger = logging.getLogger("cbt")
 
-def start(directory):
-    nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
-    collectl_dir = '%s/collectl' % directory
-    # perf_dir = '%s/perf' % directory
-    # blktrace_dir = '%s/blktrace' % directory
+class MonitorException(Exception):
+    def __init__(self, msg):
+        super(Exception, self).__init__(msg)
 
-    # collectl
-    rawdskfilt = 'cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ '
-    common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
-    common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 --rawdskfilt "%s" -F0 -f %s' % (rawdskfilt, collectl_dir))
+# monitoring.py has become a base class
+# that defines an API for adding new monitoring tools to CBT
 
-    # perf
-    # common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
-    # common.pdsh(nodes), 'cd %s;sudo perf_3.6 record -g -f -a -F 100 -o perf.data' % perf_dir)
+class CBTMonitoring:
+    def __init__(self, directory):
+        self.directory = directory
+        self.nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
+        self.settings = settings
+        self.classname = self.__class__.__name__
+        self.pdsh_threads = []  # start() method fills this in
+        self.subdirectory = os.path.join(self.directory, self.classname)
+        logger.info('monitor for class %s in directory %s' %
+                    (self.classname, self.subdirectory))
 
-    # blktrace
-    # common.pdsh(osds, 'mkdir -p -m0755 -- %s' % blktrace_dir).communicate()
-    # for device in xrange (0,osds_per_node):
-    #     common.pdsh(osds, 'cd %s;sudo blktrace -o device%s -d /dev/disk/by-partlabel/osd-device-%s-data'
-    #                 % (blktrace_dir, device, device))
+    def __str__(self):
+        return 'monitor class %s directory %s' % (
+               self.__class__.__name__, self.directory)
 
+    def start(self):
+        common.pdsh(self.nodes, 'mkdir -p %s' % self.subdirectory, 
+                    continue_if_error=False).communicate()
 
-def stop(directory=None):
-    nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
+    def stop(self):
+        pass
 
-    common.pdsh(nodes, 'pkill -SIGINT -f collectl').communicate()
-    common.pdsh(nodes, 'sudo pkill -SIGINT -f perf_3.6').communicate()
-    common.pdsh(settings.getnodes('osds'), 'sudo pkill -SIGINT -f blktrace').communicate()
-    if directory:
-        sc = settings.cluster
-        common.pdsh(nodes, 'cd %s/perf;sudo chown %s.%s perf.data' % (directory, sc.get('user'), sc.get('user')))
-        make_movies(directory)
+    def postprocess(self, out_dir):
+        d1 = os.path.basename(self.subdirectory)
+        d2 = os.path.basename(os.path.dirname(self.subdirectory))
+        copy_to_dir = os.path.join(os.path.join(out_dir, d2), d1)
+        common.sync_files(self.subdirectory, copy_to_dir)
 
-
-def make_movies(directory):
-    use_existing = settings.cluster.get('use_existing', True)
-    if use_existing:
-        return None
-    sc = settings.cluster
-    seekwatcher = '/home/%s/bin/seekwatcher' % sc.get('user')
-    blktrace_dir = '%s/blktrace' % directory
-
-    for device in range(sc.get('osds_per_node')):
-        common.pdsh(settings.getnodes('osds'), 'cd %s;%s -t device%s -o device%s.mpg --movie' %
-                    (blktrace_dir, seekwatcher, device, device)).communicate()
