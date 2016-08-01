@@ -90,6 +90,7 @@ def sync_files(remote_dir, local_dir):
         os.makedirs(local_dir)
 
     if 'user' in settings.cluster:
+      if not settings.cluster.get('user').startswith('root'):
         pdsh(nodes, 
              'sudo chown -R {0}.{0} {1}'.format(settings.cluster['user'], remote_dir),
              continue_if_error=False).communicate()
