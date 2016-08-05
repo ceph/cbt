@@ -47,6 +47,7 @@ class Benchmark(object):
 
         logger.debug('Cleaning existing temporary run directory: %s', self.run_dir)
         common.pdsh(settings.getnodes('clients', 'osds', 'mons', 'rgws'), 'sudo rm -rf %s' % self.run_dir).communicate()
+        common.make_remote_dir(self.run_dir)
         if self.valgrind is not None:
             logger.debug('Adding valgrind to the command path.')
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
