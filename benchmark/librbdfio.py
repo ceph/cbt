@@ -81,11 +81,11 @@ class LibrbdFio(Benchmark):
             self.cluster.check_scrub()
             for m in self.scrub_monitoring_list: m.stop()
 
-            logger.info('Pausing for 60s for idle monitoring.')
-            for m in self.idle_monitoring_list: m.start()
-            #time.sleep(60)
-            time.sleep(10)
-            for m in self.idle_monitoring_list: m.stop()
+            if len(self.idle_monitoring_list) > 0:
+                logger.info('Pausing for 60s for idle monitoring.')
+                for m in self.idle_monitoring_list: m.start()
+                time.sleep(60)
+                for m in self.idle_monitoring_list: m.stop()
 
         self.mkimages()
 
