@@ -1,11 +1,11 @@
 import subprocess
 import common
 import settings
-import monitoring
 import os
 import time
 import threading
 import logging
+import monitoring_factory
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
@@ -39,6 +39,20 @@ class LibrbdFio(Benchmark):
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
+        monitor_list_csv = config.get('monitor_list', '')
+        self.scrub_monitoring_list = monitoring_factory.factory(
+                                      monitor_list_csv,
+                                      "%s/scrub_monitoring" % self.run_dir)
+        self.idle_monitoring_list = monitoring_factory.factory(
+                                      monitor_list_csv,
+                                      "%s/idle_monitoring" % self.run_dir)
+        self.run_monitoring_list = monitoring_factory.factory(
+                                      monitor_list_csv,
+                                      "%s/run_monitoring" % self.run_dir)
+        self.pool_monitoring_list = monitoring_factory.factory(
+                                      monitor_list_csv,
+                                      "%s/pool_monitoring" % self.run_dir)
+
         self.poolname = "cbt-librbdfio"
         self.use_existing_volumes = config.get('use_existing_volumes', False)
 
@@ -60,17 +74,18 @@ class LibrbdFio(Benchmark):
     def initialize(self): 
         super(LibrbdFio, self).initialize()
 
-        logger.info('Running scrub monitoring.')
-        monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        self.cluster.check_scrub()
-        monitoring.stop()
+        iteration = self.config.get('iteration')
+        if iteration == 0:
+            logger.info('Running scrub monitoring.')
+            for m in self.scrub_monitoring_list: m.start()
+            self.cluster.check_scrub()
+            for m in self.scrub_monitoring_list: m.stop()
 
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+            logger.info('Pausing for 60s for idle monitoring.')
+            for m in self.idle_monitoring_list: m.start()
+            #time.sleep(60)
+            time.sleep(10)
+            for m in self.idle_monitoring_list: m.stop()
 
         self.mkimages()
 
@@ -83,10 +98,11 @@ class LibrbdFio(Benchmark):
         if (self.use_existing_volumes == False):
           for i in xrange(self.volumes_per_client):
               pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
-              p = common.pdsh(settings.getnodes('clients'), pre_cmd)
+              p = common.pdsh(settings.getnodes('clients'), pre_cmd,
+                              continue_if_error=False)
               ps.append(p)
           for p in ps:
-              p.wait()
+              p.communicate()
         return True
 
     def run(self):
@@ -98,7 +114,7 @@ class LibrbdFio(Benchmark):
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
 
-        monitoring.start(self.run_dir)
+        for m in self.run_monitoring_list: m.start()
 
         time.sleep(5)
 
@@ -111,19 +127,29 @@ class LibrbdFio(Benchmark):
         ps = []
         for i in xrange(self.volumes_per_client):
             fio_cmd = self.mkfiocmd(i)
-            p = common.pdsh(settings.getnodes('clients'), fio_cmd)
+            p = common.pdsh(settings.getnodes('clients'), fio_cmd,
+                            continue_if_error=False)
             ps.append(p)
         for p in ps:
-            p.wait()
+            p.communicate()
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        for m in self.run_monitoring_list:
+            m.stop()
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+
+        for m in self.run_monitoring_list:
+            m.postprocess(self.out_dir)
+        if self.config.get('iteration') == 0:
+            for lst in [ self.scrub_monitoring_list, self.pool_monitoring_list ]:
+                for m in lst:
+                    m.postprocess(self.out_dir)
+
+        common.sync_files('%s' % self.run_dir, self.out_dir)
 
     def mkfiocmd(self, volnum):
         rbdname = 'cbt-librbdfio-`hostname -s`-%d' % volnum
@@ -162,7 +188,7 @@ class LibrbdFio(Benchmark):
         return fio_cmd
 
     def mkimages(self):
-        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        for m in self.pool_monitoring_list: m.start()
         if (self.use_existing_volumes == False):
           self.cluster.rmpool(self.poolname, self.pool_profile)
           self.cluster.mkpool(self.poolname, self.pool_profile)
@@ -171,7 +197,7 @@ class LibrbdFio(Benchmark):
                   node = node.rpartition("@")[2]
 #                  common.pdsh(settings.getnodes('head'), '/usr/bin/rbd create cbt-librbdfio-%s-%d --size %s --pool %s --order %s' % (node, volnum, self.vol_size, self.poolname, self.vol_order)).communicate()
                   self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.poolname, self.vol_order)
-        monitoring.stop()
+        for m in self.pool_monitoring_list: m.stop()
 
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
