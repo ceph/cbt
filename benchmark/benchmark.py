@@ -3,7 +3,6 @@ import logging
 
 import settings
 import common
-import monitoring
 
 logger = logging.getLogger('cbt')
 
