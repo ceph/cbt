@@ -1,0 +1,39 @@
+# this example lets you run kvmrbdfio.py benchmark
+# inside a single-host Ceph cluster on a virtual machine,
+# using a kernel RBD device as a simulated virtual disk
+# of course, the storage pool for the /dev/rbd1 must
+# be replicated using a crush rule like:
+# # ceph osd crush rule create-simple too-few-hosts myvm osd
+# and then you create the storage pool using
+# # ceph osd pool create mypool 32 32 too-few-hosts
+
+cluster:
+  use_existing: True
+  head: "myvm"
+  clients: [ "^../vms.list" ]
+  osds: ["myvm"]
+  mons: ["myvm"]
+  iterations: 2
+  rebuild_every_test: False
+  tmp_dir: "/tmp/cbt"
+  pool_profiles:
+    replicated:
+      pg_size: 64
+      pgp_size: 64
+      replication: 3
+      crush_profile: 1
+benchmarks:
+  kvmrbdfio:
+    fio_cmd: /usr/local/bin/fio
+    time: 60
+    ramp: 20
+    startdelay: 10
+    rate_iops: 2
+    iodepth: [2]
+    numjobs:  1
+    block_devices: /dev/rbd1
+    mode: randwrite
+    # rwmixread: 20
+    op_size: 4096
+    vol_size: 64
+
