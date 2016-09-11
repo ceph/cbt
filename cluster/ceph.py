@@ -7,6 +7,7 @@ import uuid
 import threading
 import logging
 import monitoring_factory
+import monitoring
 from cluster import Cluster
 
 
@@ -41,6 +42,7 @@ class OsdThread(threading.Thread):
             key_fn = '%s/keyring'%self.osddir
             ceph_conf = self.cl_obj.tmp_conf
             phost = sshtarget(settings.cluster.get('user'), self.host)
+            common.pdsh(phost, 'sudo ln -sfv %s /var/lib/ceph/osd/%s-%d' % (self.osddir, self.clusterid, self.osdnum), continue_if_error=False)
             common.pdsh(phost, 'sudo %s -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.cl_obj.ceph_cmd, ceph_conf, self.osdnum, self.host)).communicate()
             cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
             common.pdsh(phost, 'sudo sh -c "%s"' % cmd).communicate()
@@ -145,11 +147,10 @@ class Ceph(Cluster):
 
         # Cleanup old junk and create new junk
         self.cleanup()
-        common.mkdir_p(self.tmp_dir)
-        common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
+        common.make_remote_dir(self.tmp_dir)
+        common.make_remote_dir(self.pid_dir)
+        common.make_remote_dir(self.log_dir)
+        common.make_remote_dir(self.core_dir)
         self.distribute_conf()
 
         # Set the core directory
@@ -161,16 +162,16 @@ class Ceph(Cluster):
         # Build the cluster
 
 
-        for m in self.cluster_build_monitoring: m.start()
+        monitoring.start(self.cluster_build_monitoring)
         self.make_mons()
         self.make_osds()
         self.start_rgw()
-        for m in self.cluster_build_monitoring: m.stop()
+        monitoring.stop(self.cluster_build_monitoring)
 
         # Check Health
-        for m in self.health_check_monitoring: m.start()
+        monitoring.start(self.health_check_monitoring)
         self.check_health()
-        for m in self.health_check_monitoring: m.stop()
+        monitoring.stop(self.health_check_monitoring)
 
         # Disable scrub and wait for any scrubbing to complete 
         self.disable_scrub()
@@ -181,9 +182,9 @@ class Ceph(Cluster):
 
         # Peform Idle Monitoring
         if self.idle_duration > 0:
-            for m in self.idle_monitoring: m.start()
+            monitoring.start(self.idle_monitoring)
             time.sleep(self.idle_duration)
-            for m in self.idle_monitoring: m.stop()
+            monitoring.stop(self.idle_monitoring)
 
         return True
 
@@ -202,14 +203,19 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop').communicate()
         common.pdsh(nodes, 'sudo killall -9 pdsh').communicate()
         for lst in [ self.cluster_build_monitoring, self.health_check_monitoring, self.idle_monitoring ]:
-            for m in lst:
-                m.stop()
+            monitoring.stop(lst)
 
     def cleanup(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
+        osds = settings.getnodes('osds')
         if not self.use_existing:
-            logger.info('Deleting %s', self.tmp_dir)
-            common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
+            common.pdsh(osds, 'sync', continue_if_error=False).communicate()
+            time.sleep(1)
+            common.pdsh(osds, 'for d in `ls -d %s/osd*` ; do sudo umount -v $d ; done' % self.mnt_dir, continue_if_error=False).communicate()
+            common.pdsh(nodes, 'sudo rm -rf /var/lib/ceph', continue_if_error=False)
+
+        logger.info('Deleting %s', self.base_dir)
+        common.pdsh(nodes, 'sudo rm -rf %s' % self.base_dir, continue_if_error=False).communicate()
 
     def setup_fs(self):
         use_existing = settings.cluster.get('use_existing', True)
@@ -265,8 +271,15 @@ class Ceph(Cluster):
 
     def make_mons(self):
         # Build and distribute the keyring
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % self.keyring_fn).communicate()
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow %s' % self.keyring_fn).communicate()
+        common.pdsh(settings.getnodes('mons'), 
+                    'sudo mkdir -pv -m0755 -- /var/lib/ceph/mon', 
+                    continue_if_error=False).communicate()
+        common.pdsh(settings.getnodes('head'), 
+                    'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % self.keyring_fn, 
+                    continue_if_error=False).communicate()
+        common.pdsh(settings.getnodes('head'), 
+                    'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds allow %s' % self.keyring_fn, 
+                    continue_if_error=False).communicate()
         common.rscp(settings.getnodes('head'), self.keyring_fn, '%s.tmp' % self.keyring_fn).communicate()
         common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds'), '', '%s.tmp' % self.keyring_fn, self.keyring_fn).communicate()
 
@@ -310,6 +323,8 @@ class Ceph(Cluster):
     def make_osds(self):
         osdnum = 0
         osdhosts = settings.cluster.get('osds')
+        common.pdsh(','.join(osdhosts), 'sudo mkdir -pv -m0755 /var/lib/ceph/osd', 
+                    continue_if_error=False).communicate()
         clusterid = self.config.get('clusterid')
         user = settings.cluster.get('user')
         thread_list = []
@@ -499,6 +514,11 @@ class Ceph(Cluster):
         prefill_objects = profile.get('prefill_objects', 0)
         prefill_object_size = profile.get('prefill_object_size', 0)
         prefill_time = profile.get('prefill_time', 0)
+
+        # always make a crush map rule that allows replication/erasure on OSDS in same host
+        mon = settings.getnodes('mons').split(',')[0]
+        common.pdsh(mon, 'sudo %s osd crush rule create-simple too-few-hosts `hostname -s` osd' % self.ceph_cmd, 
+                    continue_if_error=False).communicate()
 
         if replication and replication == 'erasure':
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
