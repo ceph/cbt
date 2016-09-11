@@ -1,3 +1,4 @@
+import time
 import common
 import settings
 import monitoring
@@ -17,15 +18,12 @@ class monitor_perf(monitoring.CBTMonitoring):
                  self.subdirectory))
 
     def stop(self):
+        common.pdsh(self.nodes, 'sudo pkill -SIGINT -f perf').communicate()
+        time.sleep(1)
+        common.pdsh(self.nodes, 'sudo pkill -SIGKILL -f perf').communicate()
         monitoring.CBTMonitoring.stop(self)
-        common.pdsh(self.nodes, 'sudo pkill -SIGINT -f perf').communicate()
-        common.pdsh(self.nodes, 'sudo pkill -SIGINT -f perf').communicate()
-        for t in self.pdsh_threads: t.communicate()
         sc = self.settings.cluster
         u = sc.get('user')
         common.pdsh(self.nodes, 
                 'cd %s;sudo chown %s.%s perf.data' % (
-                 self.subdirectory, u, u))
-
-    def postprocess(self, out_dir):
-        monitoring.CBTMonitoring.postprocess(self, out_dir)
+                 self.subdirectory, u, u), continue_if_error=False)
