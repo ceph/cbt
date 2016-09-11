@@ -12,23 +12,20 @@ class monitor_blktrace(monitoring.CBTMonitoring):
         monitoring.CBTMonitoring.start(self)
         osds_per_node = int(self.settings.cluster.get('osds_per_node'))
         osds = self.settings.getnodes('osds')
-        self.pdsh_threads = \
+        self.pdsh_threads.extend(
             [ common.pdsh( osds,
                            blktrace_cmd % (self.subdirectory, device, device)) \
-              for device in range(0, osds_per_node) ]
-
+              for device in range(0, osds_per_node) ])
 
     def stop(self):
         osds = self.settings.getnodes('osds')
         common.pdsh(osds, 'sudo pkill -SIGINT -f blktrace').communicate()
-        for thrds in self.pdsh_threads:
-            thrds.communicate()
+        monitoring.CBTMonitoring.stop(self)
         sc = self.settings.cluster
         u = sc.get('user')
         common.pdsh(osds, 
                     'sudo chown -R %s.%s %s' % (
-                    u, u, self.subdirectory))
-        monitoring.CBTMonitoring.stop(self)
+                    u, u, self.subdirectory), continue_if_error=False)
 
     def postprocess(self, out_dir):
         sc = self.settings.cluster
