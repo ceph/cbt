@@ -12,8 +12,9 @@ logger = logging.getLogger("cbt")
 
 class CheckedPopen:
     UNINIT=-720
+    COMMUNICATE_VALUEERROR = -1001  
     OK=0
-    def __init__(self, args, continue_if_error=False):
+    def __init__(self, args, continue_if_error=True):
         self.args = args[:]
         self.myrtncode = self.UNINIT
         self.continue_if_error = continue_if_error
@@ -25,9 +26,16 @@ class CheckedPopen:
 
     # we transparently check return codes for this method now so callers don't have to
 
-    def communicate(self, input=None, continue_if_error=True):
-        (stdoutdata, stderrdata) = self.popen_obj.communicate(input=input)
-        self.myrtncode = self.popen_obj.returncode  # THIS is the thing we couldn't do before
+    def communicate(self, input=None):
+        try:
+            (stdoutdata, stderrdata) = self.popen_obj.communicate(input=input)
+            # THIS is the thing we couldn't do before
+            self.myrtncode = self.popen_obj.returncode
+        except ValueError as e:
+            # can happen if socket/pipe is already closed because peer died
+            self.myrtncode = self.COMMUNICATE_VALUEERROR
+            stdoutdata = ''
+            stderrdata = str(e)
         if self.myrtncode != self.OK:
             if not self.continue_if_error:
                 raise Exception(str(self)+'\nstdout:\n'+stdoutdata+'\nstderr\n'+stderrdata)
