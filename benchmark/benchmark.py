@@ -48,17 +48,15 @@ class Benchmark(object):
             self.cluster.initialize()
 
         self.cleanup()
+
+    def run(self):
         # Create the run directory
         common.make_remote_dir(self.run_dir)
 
-    def run(self):
         if self.osd_ra and self.osd_ra_changed:
             logger.info('Setting OSD Read Ahead to: %s', self.osd_ra)
             self.cluster.set_osd_param('read_ahead_kb', self.osd_ra)
 
-        logger.debug('Cleaning existing temporary run directory: %s', self.run_dir)
-        common.pdsh(settings.getnodes('clients', 'osds', 'mons', 'rgws'), 'sudo rm -rf %s' % self.run_dir).communicate()
-        common.make_remote_dir(self.run_dir)
         if self.valgrind is not None:
             logger.debug('Adding valgrind to the command path.')
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
@@ -66,6 +64,9 @@ class Benchmark(object):
         self.cmd_path_full += self.cmd_path
 
     def exists(self):
+        if os.path.exists(self.out_dir):
+            logger.info('Skipping existing test in %s.', self.out_dir)
+            return True
         return False
 
     def cleanup(self):
@@ -81,10 +82,12 @@ class Benchmark(object):
     # no need to have every benchmark do this when we can do it all here
 
     def postprocess_all(self):
+        self.cluster.dump_historic_ops(self.run_dir)
         monitoring.postprocess(self.run_monitoring_list, self.out_dir)
         if self.config.get('iteration') == 0: # Question: why scrub on iteration 0?
             for lst in [ self.scrub_monitoring_list, self.pool_monitoring_list ]:
                 monitoring.postprocess(lst, self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def dropcaches(self):
         nodes = settings.getnodes('clients', 'osds') 
