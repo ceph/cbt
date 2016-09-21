@@ -17,8 +17,9 @@ logger = logging.getLogger("cbt")
 class Radosbench(Benchmark):
 
     def __init__(self, cluster, config):
-        super(Radosbench, self).__init__(cluster, config)
 
+        self.super = super(Radosbench, self)
+        self.super.__init__(cluster, config)
         self.tmp_conf = self.cluster.tmp_conf
         self.time =  str(config.get('time', '300'))
         self.concurrent_procs = config.get('concurrent_procs', 1)
@@ -34,32 +35,17 @@ class Radosbench(Benchmark):
         self.pool = config.get('target_pool', 'rados-bench-cbt')
         self.readmode = config.get('readmode', 'seq')
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
-        super(Radosbench, self).initialize()
-
-        logger.info('Running scrub monitoring.')
-        monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        self.cluster.check_scrub()
-        monitoring.stop()
-
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        self.super.initialize()
+        iteration = self.config.get('iteration')
+        if iteration == 0:
+            self.super.do_initial_monitoring()
 
         return True
 
     def run(self):
-        super(Radosbench, self).run()
+        self.super.run()
         
         # Remake the pools
         self.mkpools()
@@ -70,8 +56,8 @@ class Radosbench(Benchmark):
         if self.write_only: return
         self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
         
-
     def _run(self, mode, run_dir, out_dir):
+
         # We'll always drop caches for rados bench
         self.dropcaches()
 
@@ -87,9 +73,6 @@ class Radosbench(Benchmark):
         else:
             op_size_str = ''
 
-
-        common.make_remote_dir(run_dir)
-
         # dump the cluster config
         self.cluster.dump_config(run_dir)
 
@@ -99,7 +82,7 @@ class Radosbench(Benchmark):
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
         # Run rados bench
-        monitoring.start(run_dir)
+        monitoring.start(self.run_monitoring_list)
         logger.info('Running radosbench %s test.' % mode)
         ps = []
         for i in xrange(self.concurrent_procs):
@@ -117,18 +100,16 @@ class Radosbench(Benchmark):
             ps.append(p)
         for p in ps:
             p.wait()
-        monitoring.stop(run_dir)
+        monitoring.stop(self.run_monitoring_list)
 
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(run_dir)
-        common.sync_files('%s/*' % run_dir, out_dir)
+        self.postprocess_all()
 
     def mkpools(self):
-        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        monitoring.start(self.pool_monitoring_list)
         if self.pool_per_proc: # allow use of a separate storage pool per process
             for i in xrange(self.concurrent_procs):
                 for node in settings.getnodes('clients').split(','):
@@ -138,10 +119,10 @@ class Radosbench(Benchmark):
         else: # the default behavior is to use a single Ceph storage pool for all rados bench processes
             self.cluster.rmpool('rados-bench-cbt', self.pool_profile)
             self.cluster.mkpool('rados-bench-cbt', self.pool_profile)
-        monitoring.stop()
+        monitoring.stop(self.pool_monitoring_list)
 
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, str(self.super))
