@@ -45,7 +45,7 @@ class CheckedPopen:
         return (stdoutdata, stderrdata)
 
     def wait(self):
-        self.communicate(continue_if_error=True)
+        self.communicate()
         return self.myrtncode
 
 # by default, do NOT abort if pdsh returns error status
