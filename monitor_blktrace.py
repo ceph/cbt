@@ -1,15 +1,17 @@
 import common
 import settings
 import monitoring
+from monitoring import CBTMonitoring
+
 blktrace_cmd = \
  'cd %s;sudo blktrace -o device%s -d /dev/disk/by-partlabel/osd-device-%s-data'
 
 # this subclass of monitoring class invokes blktrace on ceph OSDs
 
-class monitor_blktrace(monitoring.CBTMonitoring):
+class monitor_blktrace(CBTMonitoring):
 
     def start(self):
-        monitoring.CBTMonitoring.start(self)
+        CBTMonitoring.start(self)
         osds_per_node = int(self.settings.cluster.get('osds_per_node'))
         osds = self.settings.getnodes('osds')
         self.pdsh_threads.extend(
@@ -20,7 +22,7 @@ class monitor_blktrace(monitoring.CBTMonitoring):
     def stop(self):
         osds = self.settings.getnodes('osds')
         common.pdsh(osds, 'sudo pkill -SIGINT -f blktrace').communicate()
-        monitoring.CBTMonitoring.stop(self)
+        CBTMonitoring.stop(self)
         sc = self.settings.cluster
         u = sc.get('user')
         common.pdsh(osds, 
@@ -36,4 +38,4 @@ class monitor_blktrace(monitoring.CBTMonitoring):
             common.pdsh(self.settings.getnodes('osds'), 
                         'cd %s;%s -t device%s -o device%s.mpg --movie' %
                         (blktrace_dir, seekwatcher, device, device)).communicate()
-        monitoring.CBTMonitoring.postprocess(self, out_dir)
+        CBTMonitoring.postprocess(self, out_dir)
