@@ -57,6 +57,7 @@ class Radosbench(Benchmark):
         self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
         
     def _run(self, mode, run_dir, out_dir):
+        common.make_remote_dir(run_dir)  # this is either read/write subdir
 
         # We'll always drop caches for rados bench
         self.dropcaches()
