@@ -14,7 +14,8 @@ logger = logging.getLogger("cbt")
 class KvmRbdFio(Benchmark):
 
     def __init__(self, cluster, config):
-        super(KvmRbdFio, self).__init__(cluster, config)
+        self.super = super(KvmRbdFio, self)
+        self.super.__init__(cluster, config)
         # comma-separated list of block devices to use inside the client host/VM/container
         self.block_device_list = config.get('block_devices', '/dev/vdb' )
         self.block_devices = [ d.strip() for d in self.block_device_list.split(',') ]
@@ -43,18 +44,8 @@ class KvmRbdFio(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     def initialize(self): 
-        super(KvmRbdFio, self).initialize()
-        common.pdsh(settings.getnodes('clients', 'osds', 'mons', 'rgws'),
-                    'sudo rm -rf %s' % self.run_dir,
-                    continue_if_error=False).communicate()
-        common.make_remote_dir(self.run_dir)
+        self.super.initialize()
         clnts = settings.getnodes('clients')
         logger.info('creating mountpoints...')
         for b in self.block_devices:
@@ -81,13 +72,8 @@ class KvmRbdFio(Benchmark):
         for p in initializer_list:
              p.communicate()
 
-        # Create the run directory
-        common.pdsh(clnts, 'rm -rf %s' % self.run_dir, 
-                    continue_if_error=False).communicate()
-        common.make_remote_dir(self.run_dir)
-
     def run(self):
-        super(KvmRbdFio, self).run()
+        self.super.run()
         # Set client readahead
         self.set_client_param('read_ahead_kb', self.client_ra)
         clnts = settings.getnodes('clients')
@@ -95,7 +81,7 @@ class KvmRbdFio(Benchmark):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
-        monitoring.start(self.run_dir)
+        monitoring.start(self.run_monitoring_list)
 
         time.sleep(5)
         # Run the backfill testing thread if requested
@@ -137,13 +123,12 @@ class KvmRbdFio(Benchmark):
             fio_process_list.append(common.pdsh(clnts, fio_cmd, continue_if_error=False))
         for p in fio_process_list:
             p.communicate()
-        monitoring.stop(self.run_dir)
-        logger.info('Finished rbd fio test')
+        monitoring.stop(self.run_monitoring_list)
 
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        self.super.postprocess_all()
 
     def cleanup(self):
-         super(KvmRbdFio, self).cleanup()
+         self.super.cleanup()
          clnts = settings.getnodes('clients')
          common.pdsh(clnts, 'killall fio').communicate()
          time.sleep(3)
@@ -158,7 +143,7 @@ class KvmRbdFio(Benchmark):
          common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(KvmRbdFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, self.super.__str__())
 
     def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()
