@@ -1,6 +1,7 @@
 import common
 import settings
 import monitoring
+from monitoring import CBTMonitoring
 
 # this module implements a collectl monitoring only
 # using the monitoring.py base class
@@ -11,15 +12,15 @@ import monitoring
 rawdskfilt = 'cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ '
 collectl_cmd = 'collectl -s+mYZ -i 1:10 --rawdskfilt "%s" -F0 -f %s'
 
-class monitor_collectl(monitoring.CBTMonitoring):
+class monitor_collectl(CBTMonitoring):
 
     def start(self):
-        monitoring.CBTMonitoring.start(self)
+        CBTMonitoring.start(self)
         self.pdsh_threads.append(
             common.pdsh(self.nodes, 
                 collectl_cmd % (rawdskfilt, self.subdirectory)))
 
     def stop(self):
         common.pdsh(self.nodes, 'pkill -SIGINT -f collectl').communicate()
-        monitoring.CBTMonitoring.stop(self)
+        CBTMonitoring.stop(self)
 
