@@ -43,6 +43,7 @@ class Benchmark(object):
         return self.__class__.__name__
 
     def initialize(self):
+        common.make_remote_dir(self.run_dir)
         use_existing = settings.cluster.get('use_existing', True)
         if not use_existing:
             self.cluster.initialize()
