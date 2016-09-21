@@ -55,9 +55,6 @@ class LibrbdFio(Benchmark):
     def initialize(self): 
         self.super.initialize()
 
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
-
         iteration = self.config.get('iteration')
         if iteration == 0:
             self.super.do_initial_monitoring()
