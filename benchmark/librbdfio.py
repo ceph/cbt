@@ -16,7 +16,8 @@ logger = logging.getLogger("cbt")
 class LibrbdFio(Benchmark):
 
     def __init__(self, cluster, config):
-        super(LibrbdFio, self).__init__(cluster, config)
+        self.super = super(LibrbdFio, self)
+        self.super.__init__(cluster, config)
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
@@ -51,21 +52,15 @@ class LibrbdFio(Benchmark):
         for i in xrange(self.procs_per_volume):
             self.names += '--name=librbdfio-`hostname -s`-%d ' % i
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     def initialize(self): 
-        super(LibrbdFio, self).initialize()
+        self.super.initialize()
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
 
         iteration = self.config.get('iteration')
         if iteration == 0:
-            super(LibrbdFio, self).do_initial_monitoring()
+            self.super.do_initial_monitoring()
         self.mkimages()
 
         # populate the fio files
@@ -82,7 +77,7 @@ class LibrbdFio(Benchmark):
         return True
 
     def run(self):
-        super(LibrbdFio, self).run()
+        self.super.run()
 
         # We'll always drop caches for rados bench
         self.dropcaches()
@@ -113,13 +108,7 @@ class LibrbdFio(Benchmark):
             self.cluster.wait_recovery_done()
 
         monitoring.stop(self.run_monitoring_list)
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-
-        super(LibrbdFio, self).postprocess_all()
-
-        common.sync_files('%s' % self.run_dir, self.out_dir)
+        self.super.postprocess_all()
 
     def mkfiocmd(self, volnum):
         rbdname = 'cbt-librbdfio-`hostname -s`-%d' % volnum
@@ -173,4 +162,4 @@ class LibrbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(LibrbdFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, self.super.__str__())
