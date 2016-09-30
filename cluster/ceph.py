@@ -304,6 +304,8 @@ class Ceph(Cluster):
             for mon, addr in mons.iteritems():
                 common.pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
+                common.pdsh(monhost, 'sudo ln -svf %s/mon.%s /var/lib/ceph/mon.%s' % (self.tmp_dir, mon, mon),
+                           continue_if_error=False).communicate()
                 common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, self.keyring_fn)).communicate()
                 common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (self.keyring_fn, self.tmp_dir, mon)).communicate()
             
