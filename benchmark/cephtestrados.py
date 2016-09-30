@@ -15,7 +15,8 @@ from benchmark import Benchmark
 class CephTestRados(Benchmark):
 
     def __init__(self, cluster, config):
-        super(CephTestRados, self).__init__(cluster, config)
+        self.super = super(CephTestRados, self)
+        self.super.__init__(cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
 
@@ -57,25 +58,17 @@ class CephTestRados(Benchmark):
         if value is not None:
             self.weights[weight] = int(value)
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
-            return True
-        return False
-
-    # Initialize may only be called once depending on rebuild_every_test setting
-    def initialize(self): 
-        super(CephTestRados, self).initialize()
-        return True
-
     def run(self):
-        super(CephTestRados, self).run()
-        
+        self.super.run()
+        iteration = self.config.get('iteration')
+        if iteration == 0:
+            self.super.do_initial_monitoring()
+
         # Remake the pool
         self.mkpool()
         self.dropcaches()
         self.cluster.dump_config(self.run_dir)
-        monitoring.start(self.run_dir)
+        monitoring.start(self.run_monitoring_list)
         time.sleep(5)
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
@@ -93,11 +86,8 @@ class CephTestRados(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        monitoring.stop(self.run_monitoring_list)
+        self.postprocess_all()
 
     def mkcmd(self):
         cmd = [self.cmd_path]
@@ -118,13 +108,11 @@ class CephTestRados(Benchmark):
         return ' '.join(cmd)
 
     def mkpool(self):
-        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        monitoring.start(self.pool_monitoring_list)
         self.cluster.rmpool('ceph_test_rados', self.pool_profile)
         self.cluster.mkpool('ceph_test_rados', self.pool_profile)
-        monitoring.stop()
+        monitoring.stop(self.pool_monitoring_list)
 
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados').communicate()
 
-    def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(CephTestRados, self).__str__())
