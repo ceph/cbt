@@ -13,7 +13,8 @@ logger = logging.getLogger("cbt")
 class RbdFio(Benchmark):
 
     def __init__(self, cluster, config):
-        super(RbdFio, self).__init__(cluster, config)
+        self.super = super(RbdFio, self)
+        self.super.__init__(cluster, config)
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
@@ -49,31 +50,13 @@ class RbdFio(Benchmark):
         for i in xrange(self.concurrent_procs):
             self.names += '--name=%s/cbt-kernelrbdfio-`hostname -s`/cbt-kernelrbdfio-%d ' % (self.cluster.mnt_dir, i)
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     def initialize(self): 
-        super(RbdFio, self).initialize()
+        self.super.initialize()
 
-        logger.info('Running scrub monitoring.')
-        monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        self.cluster.check_scrub()
-        monitoring.stop()
-
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
+        iteration = self.config.get('iteration')
+        if iteration == 0:
+            self.super.do_initial_monitoring()
         self.mkimages()
- 
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
 
         # populate the fio files
         logger.info('Attempting to populating fio files...')
@@ -85,15 +68,12 @@ class RbdFio(Benchmark):
 
 
     def run(self):
-        super(RbdFio, self).run()
+        self.super.run()
 
         # Set client readahead
         self.set_client_param('read_ahead_kb', self.client_ra)
 
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
-        monitoring.start(self.run_dir)
+        monitoring.start(self.run_monitoring_list)
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
@@ -134,23 +114,14 @@ class RbdFio(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
-    def cleanup(self):
-        super(RbdFio, self).cleanup()
+        monitoring.stop(self.run_monitoring_list)
+        self.super.postprocess_all()
 
     def set_client_param(self, param, value):
         common.pdsh(settings.getnodes('clients'), 'find /sys/block/rbd* -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
 
-    def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RbdFio, self).__str__())
-
     def mkimages(self):
-        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        monitoring.start(self.pool_monitoring_list)
         self.cluster.rmpool(self.poolname, self.pool_profile)
         self.cluster.mkpool(self.poolname, self.pool_profile)
         common.pdsh(settings.getnodes('clients'), '/usr/bin/rbd create cbt-kernelrbdfio-`hostname -s` --size %s --pool %s' % (self.vol_size, self.poolname)).communicate()
@@ -158,7 +129,7 @@ class RbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo mkfs.xfs /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s`').communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo mkdir -p -m0755 -- %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s` %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
-        monitoring.stop()
+        monitoring.stop(self.pool_monitoring_list)
 
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
