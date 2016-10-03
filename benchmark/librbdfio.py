@@ -76,12 +76,6 @@ class LibrbdFio(Benchmark):
     def run(self):
         self.super.run()
 
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
-        # dump the cluster config
-        self.cluster.dump_config(self.run_dir)
-
         monitoring.start(self.run_monitoring_list)
 
         time.sleep(5)
