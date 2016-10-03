@@ -211,7 +211,7 @@ class Ceph(Cluster):
         if not self.use_existing:
             common.pdsh(osds, 'sync', continue_if_error=False).communicate()
             time.sleep(1)
-            common.pdsh(osds, 'for d in `ls -d %s/osd*` ; do sudo umount -v $d ; done' % self.mnt_dir, continue_if_error=False).communicate()
+            common.pdsh(osds, 'for d in `ls -d %s/osd*` ; do sudo umount -v $d ; done' % self.mnt_dir).communicate()
             common.pdsh(nodes, 'sudo rm -rf /var/lib/ceph', continue_if_error=False)
 
         logger.info('Deleting %s', self.base_dir)
@@ -233,8 +233,10 @@ class Ceph(Cluster):
         for device in xrange (0,sc.get('osds_per_node')):
             osds = settings.getnodes('osds')
             common.pdsh(osds, 'sudo umount /dev/disk/by-partlabel/osd-device-%s-data' % device).communicate()
-            common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
-            common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
+            common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device),
+                        continue_if_error=False).communicate()
+            common.pdsh(osds, 'sudo mkdir -p -m0755 -- %s/osd-device-%s-data' % (self.mnt_dir, device),
+                        continue_if_error=False).communicate()
 
             if fs == 'tmpfs':
                 logger.info('using tmpfs osds, not creating a file system.')
@@ -255,7 +257,7 @@ class Ceph(Cluster):
                     mkfs_cmd += ' ; sudo ln -s /dev/disk/by-partlabel/osd-device-%s-block %s/osd-device-%s-data/block' % (device, self.mnt_dir, device)
                 mkfs_cmd += '"'
 
-                mkfs_threads.append((device, common.pdsh(osds, mkfs_cmd)))
+                mkfs_threads.append((device, common.pdsh(osds, mkfs_cmd, continue_if_error=False)))
         for device, t in mkfs_threads:  # for tmpfs and zfs cases, thread list is empty
             logger.info('for device %d on all hosts awaiting mkfs and mount'%device)
             t.communicate()
@@ -264,10 +266,10 @@ class Ceph(Cluster):
         nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
         conf_file = self.config.get("conf_file")
         logger.info("Distributing %s.", conf_file)
-        common.pdsh(nodes, 'mkdir -p -m0755 /etc/ceph').communicate()
+        common.pdsh(nodes, 'mkdir -p -m0755 /etc/ceph', continue_if_error=False).communicate()
         common.pdcp(nodes, '', conf_file, self.tmp_conf).communicate()
         common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak').communicate()
-        common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
+        common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf, continue_if_error=False).communicate()
 
     def make_mons(self):
         # Build and distribute the keyring
