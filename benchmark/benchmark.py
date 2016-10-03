@@ -48,12 +48,15 @@ class Benchmark(object):
         if not use_existing:
             self.cluster.initialize()
 
+        # dump the cluster config
+        self.cluster.dump_config(self.run_dir)
+
         self.cleanup()
 
     def run(self):
         # Create the run directory
         common.make_remote_dir(self.run_dir)
-
+        self.dropcaches()
         if self.osd_ra and self.osd_ra_changed:
             logger.info('Setting OSD Read Ahead to: %s', self.osd_ra)
             self.cluster.set_osd_param('read_ahead_kb', self.osd_ra)
