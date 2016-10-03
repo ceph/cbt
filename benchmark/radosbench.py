@@ -59,7 +59,7 @@ class Radosbench(Benchmark):
     def _run(self, mode, run_dir, out_dir):
         common.make_remote_dir(run_dir)  # this is either read/write subdir
 
-        # We'll always drop caches for rados bench
+        # have to do this for both read and write tests
         self.dropcaches()
 
         if self.concurrent_ops:
