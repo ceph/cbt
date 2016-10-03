@@ -66,8 +66,6 @@ class CephTestRados(Benchmark):
 
         # Remake the pool
         self.mkpool()
-        self.dropcaches()
-        self.cluster.dump_config(self.run_dir)
         monitoring.start(self.run_monitoring_list)
         time.sleep(5)
         # Run the backfill testing thread if requested
