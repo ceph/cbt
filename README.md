@@ -137,7 +137,7 @@ list of known hosts for ssh in order to perform properly. Otherwise, the
 benchmarking tests will not be able to run.
 
 Note that the pdsh command could have difficulties if the sudoers file requires
-tty. If this is the case, commend out the `Defaults requiretty` line in visudo.
+tty. If this is the case, comment out the `Defaults requiretty` line in visudo.
 
 ## DISK PARTITIONING
 
@@ -272,24 +272,24 @@ with cbt in this way.
 CBT now lets the user decide which monitoring programs to run, through a 
 monitoring plugin API.  Currently the 3 supported monitoring plugins are:
 
-o collectl: runs the collectl utility to collect basic Linux perf stats such as disk 
-o blktrace: runs the blktrace utility on the OSD devices
-o perf: runs the perf utility to measure code hotspots, etc.
+- collectl: runs the collectl utility to collect basic Linux perf stats such as disk 
+- blktrace: runs the blktrace utility on the OSD devices
+- perf: runs the perf utility to measure code hotspots, etc.
 
 A CSV (comma-separated) list of these monitoring tools 
 can be specified in YAML 
 at different predefined stages of a test.
 Currently the stages defined *per benchmark* are:
 
-o run_monitoring_list: while the workload is being applied
-o scrub_monitoring_list: while scrubbing is occurring at Ceph startup
-o pool_monitoring_list: while pool is being created
+- run_monitoring_list: while the workload is being applied
+- scrub_monitoring_list: while scrubbing is occurring at Ceph startup
+- pool_monitoring_list: while pool is being created
 
 and in the cluster section of the YAML file these stages can be defined:
 
-o cluster_build_monitoring_list: while cluster (i.e. OSDs) is being assembled
-o health_check_monitoring_list: after cluster has been built but before it is ready
-o idle_monitoring_list: before pool is created
+- cluster_build_monitoring_list: while cluster (i.e. OSDs) is being assembled
+- health_check_monitoring_list: after cluster has been built but before it is ready
+- idle_monitoring_list: before pool is created
 
 For example, these lines could be used in a YAML benchmark section:
 
