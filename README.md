@@ -44,8 +44,20 @@ Manager.
 The rbdfio benchmark uses the flexible IO tester (fio) to excercise a RBD
 volume that has been mapped to a block device using the KRBD kernel driver.
 This module is most relevant for simulating the data path for applications
-that need a block device, but wont for whatever reason be ran inside a virtual
-machine.
+that need a block device (example: containers!), 
+but wont for whatever reason be ran inside a virtual machine.
+
+### cephtestrados
+
+this undocumented benchmark generates a randomly generated mixed workload 
+of operations to exercise the RADOS layer directly.
+
+### cosbench
+
+this benchmark utilizes the cosbench benchmark to exercise the Rados GateWay
+(RGW) with a OpenStack Swift workload.  It does require you to start the
+cosbench controller and driver separately at present and does not configure them
+for a multi-host test.
 
 ## PREREQUISITES
 
@@ -80,6 +92,11 @@ Optional tools and benchmarks can be used if desired:
 
 ## USER AND NODE SETUP
 
+NOTE: you can use CBT on a cluster created with ceph-deploy or ceph-ansible,
+but you MUST set "use-existing: True" in the cluster YAML section!  Failure to 
+do this may destroy any pre-existing cluster.  The default is currently 
+"use-existing: False".
+
 In addition to the above software, a number of nodes must be available to run
 tests.  These are divided into several categories.  Multiple categories can
 contain the same host if it is assuming multiple roles (running OSDs and a mon
@@ -105,7 +122,7 @@ file on all remote hosts.
 This user must also be able to run certain commands with sudo.  The easiest
 method to enable this is to simply enable blanket passwordless sudo access for
 this user, though this is only appropriate in laboratory environments.  This
-may be acommplished by running visudo and adding something like:
+may be accomplished by running visudo and adding something like:
 
 ```bash
 # passwordless sudo for cbt
@@ -249,6 +266,41 @@ files to create parametric sweeps of tests.  A script in the tools directory
 called mkcephconf.py lets you automatically generate hundreds or thousands of
 ceph.conf files from defined ranges of different options that can then be used
 with cbt in this way.
+
+## Configurable Monitoring
+
+CBT now lets the user decide which monitoring programs to run, through a 
+monitoring plugin API.  Currently the 3 supported monitoring plugins are:
+
+o collectl: runs the collectl utility to collect basic Linux perf stats such as disk 
+o blktrace: runs the blktrace utility on the OSD devices
+o perf: runs the perf utility to measure code hotspots, etc.
+
+A CSV (comma-separated) list of these monitoring tools 
+can be specified in YAML 
+at different predefined stages of a test.
+Currently the stages defined *per benchmark* are:
+
+o run_monitoring_list: while the workload is being applied
+o scrub_monitoring_list: while scrubbing is occurring at Ceph startup
+o pool_monitoring_list: while pool is being created
+
+and in the cluster section of the YAML file these stages can be defined:
+
+o cluster_build_monitoring_list: while cluster (i.e. OSDs) is being assembled
+o health_check_monitoring_list: after cluster has been built but before it is ready
+o idle_monitoring_list: before pool is created
+
+For example, these lines could be used in a YAML benchmark section:
+
+```
+    run_monitoring_list: 'collectl, blktrace, perf'
+    scrub_monitoring_list: 'blktrace'
+    pool_monitoring_list: 'perf'
+```
+
+When the CBT run has completed, you should see separate subdirectories for each 
+plugin containing the data which that plugin collects.
 
 ## CONCLUSION
 
