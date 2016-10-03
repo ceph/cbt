@@ -18,7 +18,8 @@ logger = logging.getLogger("cbt")
 class Cosbench(Benchmark):
 
     def __init__(self, cluster, config):
-        super(Cosbench, self).__init__(cluster, config)
+        self.super = super(Cosbench, self)
+        self.super.__init__(cluster, config)
 
         config = self.parse_conf(config)
 
@@ -83,12 +84,6 @@ class Cosbench(Benchmark):
         else:
             self.container_prepared = False
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.debug('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     def choose_template(self, temp_name, conf):
         ratio = { "read": 0, "write": 0 }
         if conf["mode"] == "read" or conf["mode"] == "write":
@@ -151,25 +146,13 @@ class Cosbench(Benchmark):
         return conf
 
     def initialize(self):
-        super(Cosbench, self).initialize()
+        self.super.initialize()
+        iteration = self.config.get('iteration')
+        if iteration == 0:
+            self.super.do_initial_monitoring()
 
         logger.debug('Running cosbench and radosgw check.')
         self.prerun_check()
-
-        logger.debug('Running scrub monitoring.')
-        monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        self.cluster.check_scrub()
-        monitoring.stop()
-
-        logger.debug('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s' % self.run_dir, self.out_dir)
-
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
 
         conf = self.config
         if not self.config["template"]:
@@ -223,10 +206,8 @@ class Cosbench(Benchmark):
                 self.add_leaf_to_tree(leaf_content, ET.SubElement(parent, leaf))
 
     def run(self):
-        super(Cosbench, self).run()
-        self.dropcaches()
-        self.cluster.dump_config(self.run_dir)
-        monitoring.start(self.run_dir)
+        self.super.run()
+        monitoring.start(self.run_monitoring_list)
 
         # Run cosbench test
         try:
@@ -240,10 +221,11 @@ class Cosbench(Benchmark):
         self.check_workload_status()
         self.check_cosbench_res_dir()
 
-        monitoring.stop(self.run_dir)
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        monitoring.stop(self.run_monitoring_list)
+
+        # in addition to run dir, copy files from here
         common.sync_files('%s/archive/%s*' % (self.config["cosbench_dir"], self.runid), self.out_dir)
+        self.postprocess_all()
 
     def check_workload_status(self):
         wait = True
@@ -294,5 +276,3 @@ class Cosbench(Benchmark):
         logger.info("You can monitor the runtime status and results on http://localhost:19088/controller")
         time.sleep(wait_time)
 
-    def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Cosbench, self).__str__())
