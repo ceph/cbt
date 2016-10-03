@@ -78,9 +78,6 @@ class KvmRbdFio(Benchmark):
         self.set_client_param('read_ahead_kb', self.client_ra)
         clnts = settings.getnodes('clients')
 
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
         monitoring.start(self.run_monitoring_list)
 
         time.sleep(5)
