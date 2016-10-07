@@ -383,7 +383,8 @@ class Ceph(Cluster):
         mon = settings.getnodes('mons').split(',')[0]
         common.pdsh(mon, 'sudo %s osd crush rule create-simple too-few-hosts `hostname -s` osd' % self.ceph_cmd, 
                     continue_if_error=False).communicate()
-
+        common.pdsh(mon, 'sudo %s osd pool set rbd crush_ruleset 0' % self.ceph_cmd, 
+                    continue_if_error=False)
 
     def start_rgw(self):
         rgwhosts = settings.cluster.get('rgws', [])
@@ -539,7 +540,7 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, name, pool_repl_size-1),
                         continue_if_error=False).communicate()
 
-        if crush_profile:
+        if crush_profile != None:
             try:
               rule_index = int(crush_profile)
               # set crush profile using the integer 0-based index of crush rule
@@ -606,9 +607,20 @@ class Ceph(Cluster):
                     continue_if_error=False).communicate()
 
     def rbd_unmount(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+        clients = settings.getnodes('clients')
+        common.pdsh(clients, 'sudo service rbdmap stop').communicate()
+
+        # both of these commands do absolutely nothing if there aren't any kernel RBD devices in use
+
+        stdout, stderr = common.pdsh(clients, 'sudo find /dev -maxdepth 1 -name "rbd[0-9]*" -type b -exec umount \'{}\' \;',
+                                     continue_if_error=False).communicate()
+        if stdout != '':
+             logger.debug('unmounting kernel RBD devices: ' + stdout)
 #        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
+        stdout, stderr = common.pdsh(clients, 'sudo sh -c "for r in `ls /dev/rbd[0-9]*` ; do echo \$r ; /usr/bin/rbd unmap \$r ; done"',
+                                     continue_if_error=False).communicate()
+        if stdout != '':
+            logger.debug('unmapping kernel RBD devices ' + stdout)
 
     def mkimage(self, name, size, pool, order):
         common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, order)).communicate()
