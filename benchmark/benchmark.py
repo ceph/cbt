@@ -5,6 +5,7 @@ import monitoring
 import monitoring_factory
 import settings
 import common
+import pprint
 
 logger = logging.getLogger('cbt')
 
@@ -28,25 +29,35 @@ class Benchmark(object):
         else:
             self.osd_ra = common.get_osd_ra()
 
-        monitor_list_csv = config.get('run_monitoring_list', '')
-        self.run_monitoring_list = monitoring_factory.factory(
-                                      monitor_list_csv,
-                                      os.path.join(self.run_dir, 'run_monitoring'))
-        self.scrub_monitoring_list = monitoring_factory.factory(
-                                      config.get('scrub_monitoring_list', monitor_list_csv),
-                                      os.path.join(self.run_dir, 'scrub_monitoring'))
-        self.pool_monitoring_list = monitoring_factory.factory(
-                                      config.get('pool_monitoring_list', monitor_list_csv),
-                                      os.path.join(self.run_dir, 'pool_monitoring'))
+        # so fields are part of instance
+        self.run_monitoring_list = None
+        self.scrub_monitoring_list = None
+        self.pool_monitoring_list = None
 
     def getclass(self):
         return self.__class__.__name__
 
     def initialize(self):
+        logger.debug("benchmarks:\n    %s",
+                     pprint.pformat(self.config, indent=8, width=132, depth=1))
         common.make_remote_dir(self.run_dir)
         use_existing = settings.cluster.get('use_existing', True)
         if not use_existing:
             self.cluster.initialize()
+
+        # must re-init monitoring lists every iteration 
+        # so that plug-ins can append to them
+        config = self.config
+        self.run_monitoring_list = monitoring_factory.factory(
+                                      config.get('run_monitoring_list', ''),
+                                      os.path.join(self.run_dir, 'run_monitoring'))
+        self.scrub_monitoring_list = monitoring_factory.factory(
+                                      config.get('scrub_monitoring_list', ''),
+                                      os.path.join(self.run_dir, 'scrub_monitoring'))
+        self.pool_monitoring_list = monitoring_factory.factory(
+                                      config.get('pool_monitoring_list', ''),
+                                      os.path.join(self.run_dir, 'pool_monitoring'))
+
 
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
@@ -54,8 +65,11 @@ class Benchmark(object):
         self.cleanup()
 
     def run(self):
+
         # Create the run directory
         common.make_remote_dir(self.run_dir)
+
+        # drop Linux buffer cache and set up readahead if needed
         self.dropcaches()
         if self.osd_ra and self.osd_ra_changed:
             logger.info('Setting OSD Read Ahead to: %s', self.osd_ra)
