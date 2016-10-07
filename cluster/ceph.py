@@ -379,6 +379,12 @@ class Ceph(Cluster):
             thrd.join(self.ceph_osd_online_tmo)
             thrd.postprocess()
 
+        # always make a crush map rule that allows replication/erasure on OSDS in same host
+        mon = settings.getnodes('mons').split(',')[0]
+        common.pdsh(mon, 'sudo %s osd crush rule create-simple too-few-hosts `hostname -s` osd' % self.ceph_cmd, 
+                    continue_if_error=False).communicate()
+
+
     def start_rgw(self):
         rgwhosts = settings.cluster.get('rgws', [])
 
@@ -518,11 +524,6 @@ class Ceph(Cluster):
         prefill_objects = profile.get('prefill_objects', 0)
         prefill_object_size = profile.get('prefill_object_size', 0)
         prefill_time = profile.get('prefill_time', 0)
-
-        # always make a crush map rule that allows replication/erasure on OSDS in same host
-        mon = settings.getnodes('mons').split(',')[0]
-        common.pdsh(mon, 'sudo %s osd crush rule create-simple too-few-hosts `hostname -s` osd' % self.ceph_cmd, 
-                    continue_if_error=False).communicate()
 
         if replication and replication == 'erasure':
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
