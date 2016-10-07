@@ -267,6 +267,26 @@ called mkcephconf.py lets you automatically generate hundreds or thousands of
 ceph.conf files from defined ranges of different options that can then be used
 with cbt in this way.
 
+## Crush rules
+
+Normally you can just use the default crush rule created by your profile.
+These will impose the normal constraints on OSD assignment to placement groups.
+
+However, you can override the crush rule in the profile using the "crush_profile"
+parameter for your profile.
+Crush rules have to be specified by number, not by name, in the "profile" YAML section.
+The rule created by your profile will typically be 1 unless you have more than one profile.
+
+There is always a crush rule 0, named "too-few-hosts".  
+Crush rule 0 places no constraints on OSD placement.
+It is there to be used for debugging, CBT regression testing and single-node tests, 
+but should 'not' normally be used for performance measurement,
+since it eliminates Ceph high-availability.
+
+For erasure coding, there is a parameter called "erasure_profile" that will let you specify
+EC parameters k and m, i.e. the number of data blocks and parity blocks in an EC stripe.
+At present, a CBT erasure_profile does not let you specify a crush rule, forcing it to "osd".
+
 ## Configurable Monitoring
 
 CBT now lets the user decide which monitoring programs to run, through a 
