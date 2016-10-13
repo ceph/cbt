@@ -65,7 +65,9 @@ class Radosbench(Benchmark):
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
         #determine rados version    
-        rados_version_str = subprocess.check_output(["rados", "-v"])
+        anyceph = settings.getnodes('head')
+        stdout, stderr = common.pdsh(anyceph, 'rados -v', continue_if_error=False).communicate()
+        rados_version_str = stdout
         m = re.findall("version (\d+)", rados_version_str)
         rados_version = int(m[0])
 
@@ -83,6 +85,8 @@ class Radosbench(Benchmark):
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
         # Run rados bench
+        clients = settings.getnodes('clients')
+        common.pdsh(clients, 'killall -INT rados')
         monitoring.start(self.run_monitoring_list)
         logger.info('Running radosbench %s test.' % mode)
         ps = []
@@ -95,7 +99,7 @@ class Radosbench(Benchmark):
             if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
                 pool_name = 'rados-bench-`hostname -s`-%s'%i
                 run_name = ''
-            rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s --no-cleanup 2> %s > %s' % \
+            rados_bench_cmd = 'ulimit -n 131072 ; %s -c %s -p %s bench %s %s %s %s %s --no-cleanup 2> %s > %s' % \
                  (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, run_name, objecter_log, out_file)
             p = common.pdsh(settings.getnodes('clients'), rados_bench_cmd)
             ps.append(p)
