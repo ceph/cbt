@@ -48,9 +48,6 @@ class Benchmark(object):
         # must re-init monitoring lists every iteration 
         # so that plug-ins can append to them
         config = self.config
-        self.run_monitoring_list = monitoring_factory.factory(
-                                      config.get('run_monitoring_list', ''),
-                                      os.path.join(self.run_dir, 'run_monitoring'))
         self.scrub_monitoring_list = monitoring_factory.factory(
                                       config.get('scrub_monitoring_list', ''),
                                       os.path.join(self.run_dir, 'scrub_monitoring'))
@@ -68,6 +65,10 @@ class Benchmark(object):
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
+
+        self.run_monitoring_list = monitoring_factory.factory(
+                                      self.config.get('run_monitoring_list', ''),
+                                      os.path.join(self.run_dir, 'run_monitoring'))
 
         # drop Linux buffer cache and set up readahead if needed
         self.dropcaches()
