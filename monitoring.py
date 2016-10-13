@@ -46,18 +46,21 @@ class CBTMonitoring:
 # launch monitor tools
 
 def start(cbt_monitoring_list):
-    for m in cbt_monitoring_list:
+    if cbt_monitoring_list:  # if it's not None
+      for m in cbt_monitoring_list:
         m.start()
 
 # shut down monitor tools
 
 def stop(cbt_monitoring_list):
-    for m in cbt_monitoring_list:
+    if cbt_monitoring_list:  # if it's not None
+      for m in cbt_monitoring_list:
         m.stop()
 
 # run any necessary postprocessing steps and copy files back to test driver
 
 def postprocess(cbt_monitoring_list, out_dir):
-    for m in cbt_monitoring_list:
+    if cbt_monitoring_list:  # if it's not None
+      for m in cbt_monitoring_list:
         m.postprocess(out_dir)
 
