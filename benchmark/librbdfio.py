@@ -65,7 +65,7 @@ class LibrbdFio(Benchmark):
         logger.info('Attempting to populating fio files...')
         if (self.use_existing_volumes == False):
           for i in xrange(self.volumes_per_client):
-              pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
+              pre_cmd = 'sudo sh -c "ulimit -n 131072; %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null"' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
               p = common.pdsh(settings.getnodes('clients'), pre_cmd,
                               continue_if_error=False)
               ps.append(p)
@@ -105,7 +105,7 @@ class LibrbdFio(Benchmark):
         rbdname = 'cbt-librbdfio-`hostname -s`-%d' % volnum
         out_file = '%s/output.%d' % (self.run_dir, volnum)
 
-        fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.poolname, rbdname)
+        fio_cmd = 'sudo sh -c "ulimit -n 131072; %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.poolname, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
             fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
@@ -134,7 +134,8 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --rate_iops=%s' % self.rate_iops
 
         # End the fio_cmd
-        fio_cmd += ' %s > %s' % (self.names, out_file)
+        # use --output param not > bracket to capture output
+        fio_cmd += ' --output=%s %s "' % (out_file, self.names)
         return fio_cmd
 
     def mkimages(self):
