@@ -19,8 +19,9 @@ def parse_args():
 
 def print_summary(logs):
     data = [
-               [""],
+               ["Compaction Statistics"],
                ["Total OSD Log Duration (seconds)"],
+               ["Number of Compaction Events"],
                ["Avg Compaction Time (seconds)"], 
                ["Total Compaction Time (seconds)"],
                ["Avg Output Size: (MB)"],
@@ -82,6 +83,7 @@ class LogData():
         return [
                    self.fn,
                    (self.end_dt - self.start_dt).total_seconds(),
+                   len(self.events),
                    self.get_avg_compaction_time_seconds(),
                    self.get_total_compaction_time_seconds(),
                    self.get_avg_output_size_mb(),
