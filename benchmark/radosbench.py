@@ -58,6 +58,11 @@ class Radosbench(Benchmark):
 
         return True
 
+    def get_rados_version(self):
+        output = ""
+        stdout,stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
+        return stdout
+
     def run(self):
         super(Radosbench, self).run()
         
@@ -69,7 +74,6 @@ class Radosbench(Benchmark):
         # Run read test unless write_only
         if self.write_only: return
         self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
-        
 
     def _run(self, mode, run_dir, out_dir):
         # We'll always drop caches for rados bench
@@ -78,8 +82,13 @@ class Radosbench(Benchmark):
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
         #determine rados version    
-        rados_version_str = subprocess.check_output(["rados", "-v"])
+
+        rados_version_str = self.get_rados_version()
+
         m = re.findall("version (\d+)", rados_version_str)
+        if not m:
+           m = re.findall("version v(\d+)", rados_version_str)
+
         rados_version = int(m[0])
 
         if mode in ['write'] or rados_version < 9:
