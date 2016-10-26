@@ -33,6 +33,7 @@ class Radosbench(Benchmark):
         self.cmd_path = config.get('cmd_path', '/usr/bin/rados')
         self.pool = config.get('target_pool', 'rados-bench-cbt')
         self.readmode = config.get('readmode', 'seq')
+        self.max_objects = config.get('max_objects', None)
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -81,7 +82,7 @@ class Radosbench(Benchmark):
 
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
-        #determine rados version    
+        #determine rados version
 
         rados_version_str = self.get_rados_version()
 
@@ -96,6 +97,10 @@ class Radosbench(Benchmark):
         else:
             op_size_str = ''
 
+        if self.max_objects and rados_version < 9:
+           raise ValueError('max_objects not supported by rados_version < 9')
+        if self.max_objects and rados_version > 9:
+           max_objects_str = '--max-objects %s' % self.max_objects
 
         common.make_remote_dir(run_dir)
 
@@ -120,8 +125,8 @@ class Radosbench(Benchmark):
             if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
                 pool_name = 'rados-bench-`hostname -s`-%s'%i
                 run_name = ''
-            rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s --no-cleanup 2> %s > %s' % \
-                 (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, run_name, objecter_log, out_file)
+            rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s %s --no-cleanup 2> %s > %s' % \
+                 (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, max_objects_str, run_name, objecter_log, out_file)
             p = common.pdsh(settings.getnodes('clients'), rados_bench_cmd)
             ps.append(p)
         for p in ps:
