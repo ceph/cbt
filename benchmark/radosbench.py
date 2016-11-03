@@ -30,7 +30,7 @@ class Radosbench(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
         self.pool_profile = config.get('pool_profile', 'default')
-        self.cmd_path = config.get('cmd_path', '/usr/bin/rados')
+        self.cmd_path = config.get('cmd_path', self.cluster.rados_cmd)
         self.pool = config.get('target_pool', 'rados-bench-cbt')
         self.readmode = config.get('readmode', 'seq')
         self.max_objects = config.get('max_objects', None)
@@ -99,12 +99,14 @@ class Radosbench(Benchmark):
             op_size_str = ''
 
         # Max Objects
+        max_objects_str = ''
         if self.max_objects and rados_version < 9:
            raise ValueError('max_objects not supported by rados_version < 9')
         if self.max_objects and rados_version > 9:
            max_objects_str = '--max-objects %s' % self.max_objects
 
         # Write to OMAP
+        write_omap_str = ''
         if self.write_omap and rados_version < 9:
            raise ValueError('write_omap not supported by rados_version < 9')
         if self.write_omap and rados_version > 9:
