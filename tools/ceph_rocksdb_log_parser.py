@@ -98,42 +98,63 @@ class LogData():
 
     def get_avg_compaction_time_seconds(self):
         sl = [event for event in self.events if event.get_compaction_time_seconds() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_compaction_time_seconds() for e in sl) / len(sl)
 
     def get_total_compaction_time_seconds(self):
         sl = [event for event in self.events if event.get_compaction_time_seconds != -1]
+        if len(sl) == 0:
+            return -1
+
         return sum(e.get_compaction_time_seconds() for e in sl)
             
     def get_avg_output_size_mb(self):
         sl = [event for event in self.events if event.get_total_output_size() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_total_output_size() for e in sl) / (len(sl) * 1.0*1024*1024)
 
     def get_total_output_size_mb(self):
         sl = [event for event in self.events if event.get_total_output_size() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_total_output_size() for e in sl) / (1.0*1024*1024)
 
     def get_total_input_records(self):
         sl = [event for event in self.events if event.get_num_input_records() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_num_input_records() for e in sl) 
 
     def get_total_output_records(self):
         sl = [event for event in self.events if event.get_num_output_records() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_num_output_records() for e in sl)
 
     def get_avg_output_throughput(self):
         sl = [event for event in self.events if event.get_output_throughput() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_output_throughput() for e in sl) / len(sl)
 
     def get_avg_input_rs(self):
         sl = [event for event in self.events if event.get_input_rs() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_input_rs() for e in sl) / len(sl)
 
     def get_avg_output_rs(self):
         sl = [event for event in self.events if event.get_output_rs() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_output_rs() for e in sl) / len(sl)
 
     def get_avg_oi_ratio(self):
         sl = [event for event in self.events if event.get_oi_ratio() != -1]
+        if len(sl) == 0:
+            return -1
         return sum(e.get_oi_ratio() for e in sl) / len(sl)
 
 
