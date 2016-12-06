@@ -115,8 +115,11 @@ class Ceph(Cluster):
         self.stoprequest = threading.Event()
         self.haltrequest = threading.Event()
 
+    def initialize(self):
+        # Reset the rulesets
+        self.ruleset_map = {}
+        self.cur_ruleset = 1
 
-    def initialize(self): 
         # safety check to make sure we don't blow away an existing cluster!
         if self.use_existing:
              raise RuntimeError('initialize was called on an existing cluster! Avoiding touching anything.') 
