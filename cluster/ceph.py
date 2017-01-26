@@ -468,6 +468,7 @@ class Ceph(Cluster):
         pgp_size = profile.get('pgp_size', 1024)
         erasure_profile = profile.get('erasure_profile', '')
         replication = str(profile.get('replication', None))
+        ec_overwrites = profile.get('ec_overwrites', False)
         cache_profile = profile.get('cache_profile', None)
 
         # Options for cache tiering
@@ -488,6 +489,8 @@ class Ceph(Cluster):
         if replication and replication == 'erasure':
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
                         continue_if_error=False).communicate()
+            if ec_overwrites is True:
+                common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s debug_white_box_testing_ec_overwrites true' % (self.ceph_cmd, self.tmp_conf, name), continue_if_error=False).communicate()
         else:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
                         continue_if_error=False).communicate()
@@ -574,8 +577,11 @@ class Ceph(Cluster):
 #        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 
-    def mkimage(self, name, size, pool, order):
-        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, order)).communicate()
+    def mkimage(self, name, size, pool, data_pool, order):
+        dp_option = ''
+        if data_pool:
+            dp_option = "--data-pool %s" % data_pool
+        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order)).communicate()
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
