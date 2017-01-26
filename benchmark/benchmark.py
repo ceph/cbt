@@ -38,7 +38,8 @@ class Benchmark(object):
             self.cluster.initialize()
 
         self.cleanup()
-        # Create the run directory
+        # Wipe and create the run directory
+        common.clean_remote_dir(self.run_dir)
         common.make_remote_dir(self.run_dir)
 
     def run(self):

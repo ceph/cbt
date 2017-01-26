@@ -95,6 +95,14 @@ def rscp(node, remotefile, localfile):
     return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
                         continue_if_error=False)
 
+def clean_remote_dir (remote_dir):
+    print "cleaning remote dir %s" % remote_dir
+    if remote_dir == "/" or not os.path.isabs(remote_dir):
+       raise SystemExit("Cleaning the remote dir doesn't seem safe, bailing.")
+
+    nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
+    pdsh(nodes, 'if [ -d "%s" ]; then rm -rf %s; fi' % (remote_dir, remote_dir),
+         continue_if_error=False).communicate()
 
 def make_remote_dir(remote_dir):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
