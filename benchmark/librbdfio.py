@@ -62,6 +62,10 @@ class LibrbdFio(Benchmark):
     def initialize(self): 
         super(LibrbdFio, self).initialize()
 
+        # Clean and Create the run directory
+        common.clean_remote_dir(self.run_dir)
+        common.make_remote_dir(self.run_dir)
+
         logger.info('Running scrub monitoring.')
         monitoring.start("%s/scrub_monitoring" % self.run_dir)
         self.cluster.check_scrub()
@@ -75,9 +79,6 @@ class LibrbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
         self.mkimages()
-
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
 
         # populate the fio files
         ps = []
