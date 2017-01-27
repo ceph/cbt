@@ -59,7 +59,7 @@ class KvmRbdFio(Benchmark):
         logger.info('creating mountpoints...')
         for b in self.block_devices:
             bnm = os.path.basename(b)
-            mtpt = '/srv/rbdfio-`hostname -s`-%s' % bnm
+            mtpt = '/srv/rbdfio-`%s`-%s' % (common.get_fqdn_cmd(), bnm)
             common.pdsh(clnts, 'sudo mkfs.ext4 %s' % b,
                         continue_if_error=False).communicate()
             common.pdsh(clnts, 'sudo mkdir -p %s' % mtpt,

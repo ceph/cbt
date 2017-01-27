@@ -52,8 +52,9 @@ class LibrbdFio(Benchmark):
         self.norandommap = config.get("norandommap", False)
         # Make the file names string (repeated across volumes)
         self.names = ''
-        for i in xrange(self.procs_per_volume):
-            self.names += '--name=librbdfio-`hostname -s`-%d ' % i
+        for proc_num in xrange(self.procs_per_volume):
+            rbd_name = 'cbt-librbdfio-`%s`-file-%d' % (common.get_fqdn_cmd(), proc_num)
+            self.names += '--name=%s ' % rbd_name
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -86,8 +87,9 @@ class LibrbdFio(Benchmark):
         ps = []
         logger.info('Attempting to populating fio files...')
         if (self.use_existing_volumes == False):
-          for i in xrange(self.volumes_per_client):
-              pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=cbt-librbdfio-`hostname -s`-%d --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.poolname, i, self.numjobs, self.vol_size, self.names)
+          for volnum in xrange(self.volumes_per_client):
+              rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
+              pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names)
               p = common.pdsh(settings.getnodes('clients'), pre_cmd)
               ps.append(p)
           for p in ps:
@@ -131,7 +133,7 @@ class LibrbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def mkfiocmd(self, volnum):
-        rbdname = 'cbt-librbdfio-`hostname -s`-%d' % volnum
+        rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
         out_file = '%s/output.%d' % (self.run_dir, volnum)
 
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
@@ -173,13 +175,13 @@ class LibrbdFio(Benchmark):
     def mkimages(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
         if (self.use_existing_volumes == False):
-          for node in settings.getnodes('clients').split(','):
           self.cluster.rmpool(self.pool_name, self.pool_profile)
           self.cluster.mkpool(self.pool_name, self.pool_profile)
           if self.data_pool_profile:
               self.data_pool = self.pool_name + "-data"
               self.cluster.rmpool(self.data_pool, self.data_pool_profile)
               self.cluster.mkpool(self.data_pool, self.data_pool_profile)
+          for node in common.get_fqdn_list('clients'):
               for volnum in xrange(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]
                   self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_order)

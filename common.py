@@ -95,6 +95,16 @@ def rscp(node, remotefile, localfile):
     return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
                         continue_if_error=False)
 
+def get_fqdn_cmd():
+    return 'hostname -f'
+
+def get_fqdn_list(nodes):
+    stdout, stderr = pdsh(settings.getnodes(nodes), '%s' % get_fqdn_cmd()).communicate()
+    print stdout
+    ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
+    print ret
+    return ret
+
 def clean_remote_dir (remote_dir):
     print "cleaning remote dir %s" % remote_dir
     if remote_dir == "/" or not os.path.isabs(remote_dir):
