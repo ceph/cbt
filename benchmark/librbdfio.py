@@ -22,6 +22,7 @@ class LibrbdFio(Benchmark):
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         self.pool_profile = config.get('pool_profile', 'default')
         self.time =  str(config.get('time', None))
+        self.time_based = bool(config.get('time_based', False))
         self.ramp = str(config.get('ramp', None))
         self.iodepth = config.get('iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
@@ -46,6 +47,7 @@ class LibrbdFio(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
+        self.norandommap = config.get("norandommap", False)
         # Make the file names string (repeated across volumes)
         self.names = ''
         for i in xrange(self.procs_per_volume):
@@ -136,6 +138,8 @@ class LibrbdFio(Benchmark):
 #        fio_cmd += ' --ioengine=%s' % self.ioengine
         if self.time is not None:
             fio_cmd += ' --runtime=%s' % self.time
+        if self.time_based is True:
+            fio_cmd += ' --time_based'
         if self.ramp is not None:
             fio_cmd += ' --ramp_time=%s' % self.ramp
         fio_cmd += ' --numjobs=%s' % self.numjobs
@@ -145,6 +149,8 @@ class LibrbdFio(Benchmark):
         fio_cmd += ' --end_fsync=%s' % self.end_fsync
 #        if self.vol_size:
 #            fio_cmd += ' -- size=%dM' % self.vol_size
+        if self.norandommap:
+            fio_cmd += ' --norandommap' 
         fio_cmd += ' --write_iops_log=%s' % out_file
         fio_cmd += ' --write_bw_log=%s' % out_file
         fio_cmd += ' --write_lat_log=%s' % out_file
