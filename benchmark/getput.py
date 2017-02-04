@@ -28,6 +28,7 @@ class Getput(Benchmark):
         self.tests = config.get('tests', "p")
         self.op_size = config.get('op_size', 4194304)
         self.ctype = config.get('ctype', None)
+        self.debug = config.get('debug', None)
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests)
         self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests)
         self.pool_profile = config.get('pool_profile', 'default')
@@ -91,6 +92,8 @@ class Getput(Benchmark):
             getput_cmd += '--runtime %s ' % self.runtime
         if self.ctype is not None:
             getput_cmd += '--ctype %s ' % self.ctype
+        if self.debug is not None:
+            getput_cmd += '--debug %s ' % self.debug
         getput_cmd += '--cred %s ' % cred_file
 
         # End the getput_cmd
