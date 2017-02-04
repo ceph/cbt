@@ -80,6 +80,7 @@ class Ceph(Cluster):
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
+        self.radosgw_admin_cmd = config.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
         self.rados_cmd = config.get('rados_cmd', '/usr/bin/rados')
         self.rbd_cmd = config.get('rbd_cmd', '/usr/bin/rbd')
@@ -114,6 +115,9 @@ class Ceph(Cluster):
         self.use_existing = config.get('use_existing', True)
         self.stoprequest = threading.Event()
         self.haltrequest = threading.Event()
+
+        self.auth_urls = []
+        self.osd_count = config.get('osds_per_node') * len(settings.getnodes('osds'))
 
     def initialize(self):
         # Reset the rulesets
@@ -166,6 +170,9 @@ class Ceph(Cluster):
 
         # Make the crush and erasure profiles
         self.make_profiles()
+
+        # Make the RGW pools
+        self.make_rgw_pools()
 
         # Peform Idle Monitoring
         if self.idle_duration > 0:
@@ -346,20 +353,42 @@ class Ceph(Cluster):
             thrd.postprocess()
 
     def start_rgw(self):
-        rgwhosts = settings.cluster.get('rgws', [])
+        user = settings.cluster.get('user')
+        rgwhosts = settings.cluster.get('rgws')
 
-        for host in rgwhosts:
-            pdshhost = host
-            user = settings.cluster.get('user')
-            if user:
-                pdshhost = '%s@%s' % (user, host)
-            cmd = '%s -c %s -n client.radosgw.gateway --log-file=%s/rgw.log' % (self.ceph_rgw_cmd, self.tmp_conf, self.log_dir)
-            if self.rgw_valgrind:
-                cmd = "%s %s" % (common.setup_valgrind(self.rgw_valgrind, 'rgw.%s' % host, self.tmp_dir), cmd)
-            else:
-                cmd = '%s %s' % (self.ceph_run_cmd, cmd)
+        for rgwhost, gateways in rgwhosts.iteritems():
+            for rgwname, rgwsettings in gateways.iteritems():
+                host = rgwsettings.get('host', rgwhost)
+                port = rgwsettings.get('port', None)
+                ssl_certificate = rgwsettings.get('ssl_certificate', None)
 
-            common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
+                # Build the auth_url
+                auth_url = "http://" if ssl_certificate is None else "https://"
+                auth_url += host
+                auth_url += ":7480" if port is None else ":%s" % port
+                auth_url += "/auth/v1.0"
+                self.auth_urls.append(auth_url)
+
+                # set the rgw_frontends
+                rgw_frontends = None
+                if ssl_certificate is not None:
+                    rgw_frontends = "civetweb ssl_certificate=%s" % ssl_certificate
+                if port is not None:
+                    if rgw_frontends is None:
+                        rgw_frontends = "civetweb"
+                    rgw_frontends += " port=%s" % port
+
+                cmd = '%s -c %s -n %s --log-file=%s/rgw.log' % (self.ceph_rgw_cmd, self.tmp_conf, rgwname, self.log_dir)
+                if rgw_frontends is not None:
+                    cmd += " --rgw-frontends='%s'" % rgw_frontends
+                if self.rgw_valgrind:
+                    cmd = "%s %s" % (common.setup_valgrind(self.rgw_valgrind, 'rgw.%s' % host, self.tmp_dir), cmd)
+                else:
+                    cmd = '%s %s' % (self.ceph_run_cmd, cmd)
+
+                if user:
+                    pdshhost = '%s@%s' % (user, rgwhost)
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
 
     def disable_scrub(self):
@@ -582,6 +611,23 @@ class Ceph(Cluster):
         if data_pool:
             dp_option = "--data-pool %s" % data_pool
         common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order)).communicate()
+
+    def get_auth_urls(self):
+        return self.auth_urls
+
+    def add_swift_user(self, user, key):
+        if self.auth_urls:
+            cmd = "%s" % self.radosgw_admin_cmd
+            node = settings.getnodes('head')
+            common.pdsh(node, '%s -c %s user create --uid=%s --display-name=%s' % (cmd, self.tmp_conf, user, user)).communicate()
+            common.pdsh(node, '%s -c %s subuser create --uid=%s --subuser=%s:swift --access=full' % (cmd, self.tmp_conf, user, user)).communicate()
+            common.pdsh(node, '%s -c %s key create --subuser=%s:swift --key-type=swift --secret=%s' % (cmd, self.tmp_conf, user, key)).communicate()
+            common.pdsh(node, '%s -c %s user modify --uid=%s --max-buckets=0' % (cmd, self.tmp_conf, user)).communicate()
+
+    def make_rgw_pools(self):
+        rgw_pools = self.config.get('rgw_pools', {})
+        self.mkpool('.rgw.buckets', rgw_pools.get('buckets', 'default'))
+        self.mkpool('.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'))
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
