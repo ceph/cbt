@@ -615,13 +615,13 @@ class Ceph(Cluster):
     def get_auth_urls(self):
         return self.auth_urls
 
-    def add_swift_user(self, user, key):
+    def add_swift_user(self, user, subuser, key):
         if self.auth_urls:
             cmd = "%s" % self.radosgw_admin_cmd
             node = settings.getnodes('head')
             common.pdsh(node, '%s -c %s user create --uid=%s --display-name=%s' % (cmd, self.tmp_conf, user, user)).communicate()
-            common.pdsh(node, '%s -c %s subuser create --uid=%s --subuser=%s:swift --access=full' % (cmd, self.tmp_conf, user, user)).communicate()
-            common.pdsh(node, '%s -c %s key create --subuser=%s:swift --key-type=swift --secret=%s' % (cmd, self.tmp_conf, user, key)).communicate()
+            common.pdsh(node, '%s -c %s subuser create --uid=%s --subuser=%s --access=full' % (cmd, self.tmp_conf, user, subuser)).communicate()
+            common.pdsh(node, '%s -c %s key create --subuser=%s --key-type=swift --secret=%s' % (cmd, self.tmp_conf, subuser, key)).communicate()
             common.pdsh(node, '%s -c %s user modify --uid=%s --max-buckets=0' % (cmd, self.tmp_conf, user)).communicate()
 
     def make_rgw_pools(self):

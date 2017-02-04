@@ -21,19 +21,20 @@ class Getput(Benchmark):
 
         self.tmp_conf = self.cluster.tmp_conf
         self.runtime =  config.get('runtime', '300')
-        self.container_prefix = config.get('container_prefix', None)
-        self.object_prefix = config.get('object_prefix', None)
-        self.concurrent_procs = config.get('concurrent_procs', 1)
+        self.container_prefix = config.get('container_prefix', 'cbt-getput')
+        self.object_prefix = config.get('object_prefix', 'cbt-getput')
+        self.procs = config.get('procs', 1)
         self.ops_per_proc = config.get('ops_per_proc', None)
         self.tests = config.get('tests', "p")
         self.op_size = config.get('op_size', 4194304)
         self.ctype = config.get('ctype', None)
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%08d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_procs), self.tests)
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%08d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_procs), self.tests)
+        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests)
+        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests)
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', "/usr/bin/getput")
         self.user = config.get('user', 'cbt')
-        self.key = config.get('key', 'cbt')
+        self.subuser = '%s:swift' % self.user
+        self.key = config.get('key', 'vzCEkuryfn060dfee4fgQPqFrncKEIkh3ZcdOANY') # dummy key from ceph radosgw docs
         self.auth_urls = config.get('auth', self.cluster.get_auth_urls())
 
     def exists(self):
@@ -47,8 +48,7 @@ class Getput(Benchmark):
         super(Getput, self).initialize()
 
         # create the user and key
-        self.cluster.add_swift_user(self.user, self.key)
-
+        self.cluster.add_swift_user(self.user, self.subuser, self.key)
 
         # Clean and Create the run directory
         common.clean_remote_dir(self.run_dir)
@@ -70,8 +70,8 @@ class Getput(Benchmark):
 
     def mkcredfiles(self):
         for i in xrange(0, len(self.auth_urls)):
-            cred = "export ST_AUTH=%s\nexport ST_USER=%s\nexport ST_KEY=%s" % (self.auth_urls[i], self.user, self.key)
-            common.pdsh(settings.getnodes('clients'), 'echo -e "%s" >> %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
+            cred = "export ST_AUTH=%s\nexport ST_USER=%s\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
+            common.pdsh(settings.getnodes('clients'), 'echo -e "%s" > %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
 
     def mkgetputcmd(self, cred_file):
         # grab the executable to use
@@ -84,14 +84,14 @@ class Getput(Benchmark):
             getput_cmd += '-o%s ' % self.object_prefix
         getput_cmd += '-s%s ' % self.op_size
         getput_cmd += '-t%s ' % self.tests
-        getput_cmd += '--concurrent_procs %s ' % self.concurrent_procs
+        getput_cmd += '--procs %s ' % self.procs
         if self.ops_per_proc is not None:
             getput_cmd += '-n%s ' % self.ops_per_proc
         if self.runtime is not None:
             getput_cmd += '--runtime %s ' % self.runtime
         if self.ctype is not None:
             getput_cmd += '--ctype %s ' % self.ctype
-        getput_cmd += '--cred %s' % cred_file
+        getput_cmd += '--cred %s ' % cred_file
 
         # End the getput_cmd
         getput_cmd += '> %s/output' % self.run_dir
@@ -131,7 +131,7 @@ class Getput(Benchmark):
             self.cluster.wait_recovery_done()
 
         # Finally, get the historic ops
-        self.cluster.dump_historic_ops(run_dir)
+        self.cluster.dump_historic_ops(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def recovery_callback(self): 
