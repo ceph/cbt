@@ -147,7 +147,7 @@ class Getput(Benchmark):
         self.cleanup()
 
     def cleanup(self):
-        common.pdsh(setting.getnodes('clients'), 'sudo killall -9 getput').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 getput').communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Getput, self).__str__())
