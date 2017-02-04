@@ -38,6 +38,8 @@ class Getput(Benchmark):
         self.key = config.get('key', 'vzCEkuryfn060dfee4fgQPqFrncKEIkh3ZcdOANY') # dummy key from ceph radosgw docs
         self.auth_urls = config.get('auth', self.cluster.get_auth_urls())
 
+        self.cleanup()
+
     def exists(self):
         if os.path.exists(self.out_dir):
             logger.info('Skipping existing test in %s.', self.out_dir)
@@ -138,7 +140,10 @@ class Getput(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def recovery_callback(self): 
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 getput').communicate()
+        self.cleanup()
+
+    def cleanup(self):
+        common.pdsh(setting.getnodes('clients'), 'sudo killall -9 getput').communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Getput, self).__str__())
