@@ -628,7 +628,7 @@ class Ceph(Cluster):
         rgw_pools = self.config.get('rgw_pools', {})
         self.mkpool('default.rgw.buckets', rgw_pools.get('buckets', 'default'))
         self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'))
-        self.mkpool('default.rgw.buckets.data', rgw_pool.get('buckets_data', 'default'))
+        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default'))
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
