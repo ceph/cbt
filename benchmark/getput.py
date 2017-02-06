@@ -77,13 +77,13 @@ class Getput(Benchmark):
             cred = "export ST_AUTH=%s\nexport ST_USER=%s\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
             common.pdsh(settings.getnodes('clients'), 'echo -e "%s" > %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
 
-    def mkgetputcmd(self, cred_file):
+    def mkgetputcmd(self, cred_file, gwnum):
         # grab the executable to use
         getput_cmd = '%s ' % self.cmd_path
 
         # Set the options        
         if self.container_prefix is not None:
-            getput_cmd += '-c%s ' % self.container_prefix
+            getput_cmd += '-c%s-gw%s ' % (self.container_prefix, gwnum)
         if self.object_prefix is not None:
             getput_cmd += '-o%s ' % self.object_prefix
         getput_cmd += '-s%s ' % self.op_size
@@ -103,7 +103,7 @@ class Getput(Benchmark):
         getput_cmd += '--cred %s ' % cred_file
 
         # End the getput_cmd
-        getput_cmd += '> %s/output' % self.run_dir
+        getput_cmd += '> %s/output.gw%s' % (self.run_dir, gwnum)
 
         return getput_cmd
 
@@ -128,7 +128,7 @@ class Getput(Benchmark):
 
         ps = []
         for i in xrange(0, len(self.auth_urls)):
-            cmd = self.mkgetputcmd("%s/gw%02d.cred" % (self.run_dir, i))
+            cmd = self.mkgetputcmd("%s/gw%02d.cred" % (self.run_dir, i), i)
             p = common.pdsh(settings.getnodes('clients'), cmd)
             ps.append(p)
         for p in ps:
