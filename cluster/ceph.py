@@ -546,6 +546,16 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
                         continue_if_error=False).communicate()
 
+        if crush_profile:
+            try:
+              rule_index = int(crush_profile)
+              # set crush profile using the integer 0-based index of crush rule
+              # displayed by: ceph osd crush rule ls
+              ruleset = crush_profile
+            except ValueError as e:
+              ruleset = self.get_ruleset(crush_profile)
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile)).communicate()
+
         logger.info('Checking Healh after pool creation.')
         self.check_health()
 
