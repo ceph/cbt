@@ -27,6 +27,10 @@ class Benchmark(object):
         else:
             self.osd_ra = common.get_osd_ra()
 
+    def cleandir(self):
+        # Wipe and create the run directory
+        common.clean_remote_dir(self.run_dir)
+        common.make_remote_dir(self.run_dir)
 
     def getclass(self):
         return self.__class__.__name__
@@ -36,11 +40,7 @@ class Benchmark(object):
         use_existing = settings.cluster.get('use_existing', True)
         if not use_existing:
             self.cluster.initialize()
-
         self.cleanup()
-        # Wipe and create the run directory
-        common.clean_remote_dir(self.run_dir)
-        common.make_remote_dir(self.run_dir)
 
     def run(self):
         if self.osd_ra and self.osd_ra_changed:
