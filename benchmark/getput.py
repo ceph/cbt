@@ -30,16 +30,17 @@ class Getput(Benchmark):
         self.ctype = config.get('ctype', None)
         self.debug = config.get('debug', None)
         self.logops = config.get('logops', None)
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests)
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests)
+        self.grace = config.get('grace', None)
+        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests, self.ctype)
+        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests, self.ctype)
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', "/usr/bin/getput")
         self.user = config.get('user', 'cbt')
         self.subuser = '%s:swift' % self.user
         self.key = config.get('key', 'vzCEkuryfn060dfee4fgQPqFrncKEIkh3ZcdOANY') # dummy key from ceph radosgw docs
         self.auth_urls = config.get('auth', self.cluster.get_auth_urls())
-
         self.cleanup()
+        self.cleandir()
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -74,14 +75,14 @@ class Getput(Benchmark):
 
     def mkcredfiles(self):
         for i in xrange(0, len(self.auth_urls)):
-            cred = "export ST_AUTH=%s\nexport ST_USER=%s\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
+            cred = "export ST_AUTH=%s\\nexport ST_USER=%s\\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
             common.pdsh(settings.getnodes('clients'), 'echo -e "%s" > %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
 
     def mkgetputcmd(self, cred_file, gwnum):
         # grab the executable to use
         getput_cmd = '%s ' % self.cmd_path
 
-        # Set the options        
+        # Set the options
         if self.container_prefix is not None:
             getput_cmd += '-c%s-gw%s ' % (self.container_prefix, gwnum)
         if self.object_prefix is not None:
@@ -99,6 +100,8 @@ class Getput(Benchmark):
             getput_cmd += '--debug %s ' % self.debug
         if self.logops is not None:
             getput_cmd += '--logops %s ' % self.logops
+        if self.grace is not None:
+            getput_cmd += '--grace %s ' % self.grace
 
         getput_cmd += '--cred %s ' % cred_file
 
