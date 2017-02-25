@@ -12,7 +12,6 @@ sudo yum install -y psmisc util-linux coreutils xfsprogs e2fsprogs findutils \
 MIRROR="http://mirror.hmc.edu/fedora/linux/releases/22/Everything/x86_64/os/Packages"
 
 wget ${MIRROR}/p/pdsh-2.31-3.fc22.x86_64.rpm
-wget ${MIRROR}/p/pdsh-2.31-3.fc22.x86_64.rpm
 wget ${MIRROR}/p/pdsh-rcmd-ssh-2.31-3.fc22.x86_64.rpm
 wget ${MIRROR}/c/collectl-4.0.0-1.fc22.noarch.rpm
 wget ${MIRROR}/i/iftop-1.0-0.9.pre4.fc22.x86_64.rpm
