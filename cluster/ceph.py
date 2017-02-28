@@ -356,6 +356,9 @@ class Ceph(Cluster):
         user = settings.cluster.get('user')
         rgwhosts = settings.cluster.get('rgws')
 
+        if not rgwhosts:
+           return
+
         for rgwhost, gateways in rgwhosts.iteritems():
             for rgwname, rgwsettings in gateways.iteritems():
                 host = rgwsettings.get('host', rgwhost)
