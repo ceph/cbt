@@ -47,6 +47,15 @@ This module is most relevant for simulating the data path for applications
 that need a block device, but wont for whatever reason be ran inside a virtual
 machine.
 
+### stdfiobench
+The stdfiobench CBT module is the simplest way to benchmark any block device using FIO. 
+This module does not uses Ceph or its components, so it can be used for non Ceph block 
+device benchmarking. There are scenarios such as measuring baseline or measuring Ceph block 
+device vs. other block device performance, you can use this module in such cases. This module also
+comes with a parser tool , that can help you extract output in a readable format. For more details see
+``docs/stdfiobench.MD``
+
+
 ## PREREQUISITES
 
 CBT uses several libraries and tools to run:

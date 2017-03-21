@@ -5,6 +5,7 @@ import settings
 from benchmark.radosbench import Radosbench
 from benchmark.rbdfio import RbdFio
 from benchmark.kvmrbdfio import KvmRbdFio
+from benchmark.stdfiobench import StdFioBench
 from benchmark.librbdfio import LibrbdFio
 from benchmark.nullbench import Nullbench
 from benchmark.cosbench import Cosbench
@@ -53,6 +54,8 @@ def get_object(cluster, benchmark, bconfig):
         return RbdFio(cluster, bconfig)
     if benchmark == "kvmrbdfio":
         return KvmRbdFio(cluster, bconfig)
+    if benchmark == "stdfiobench":
+        return StdFioBench(cluster, bconfig)
     if benchmark == 'librbdfio':
         return LibrbdFio(cluster, bconfig)
     if benchmark == 'cosbench':

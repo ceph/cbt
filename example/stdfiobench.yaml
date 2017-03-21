@@ -1,0 +1,26 @@
+cluster:
+  head: "ceph@rhclient0"
+  clients: ["ceph@rhclient0","ceph@rhclient1","ceph@rhclient2","ceph@rhclient3","ceph@rhclient4","ceph@rhclient5","ceph@rhclient6","ceph@rhclient7","ceph@rhclient8","ceph@rhclient9"]
+  iterations: 1 
+  rebuild_every_test: False
+  use_existing: True
+  tmp_dir: "/tmp/cbt"
+benchmarks:
+  stdfiobench:
+    concurrent_procs: [1]
+    run_time: 5 
+    ramp_time: 5 
+    iodepth: [32]
+    numjobs: 1
+    mode: ['write','read','rw']
+    rwmixread: 70 # Default 50-50 for read and write
+    ioengine: 'libaio'
+    op_size: [40960,10240] # Block size in Bytes
+    vol_size: 106444 # Volume size in MB 
+    fio_path: '/usr/local/bin/fio' # Path to fio command on the remote machine
+    block_device: 'scinia' # Just provide block device name ex: 'sdc' , do not prefix '/dev/'
+    mount_point_name: '/mnt/stdfiobench' # Directory where block device must be mounted
+    filesystem: 'xfs'
+    use_existing: True 
+    client_ra: 1024
+    output_format: 'terse' # 'normal' , 'json', 'terse'(default, supports parsing using tools/cbt_fio_terse_parser.py)
