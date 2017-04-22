@@ -1,0 +1,38 @@
+cluster:
+  use_existing: True
+  osds_per_node: 24
+  clients: [192.168.122.249]
+  iterations: 2
+
+benchmarks:
+  rawfio:
+      iterations: 2
+      time: 60
+      ramp: '0'
+#      iodepth: [16, 32, 64]
+      iodepth: [16]
+      numjobs: 1
+      mode: [ write]
+      ioengine: libaio
+      # Block Size
+      op_size: [4096000]
+      # size o volume test
+      vol_size: 1024 
+      direct: 0
+      # Readahead settings
+      client_ra: 128
+      # Use directory from / if you set to False the script will format client_dev
+      use_dir: False
+      # When use_dir is true, we'r using the directory to make tests
+      client_dir: '/mnt'
+      # When use_dir is False we need a device to format and mount before make tests
+      client_dev: '/dev/vdb'
+      # Make filesyste when we use client_dev and use_dir is False
+      client_mkfs: True
+      # What is the filesystem
+      client_fs: xfs
+      concurrent_procs: 1
+      fio_cmd: '/usr/bin/fio'
+      block_devices: [/dev/vdb]
+#      block_devices: [/dev/sda, /dev/sdb, /dev/sdc, /dev/sdd, /dev/sde, /dev/sdf, /dev/sdg, /dev/sdh, /dev/sdi, /dev/sdj, /dev/sdk, /dev/sdl, /dev/sdm, /dev/sdn]
+

@@ -4,6 +4,7 @@ import itertools
 import settings
 from benchmark.radosbench import Radosbench
 from benchmark.rbdfio import RbdFio
+from benchmark.rawfio import RawFio
 from benchmark.kvmrbdfio import KvmRbdFio
 from benchmark.librbdfio import LibrbdFio
 from benchmark.nullbench import Nullbench
@@ -15,7 +16,6 @@ def get_all(cluster, iteration):
     for benchmark, config in sorted(settings.benchmarks.iteritems()):
         default = {"benchmark": benchmark,
                    "iteration": iteration}
-
         for current in all_configs(config):
             current.update(default)
             yield get_object(cluster, benchmark, current)
@@ -53,6 +53,8 @@ def get_object(cluster, benchmark, bconfig):
         return RbdFio(cluster, bconfig)
     if benchmark == "kvmrbdfio":
         return KvmRbdFio(cluster, bconfig)
+    if benchmark == "rawfio":
+        return RawFio(cluster, bconfig)
     if benchmark == 'librbdfio':
         return LibrbdFio(cluster, bconfig)
     if benchmark == 'cosbench':
