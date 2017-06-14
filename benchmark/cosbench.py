@@ -156,11 +156,6 @@ class Cosbench(Benchmark):
         logger.debug('Running cosbench and radosgw check.')
         self.prerun_check()
 
-        logger.debug('Running scrub monitoring.')
-        monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        self.cluster.check_scrub()
-        monitoring.stop()
-
         logger.debug('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)

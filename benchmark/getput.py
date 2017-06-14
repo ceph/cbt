@@ -59,11 +59,6 @@ class Getput(Benchmark):
         common.clean_remote_dir(self.run_dir)
         common.make_remote_dir(self.run_dir)
 
-        logger.info('Running scrub monitoring.')
-        monitoring.start("%s/scrub_monitoring" % self.run_dir)
-        self.cluster.check_scrub()
-        monitoring.stop()
-
         logger.info('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
