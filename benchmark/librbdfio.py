@@ -183,7 +183,7 @@ class LibrbdFio(Benchmark):
         monitoring.stop()
 
     def recovery_callback(self): 
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(LibrbdFio, self).__str__())
