@@ -168,7 +168,9 @@ class Ceph(Cluster):
 
         # Disable scrub and wait for any scrubbing to complete 
         self.disable_scrub()
-        self.check_scrub()
+        # FIXME with no PGs, osd pg dump appears to hang now.
+        # Disable this since it wa a workaround for an old problem from the cuttlefish era.
+#        self.check_scrub()
 
         # Make the crush and erasure profiles
         self.make_profiles()
