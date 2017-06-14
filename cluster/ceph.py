@@ -159,7 +159,6 @@ class Ceph(Cluster):
         self.make_mons()
         self.start_mgrs()
         self.make_osds()
-        self.start_rgw()
         monitoring.stop()
 
         # Check Health
@@ -174,8 +173,8 @@ class Ceph(Cluster):
         # Make the crush and erasure profiles
         self.make_profiles()
 
-        # Make the RGW pools
-        self.make_rgw_pools()
+        # Start any higher level daemons
+        self.start_rgw()
 
         # Peform Idle Monitoring
         if self.idle_duration > 0:
@@ -380,6 +379,9 @@ class Ceph(Cluster):
 
         if not rgwhosts:
             return
+
+        # If we are starting rGW, make the RGW pools
+        self.make_rgw_pools()
 
         for rgwhost, gateways in rgwhosts.iteritems():
             for rgwname, rgwsettings in gateways.iteritems():
