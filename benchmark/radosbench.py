@@ -34,7 +34,7 @@ class Radosbench(Benchmark):
         self.pool = config.get('target_pool', 'rados-bench-cbt')
         self.readmode = config.get('readmode', 'seq')
         self.max_objects = config.get('max_objects', None)
-        self.write_omap = config.get('max_objects', None)
+        self.write_omap = config.get('write_omap', False)
 
     def exists(self):
         if os.path.exists(self.out_dir):
