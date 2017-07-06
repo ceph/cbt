@@ -76,6 +76,7 @@ class OsdThread(threading.Thread):
 class Ceph(Cluster):
     def __init__(self, config):
         super(Ceph, self).__init__(config)
+        self.health_wait = config.get('health_wait', 5)
         self.ceph_osd_cmd = config.get('ceph-osd_cmd', '/usr/bin/ceph-osd')
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
@@ -424,6 +425,8 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
 
     def check_health(self, check_list=None, logfile=None):
+        # Wait for a defined amount of time in case ceph health is delayed
+        time.sleep(self.health_wait)
         logline = ""
         if logfile:
             logline = "| tee -a %s" % logfile
@@ -433,7 +436,7 @@ class Ceph(Cluster):
         check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery", "stale"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s health %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
-            if check_list and not set(check_list).intersection(stdout.split()):
+            if check_list and not any(x in stdout for x in check_list):
                 break
             if "HEALTH_OK" in stdout:
                 break
