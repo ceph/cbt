@@ -155,7 +155,7 @@ class Radosbench(Benchmark):
                 for node in settings.getnodes('clients').split(','):
                     node = node.rpartition("@")[2]
                     self.cluster.rmpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
-                    self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
+                    self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile, 'radosbench')
         else: # the default behavior is to use a single Ceph storage pool for all rados bench processes
             self.cluster.rmpool('rados-bench-cbt', self.pool_profile)
             self.cluster.mkpool('rados-bench-cbt', self.pool_profile)

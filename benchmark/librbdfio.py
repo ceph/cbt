@@ -171,11 +171,11 @@ class LibrbdFio(Benchmark):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
         if (self.use_existing_volumes == False):
           self.cluster.rmpool(self.pool_name, self.pool_profile)
-          self.cluster.mkpool(self.pool_name, self.pool_profile)
+          self.cluster.mkpool(self.pool_name, self.pool_profile, 'rbd')
           if self.data_pool_profile:
               self.data_pool = self.pool_name + "-data"
               self.cluster.rmpool(self.data_pool, self.data_pool_profile)
-              self.cluster.mkpool(self.data_pool, self.data_pool_profile)
+              self.cluster.mkpool(self.data_pool, self.data_pool_profile, 'rbd')
           for node in common.get_fqdn_list('clients'):
               for volnum in xrange(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]

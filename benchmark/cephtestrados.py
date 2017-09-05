@@ -120,7 +120,7 @@ class CephTestRados(Benchmark):
     def mkpool(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
         self.cluster.rmpool('ceph_test_rados', self.pool_profile)
-        self.cluster.mkpool('ceph_test_rados', self.pool_profile)
+        self.cluster.mkpool('ceph_test_rados', self.pool_profile, 'ceph_test_rados')
         monitoring.stop()
 
     def recovery_callback(self): 
