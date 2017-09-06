@@ -158,7 +158,7 @@ class Radosbench(Benchmark):
                     self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile, 'radosbench')
         else: # the default behavior is to use a single Ceph storage pool for all rados bench processes
             self.cluster.rmpool('rados-bench-cbt', self.pool_profile)
-            self.cluster.mkpool('rados-bench-cbt', self.pool_profile)
+            self.cluster.mkpool('rados-bench-cbt', self.pool_profile, 'radosbench')
         monitoring.stop()
 
     def recovery_callback(self): 
