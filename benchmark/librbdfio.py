@@ -6,6 +6,7 @@ import os
 import time
 import threading
 import logging
+import json
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
@@ -42,6 +43,7 @@ class LibrbdFio(Benchmark):
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
         self.pool_name = "cbt-librbdfio"
+        self.fio_out_format = "json,normal"
         self.data_pool = None 
         self.use_existing_volumes = config.get('use_existing_volumes', False)
 
@@ -84,7 +86,7 @@ class LibrbdFio(Benchmark):
         if (self.use_existing_volumes == False):
           for volnum in xrange(self.volumes_per_client):
               rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
-              pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names)
+              pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
               p = common.pdsh(settings.getnodes('clients'), pre_cmd)
               ps.append(p)
           for p in ps:
@@ -126,6 +128,7 @@ class LibrbdFio(Benchmark):
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        self.analyze(self.out_dir)
 
     def mkfiocmd(self, volnum):
         rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
@@ -133,6 +136,7 @@ class LibrbdFio(Benchmark):
 
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
+        fio_cmd += ' --output-format=%s' % self.fio_out_format
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
             fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
 #        fio_cmd += ' --ioengine=%s' % self.ioengine
@@ -184,6 +188,28 @@ class LibrbdFio(Benchmark):
 
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
+
+    def parse(self, out_dir):
+        for client in settings.cluster.get('clients'):
+            for i in xrange(self.volumes_per_client):
+                found = 0
+                out_file = '%s/output.%d.%s' % (out_dir, i, client)
+                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)
+                with open(out_file) as fd:
+                    with open(json_out_file, 'w') as json_fd:
+                        for line in fd.readlines():
+                            if len(line.strip()) == 0:
+                                found = 0
+                                break
+                            if found == 1:
+                                json_fd.write(line)
+                            if found == 0:
+                                if "Starting" in line:
+                                    found = 1
+
+    def analyze(self, out_dir):
+        logger.info('Convert results to json format.')
+        self.parse(out_dir)
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(LibrbdFio, self).__str__())
