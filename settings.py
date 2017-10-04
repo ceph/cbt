@@ -30,6 +30,15 @@ def initialize(ctx):
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
 
+    # store cbt configuration in the archive directory
+    config_file = os.path.join(ctx.archive, 'cbt_config.yaml')
+    if not os.path.exists(ctx.archive):
+        os.makedirs(ctx.archive)
+    if not os.path.exists(config_file):
+        config_dict = dict(cluster=cluster, benchmarks=benchmarks)
+        with open(config_file, 'w') as fd:
+            yaml.dump(config_dict, fd, default_flow_style=False)
+
     # set the tmp_dir if not set.
     if 'tmp_dir' not in cluster:
         cluster['tmp_dir'] = '/tmp/cbt.%s' % os.getpid()
