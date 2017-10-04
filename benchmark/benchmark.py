@@ -12,7 +12,7 @@ class Benchmark(object):
         self.config = config
         self.cluster = cluster
 #        self.cluster = Ceph(settings.cluster)
-        self.archive_dir = "%s/%08d/%s" % (settings.cluster.get('archive_dir'), config.get('iteration'), self.getclass())
+        self.archive_dir = "%s/%08d" % (settings.cluster.get('archive_dir'), config.get('iteration'))
         self.run_dir = "%s/%08d/%s" % (settings.cluster.get('tmp_dir'), config.get('iteration'), self.getclass())
         self.osd_ra = config.get('osd_ra', None)
         self.cmd_path = ''
