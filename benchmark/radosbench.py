@@ -68,10 +68,10 @@ class Radosbench(Benchmark):
         self.mkpools()
 
         # Run write test
-        self._run('write', '%s/write' % self.run_dir, self.out_dir)
+        self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
         # Run read test unless write_only
         if self.write_only: return
-        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), self.out_dir)
+        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
 
     def _run(self, mode, run_dir, out_dir):
         # We'll always drop caches for rados bench
