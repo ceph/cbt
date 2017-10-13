@@ -4,6 +4,9 @@ import logging
 import settings
 import common
 import monitoring
+import hashlib
+import os
+import yaml
 
 logger = logging.getLogger('cbt')
 
@@ -12,7 +15,9 @@ class Benchmark(object):
         self.config = config
         self.cluster = cluster
 #        self.cluster = Ceph(settings.cluster)
-        self.archive_dir = "%s/%08d" % (settings.cluster.get('archive_dir'), config.get('iteration'))
+        self.archive_dir = "%s/%s/%08d/%s%s" % (settings.cluster.get('archive_dir'),
+                                                "results", config.get('iteration'), "id",
+                                                hash(frozenset((self.config).items())))
         self.run_dir = "%s/%08d/%s" % (settings.cluster.get('tmp_dir'), config.get('iteration'), self.getclass())
         self.osd_ra = config.get('osd_ra', None)
         self.cmd_path = ''
@@ -54,6 +59,15 @@ class Benchmark(object):
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
         # Set the full command path
         self.cmd_path_full += self.cmd_path
+
+        # Store the parameters of the test run
+        config_file = os.path.join(self.archive_dir, 'cbt_config.yaml')
+        if not os.path.exists(self.archive_dir):
+            os.makedirs(self.archive_dir)
+        if not os.path.exists(config_file):
+            config_dict = dict(cluster=self.config)
+            with open(config_file, 'w') as fd:
+                yaml.dump(config_dict, fd, default_flow_style=False)
 
     def exists(self):
         return False
