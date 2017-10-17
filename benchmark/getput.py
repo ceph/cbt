@@ -25,14 +25,14 @@ class Getput(Benchmark):
         self.object_prefix = config.get('object_prefix', 'cbt-getput')
         self.procs = config.get('procs', 1)
         self.ops_per_proc = config.get('ops_per_proc', None)
-        self.tests = config.get('tests', "p")
+        self.test = config.get('test', "p")
         self.op_size = config.get('op_size', 4194304)
         self.ctype = config.get('ctype', None)
         self.debug = config.get('debug', None)
         self.logops = config.get('logops', None)
         self.grace = config.get('grace', None)
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests, self.ctype)
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.tests, self.ctype)
+        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.test, self.ctype)
+        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.test, self.ctype)
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', "/usr/bin/getput")
         self.user = config.get('user', 'cbt')
@@ -79,11 +79,19 @@ class Getput(Benchmark):
 
         # Set the options
         if self.container_prefix is not None:
-            getput_cmd += '-c%s-gw%s ' % (self.container_prefix, gwnum)
+            container_prefix_flag = '-c%s' % self.container_prefix
+            if self.ctype == 'byproc' or self.ctype == 'bynodegw':
+                container_prefix_flag = '%s-gw%s' % (container_prefix_flag, gwnum)
+            getput_cmd += '%s ' % container_prefix_flag
+
+        # For now we'll only test distinct objects per client/gw 
         if self.object_prefix is not None:
-            getput_cmd += '-o%s ' % self.object_prefix
+            getput_cmd += '-o%s-`%s`-gw%s ' % (self.object_prefix, common.get_fqdn_cmd(), gwnum)
+        else:
+            getput_cmd += '-o`%s`-gw%s ' % (common.get_fqdn_cmd(), gwnum)
+
         getput_cmd += '-s%s ' % self.op_size
-        getput_cmd += '-t%s ' % self.tests
+        getput_cmd += '-t%s ' % self.test
         getput_cmd += '--procs %s ' % self.procs
         if self.ops_per_proc is not None:
             getput_cmd += '-n%s ' % self.ops_per_proc
@@ -122,7 +130,7 @@ class Getput(Benchmark):
 
         # Run getput 
         monitoring.start(self.run_dir)
-        logger.info('Running getput %s test.' % self.tests)
+        logger.info('Running getput %s test.' % self.test)
 
         ps = []
         for i in xrange(0, len(self.auth_urls)):
