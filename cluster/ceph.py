@@ -95,7 +95,7 @@ class Ceph(Cluster):
         self.monmap_fn = "%s/monmap" % self.tmp_dir
         self.use_existing = config.get('use_existing', True)
         self.newstore_block = config.get('newstore_block', False)
-
+        self.version_compat = config.get('version_compat', '')
         # these parameters control parallel OSD build 
         self.ceph_osd_online_rate = config.get('osd_online_rate', 10)
         self.ceph_osd_online_tmo = config.get('osd_online_timeout', 120)
@@ -555,8 +555,8 @@ class Ceph(Cluster):
         else:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
                         continue_if_error=False).communicate()
-
-        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool application enable %s %s' % (self.ceph_cmd, self.tmp_conf, name, application), continue_if_error=False).communicate()
+        if self.version_compat not in ['argonaut', 'bobcat', 'cuttlefish', 'dumpling', 'emperor', 'firefly', 'giant', 'hammer', 'infernalis', 'jewel']:
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool application enable %s %s' % (self.ceph_cmd, self.tmp_conf, name, application), continue_if_error=False).communicate()
 
         if replication and replication.isdigit():
             pool_repl_size = int(replication)
@@ -660,9 +660,9 @@ class Ceph(Cluster):
 
     def make_rgw_pools(self):
         rgw_pools = self.config.get('rgw_pools', {})
-        self.mkpool('default.rgw.buckets', rgw_pools.get('buckets', 'default', 'rgw'))
-        self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default', 'rgw'))
-        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default', 'rgw'))
+        self.mkpool('default.rgw.buckets', rgw_pools.get('buckets', 'default'), 'rgw')
+        self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index'), 'default', 'rgw')
+        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data'), 'default', 'rgw')
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
