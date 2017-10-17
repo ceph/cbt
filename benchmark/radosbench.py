@@ -29,7 +29,7 @@ class Radosbench(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.object_set_id = config.get('object_set_id', '')
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
+        self.out_dir = self.archive_dir
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', self.cluster.rados_cmd)
         self.pool = config.get('target_pool', 'rados-bench-cbt')
