@@ -61,7 +61,7 @@ class Benchmark(object):
         self.cmd_path_full += self.cmd_path
 
         # Store the parameters of the test run
-        config_file = os.path.join(self.archive_dir, 'cbt_config.yaml')
+        config_file = os.path.join(self.archive_dir, 'benchmark_config.yaml')
         if not os.path.exists(self.archive_dir):
             os.makedirs(self.archive_dir)
         if not os.path.exists(config_file):
