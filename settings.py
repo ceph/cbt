@@ -9,10 +9,11 @@ logger = logging.getLogger("cbt")
 
 cluster = {}
 benchmarks = {}
+monitoring = {}
 
 
 def initialize(ctx):
-    global cluster, benchmarks
+    global cluster, benchmarks, monitoring
 
     config = {}
     try:
@@ -23,12 +24,15 @@ def initialize(ctx):
 
     cluster = config.get('cluster', {})
     benchmarks = config.get('benchmarks', {})
+    monitoring = config.get('monitoring', {})
+
 
     if not cluster:
         shutdown('No cluster section found in config file, bailing.')
 
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
+    # We'll accept empty 'monitoring' section
 
     # store cbt configuration in the archive directory
     cbt_results = os.path.join(ctx.archive, 'results')
@@ -54,6 +58,18 @@ def initialize(ctx):
 
     if ctx.archive:
         cluster['archive_dir'] = ctx.archive
+
+    # Monitoring section
+
+    # Set collectl to True to keep backwards compatibility
+    if 'collectl' not in monitoring:
+        monitoring['collectl'] = True
+
+    if 'perf' not in monitoring:
+        monitoring['perf'] = False
+
+    if 'blktrace' not in monitoring:
+        monitoring['blktrace'] = False
 
 
 def getnodes(*nodelists):

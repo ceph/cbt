@@ -186,6 +186,10 @@ benchmarks:
     osd_ra: [4096]
     cmd_path: '/home/nhm/src/fio/fio'
     pool_profile: 'rbd'
+monitoring:
+  collectl: True
+  perf: False
+  blktrace: False
 ```
 
 An associated ceph.conf.1osd file is also defined with various settings that

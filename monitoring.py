@@ -5,23 +5,26 @@ import settings
 def start(directory):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
     collectl_dir = '%s/collectl' % directory
-    # perf_dir = '%s/perf' % directory
-    # blktrace_dir = '%s/blktrace' % directory
+    perf_dir = '%s/perf' % directory
+    blktrace_dir = '%s/blktrace' % directory
 
     # collectl
-    rawdskfilt = '\+cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ '
-    common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
-    common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 --rawdskfilt "%s" -F0 -f %s' % (rawdskfilt, collectl_dir))
+    if (settings.monitoring['collectl']):
+        rawdskfilt = '\+cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ '
+        common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % collectl_dir)
+        common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 --rawdskfilt "%s" -F0 -f %s' % (rawdskfilt, collectl_dir))
 
     # perf
-    # common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
-    # common.pdsh(nodes), 'cd %s;sudo perf_3.6 record -g -f -a -F 100 -o perf.data' % perf_dir)
+    if (settings.monitoring['perf']):
+        common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
+        common.pdsh(nodes, 'cd %s;sudo perf_3.6 record -g -f -a -F 100 -o perf.data' % perf_dir)
 
     # blktrace
-    # common.pdsh(osds, 'mkdir -p -m0755 -- %s' % blktrace_dir).communicate()
-    # for device in xrange (0,osds_per_node):
-    #     common.pdsh(osds, 'cd %s;sudo blktrace -o device%s -d /dev/disk/by-partlabel/osd-device-%s-data'
-    #                 % (blktrace_dir, device, device))
+    if (settings.monitoring['blktrace']):
+        common.pdsh(osds, 'mkdir -p -m0755 -- %s' % blktrace_dir).communicate()
+        for device in xrange (0,osds_per_node):
+            common.pdsh(osds, 'cd %s;sudo blktrace -o device%s -d /dev/disk/by-partlabel/osd-device-%s-data'
+                        % (blktrace_dir, device, device))
 
 
 def stop(directory=None):
