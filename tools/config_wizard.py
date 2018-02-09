@@ -4,7 +4,6 @@
 
 import argparse
 import os
-import socket
 import sys
 
 from config_class import Config, KvmRbdFio, Radosbench, RbdFio
@@ -42,7 +41,7 @@ def get_hosts(auto):
 
     try:
         monitor = raw_input("Enter the hostname of the monitor: ")
-        clients = raw_input("Enter the hostname(s) of the OSD(s) seperated by"
+        clients = raw_input("Enter the hostname(s) of the OSD(s) separated by"
                             " comma: ").replace(" ", "").split(",")
     except KeyboardInterrupt:
         print "Aborting script. No data will be saved."
@@ -80,7 +79,7 @@ def select_tests():
         print "Which of the following tests would you like to run?\nradosbench"\
               ", kvmrbdfio, rbdfio"
         try:
-            tests = raw_input("Enter the test names seperated by comma: ")
+            tests = raw_input("Enter the test names separated by comma: ")
             tests = tests.replace(" ", "").split(",")
         except KeyboardInterrupt:
             print "Aborting script. No data will be saved."
