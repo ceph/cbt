@@ -133,7 +133,7 @@ class Radosbench(Benchmark):
             if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
                 pool_name = 'rados-bench-``-%s'% (common.get_fqdn_cmd(), i)
                 run_name = ''
-            rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s %s %s --no-cleanup 2> %s > %s' % \
+            rados_bench_cmd = 'sudo %s -c %s -p %s bench %s %s %s %s %s %s %s --no-cleanup 2> %s > %s' % \
                  (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, max_objects_str, write_omap_str, run_name, objecter_log, out_file)
             p = common.pdsh(settings.getnodes('clients'), rados_bench_cmd)
             ps.append(p)
