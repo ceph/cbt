@@ -420,6 +420,18 @@ class Ceph(Cluster):
                     pdshhost = '%s@%s' % (user, rgwhost)
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
+                # set min_size of pools to 1, when there is only one osd
+                num_osds = len(settings.cluster.get('osds'))
+                rgw_default_pools = ['.rgw.root', 'default.rgw.control', 'default.rgw.meta', 'default.rgw.log']
+                pool_min_repl_size = 1
+
+                if num_osds == 1:
+                    time.sleep(5)
+                    for pool in rgw_default_pools:
+                        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, pool, pool_min_repl_size),
+                        continue_if_error=False).communicate()
+                        time.sleep(5)
+
 
     def disable_scrub(self):
         common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
