@@ -31,6 +31,7 @@ class Cosbench(Benchmark):
         self.rgw = settings.cluster.get('rgws').keys()[0]
         self.radosgw_admin_cmd = settings.cluster.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.use_existing = settings.cluster.get('use_existing')
+        self.is_teuthology = settings.cluster.get('is_teuthology', False)
 
         self.run_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.run_dir, int(self.osd_ra), self.op_size, int(self.total_procs), int(self.containers),int(self.objects), self.mode)
         self.out_dir = self.archive_dir
@@ -49,7 +50,7 @@ class Cosbench(Benchmark):
                 pass
         logger.debug("%s", cosconf)
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
-            if not self.use_existing:
+            if not self.use_existing or self.is_teuthology:
                 user, subuser = cosconf["username"].split(':')
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user create --uid='%s' --display-name='%s'" % (user, user)).communicate()
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser create --uid=%s --subuser=%s --access=full" % (user, cosconf["username"])).communicate()
