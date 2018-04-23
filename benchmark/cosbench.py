@@ -28,11 +28,13 @@ class Cosbench(Benchmark):
         self.objects = config["objects_max"]
         self.mode = config["mode"]
         self.user = settings.cluster.get('user')
-        self.rgw = settings.cluster.get('rgws')[0]
+        self.rgw = settings.cluster.get('rgws').keys()[0]
+        self.radosgw_admin_cmd = settings.cluster.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.use_existing = settings.cluster.get('use_existing')
+        self.is_teuthology = settings.cluster.get('is_teuthology', False)
 
         self.run_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.run_dir, int(self.osd_ra), self.op_size, int(self.total_procs), int(self.containers),int(self.objects), self.mode)
-        self.out_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.archive_dir, int(self.osd_ra), self.op_size, int(self.total_procs),  int(self.containers),int(self.objects), self.mode)
+        self.out_dir = self.archive_dir
 
     def prerun_check(self):
         #1. check cosbench
@@ -40,7 +42,7 @@ class Cosbench(Benchmark):
             sys.exit()
         #2. check rgw
         cosconf = {}
-        for param in self.config["auth"]["config"].split(';'):
+        for param in self.config["auth"].split(';'):
             try:
                 key, value = param.split('=')
                 cosconf[key] = value
@@ -48,7 +50,7 @@ class Cosbench(Benchmark):
                 pass
         logger.debug("%s", cosconf)
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
-            if not self.use_existing:
+            if not self.use_existing or self.is_teuthology:
                 user, subuser = cosconf["username"].split(':')
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user create --uid='%s' --display-name='%s'" % (user, user)).communicate()
                 stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser create --uid=%s --subuser=%s --access=full" % (user, cosconf["username"])).communicate()
@@ -116,7 +118,7 @@ class Cosbench(Benchmark):
                 "description": conf["mode"],
                 "name": "%s_%scon_%sobj_%s_%dw" % (conf["mode"], conf["containers_max"], conf["objects_max"], conf["obj_size"], conf["workers"]),
                 "storage": {"type":"swift", "config":"timeout=300000" },
-                "auth": {"type":"swauth", "config":"%s" % (conf["auth"]["config"])},
+                "auth": {"type":"swauth", "config":"%s" % (conf["auth"])},
                 "workflow": {
                     "workstage": [{
                         "name": "main",
@@ -241,6 +243,7 @@ class Cosbench(Benchmark):
         common.sync_files('%s/archive/%s*' % (self.config["cosbench_dir"], self.runid), self.out_dir)
 
     def check_workload_status(self):
+        logger.info("Checking workload status")
         wait = True
         try:
             self.runid
@@ -260,6 +263,7 @@ class Cosbench(Benchmark):
             time.sleep(1)
         stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
         logger.debug(stdout)
+        time.sleep(15)
         return True
 
     def check_cosbench_res_dir(self):
@@ -269,7 +273,7 @@ class Cosbench(Benchmark):
             stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]), "find %s/archive -maxdepth 1 -name '%s-*'" % (self.config["cosbench_dir"], self.runid)).communicate() 
             if stdout:
                 return True
-            if check_time == 300:
+            if check_time == 3000:
                 return False
             check_time += 1
             time.sleep(1)
