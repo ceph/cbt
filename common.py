@@ -106,7 +106,7 @@ def get_fqdn_list(nodes):
     return ret
 
 def clean_remote_dir (remote_dir):
-    print "cleaning remote dir %s" % remote_dir
+    logger.info("cleaning remote dir %s" % remote_dir)
     if remote_dir == "/" or not os.path.isabs(remote_dir):
        raise SystemExit("Cleaning the remote dir doesn't seem safe, bailing.")
 
@@ -115,12 +115,14 @@ def clean_remote_dir (remote_dir):
          continue_if_error=False).communicate()
 
 def make_remote_dir(remote_dir):
+    logger.info("making remote dir %s" % remote_dir)
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
     pdsh(nodes, 'mkdir -p -m0755 -- %s' % remote_dir,
          continue_if_error=False).communicate()
 
 
 def sync_files(remote_dir, local_dir):
+    logger.info("sync files between local and remote directories %s and %s" % (local_dir, remote_dir))
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
 
     if not os.path.exists(local_dir):

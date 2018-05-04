@@ -72,7 +72,6 @@ def getnodes(*nodelists):
                              nodelist, cur)
 
     str_nodes = ','.join(uniquenodes(nodes))
-    logger.debug("Nodes : %s", str_nodes)
     return str_nodes
 
 

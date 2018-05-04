@@ -1,8 +1,11 @@
 import common
 import settings
+import logging 
 
+logger = logging.getLogger("cbt")
 
 def start(directory):
+    logger.info('starting monitoring')
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
     collectl_dir = '%s/collectl' % directory
     # perf_dir = '%s/perf' % directory
@@ -25,6 +28,7 @@ def start(directory):
 
 
 def stop(directory=None):
+    logger.info('Stopping monitoring')
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
 
     common.pdsh(nodes, 'killall -SIGINT -f collectl').communicate()

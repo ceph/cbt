@@ -41,7 +41,7 @@ def main(argv):
     settings.initialize(ctx)
 
     iteration = 0
-    logger.debug("Settings.cluster:\n    %s",
+    logger.info("Settings.cluster:\n    %s",
                  pprint.pformat(settings.cluster).replace("\n", "\n    "))
 
     global_init = collections.OrderedDict()
