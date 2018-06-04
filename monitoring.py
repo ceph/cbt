@@ -24,6 +24,19 @@ def start(directory):
     #                 % (blktrace_dir, device, device))
 
 
+def start_pbench(directory):
+    logger.info('Executing Pbench-start-tools')
+    start_cmd = "/opt/pbench-agent/util-scripts/pbench-start-tools -g default -d %s" % directory
+    os.system(start_cmd)
+
+def stop_pbench(directory):
+    logger.info('Executing Pbench-stop-tools')
+    stop_cmd = "/opt/pbench-agent/util-scripts/pbench-stop-tools -g default -d %s" % directory
+    os.system(stop_cmd)
+    logger.info('Executing Pbench-postprocess-tools')
+    postprocess_cmd = "/opt/pbench-agent/util-scripts/pbench-postprocess-tools -g default -d %s" % directory
+    os.system(postprocess_cmd)
+
 def stop(directory=None):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
 

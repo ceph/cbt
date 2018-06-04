@@ -103,6 +103,7 @@ class LibrbdFio(Benchmark):
         self.cluster.dump_config(self.run_dir)
 
         monitoring.start(self.run_dir)
+        monitoring.start_pbench(self.out_dir)
 
         time.sleep(5)
 
@@ -123,6 +124,7 @@ class LibrbdFio(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
+        monitoring.stop_pbench(self.out_dir)
         monitoring.stop(self.run_dir)
 
         # Finally, get the historic ops
