@@ -1,5 +1,6 @@
 import common
 import settings
+import logging
 
 
 def start(directory):
