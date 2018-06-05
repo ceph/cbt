@@ -2,6 +2,7 @@ import common
 import settings
 import logging
 
+logger = logging.getLogger("cbt")
 
 def start(directory):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
