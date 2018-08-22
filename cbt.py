@@ -28,19 +28,26 @@ def parse_args(args):
         )
 
     parser.add_argument(
-        'config_file',
-        help='YAML config file.',
+        'config_files',
+        nargs='*',
+        help='YAML config file(s).',
         )
 
     return parser.parse_args(args[1:])
 
+def shutdown(message):
+    sys.exit(message)
 
-def main(argv):
-    setup_loggers()
-    ctx = parse_args(argv)
-    settings.initialize(ctx)
+def runtests(settings):
+    if not settings.cluster:
+        shutdown('No cluster settings found. Did you include a yaml file?')
+
+    if not settings.benchmarks:
+        shutdown('No benchmark settings found. Did you include a yaml file?')
 
     iteration = 0
+    logger.debug("Settings.general:\n    %s",
+                 pprint.pformat(settings.general).replace("\n", "\n    "))
     logger.debug("Settings.cluster:\n    %s",
                  pprint.pformat(settings.cluster).replace("\n", "\n    "))
 
@@ -53,7 +60,7 @@ def main(argv):
     return_code = 0
 
     try:
-        for iteration in range(settings.cluster.get("iterations", 0)):
+        for iteration in range(settings.general.get("iterations", 0)):
             benchmarks = benchmarkfactory.get_all(cluster, iteration)
             for b in benchmarks:
                 if b.exists():
@@ -85,6 +92,13 @@ def main(argv):
 
     return return_code
 
+def main(argv):
+    setup_loggers()
+    ctx = parse_args(argv)
+    settings.initialize(ctx)
+    if not settings.general:
+        shutdown('No general settings found.')
+    return runtests(settings)
 
 if __name__ == '__main__':
     exit(main(sys.argv))
