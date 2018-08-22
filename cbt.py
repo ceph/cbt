@@ -22,6 +22,20 @@ def parse_args(args):
         )
 
     parser.add_argument(
+        '-r', '--rebuild',
+        required=False,
+        action='store_true',
+        default=False,
+        help='Rebuild the results archive database.',
+        )
+
+    parser.add_argument(
+        '-q', '--query',
+        required=False,
+        help='query the results archive using SQL.',
+        )
+
+    parser.add_argument(
         '-c', '--conf',
         required=False,
         help='The ceph.conf file to use.',
@@ -37,6 +51,14 @@ def parse_args(args):
 
 def shutdown(message):
     sys.exit(message)
+
+def rebuild():
+    print('Rebuilding DB...')
+    return 0
+
+def query():
+    print('Running Query...')
+    return 0
 
 def runtests(settings):
     if not settings.cluster:
@@ -98,7 +120,12 @@ def main(argv):
     settings.initialize(ctx)
     if not settings.general:
         shutdown('No general settings found.')
-    return runtests(settings)
+    if settings.general.get('rebuild'):
+        return rebuild()
+    if settings.general.get('query'):
+        return query()
+    else:
+        return runtests(settings)
 
 if __name__ == '__main__':
     exit(main(sys.argv))

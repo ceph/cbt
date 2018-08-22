@@ -98,7 +98,10 @@ def initialize(ctx):
         cluster['conf_file'] = ctx.conf
     elif 'conf_file' not in cluster:
         cluster['conf_file'] = "%s/ceph.conf" % (cluster.get('conf_file'),)
-
+    if ctx.query:
+        general['query'] = ctx.query
+    if ctx.rebuild:
+        general['rebuild'] = True
     if ctx.archive:
         general['archive_dir'] = ctx.archive
 
