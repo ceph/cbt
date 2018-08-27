@@ -121,6 +121,7 @@ class Radosbench(Benchmark):
 
         # Run rados bench
         monitoring.start(run_dir)
+	monitoring.start_pbench(self.out_dir)
         logger.info('Running radosbench %s test.' % mode)
         ps = []
         for i in xrange(self.concurrent_procs):
@@ -139,6 +140,7 @@ class Radosbench(Benchmark):
             ps.append(p)
         for p in ps:
             p.wait()
+	monitoring.stop_pbench(self.out_dir)
         monitoring.stop(run_dir)
 
         # If we were doing recovery, wait until it's done.
