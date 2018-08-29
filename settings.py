@@ -100,10 +100,14 @@ def initialize(ctx):
         cluster['conf_file'] = "%s/ceph.conf" % (cluster.get('conf_file'),)
     if ctx.query:
         general['query'] = ctx.query
+    if ctx.format:
+        general['format'] = ctx.format
     if ctx.rebuild:
         general['rebuild'] = True
     if ctx.archive:
         general['archive_dir'] = ctx.archive
+
+
 
 def getnodes(*nodelists):
     nodes = []

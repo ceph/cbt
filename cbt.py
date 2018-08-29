@@ -9,6 +9,7 @@ import settings
 import benchmarkfactory
 from cluster.ceph import Ceph
 from log_support import setup_loggers
+from db import DB
 
 logger = logging.getLogger("cbt")
 
@@ -36,6 +37,14 @@ def parse_args(args):
         )
 
     parser.add_argument(
+        '-f', '--format',
+        required=False,
+        help='The query results format.',
+        choices=['json', 'csv', 'raw'],
+        default='csv',
+        )
+
+    parser.add_argument(
         '-c', '--conf',
         required=False,
         help='The ceph.conf file to use.',
@@ -53,11 +62,14 @@ def shutdown(message):
     sys.exit(message)
 
 def rebuild():
-    print('Rebuilding DB...')
+    db = DB(True)
+    db.close()
     return 0
 
-def query():
-    print('Running Query...')
+def query(q):
+    db = DB(False)
+    db.query(q)
+    db.close()
     return 0
 
 def runtests(settings):
@@ -123,7 +135,7 @@ def main(argv):
     if settings.general.get('rebuild'):
         return rebuild()
     if settings.general.get('query'):
-        return query()
+        return query(settings.general.get('query'));
     else:
         return runtests(settings)
 
