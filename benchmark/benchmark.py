@@ -11,7 +11,10 @@ import yaml
 logger = logging.getLogger('cbt')
 
 class Benchmark(object):
-    def __init__(self, cluster, config):
+    def __init__(self):
+        pass
+
+    def load_config(self, cluster, config):
         self.config = config
         self.cluster = cluster
 #        self.cluster = Ceph(settings.cluster)

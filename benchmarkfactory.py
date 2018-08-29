@@ -18,8 +18,7 @@ def get_all(cluster, iteration):
                    "iteration": iteration}
         for current in all_configs(config):
             current.update(default)
-            yield get_object(cluster, benchmark, current)
-
+            yield get_object_with_config(benchmark, cluster, current)
 
 def all_configs(config):
     """
@@ -43,23 +42,27 @@ def all_configs(config):
         current.update(zip(cycle_over_names, permutation))
         yield current
 
-
-def get_object(cluster, benchmark, bconfig):
+def get_object(benchmark):
     if benchmark == "nullbench":
-        return Nullbench(cluster, bconfig)
+        return Nullbench()
     if benchmark == "radosbench":
-        return Radosbench(cluster, bconfig)
+        return Radosbench()
     if benchmark == "rbdfio":
-        return RbdFio(cluster, bconfig)
+        return RbdFio()
     if benchmark == "kvmrbdfio":
-        return KvmRbdFio(cluster, bconfig)
+        return KvmRbdFio()
     if benchmark == "rawfio":
-        return RawFio(cluster, bconfig)
+        return RawFio()
     if benchmark == 'librbdfio':
-        return LibrbdFio(cluster, bconfig)
+        return LibrbdFio()
     if benchmark == 'cosbench':
-        return Cosbench(cluster, bconfig)
+        return Cosbench()
     if benchmark == 'cephtestrados':
-        return CephTestRados(cluster, bconfig)
+        return CephTestRados()
     if benchmark == 'getput':
-        return Getput(cluster, bconfig)
+        return Getput()
+
+def get_object_with_config(benchmark, cluster, bconfig):
+    obj = get_object(benchmark)
+    obj.load_config(cluster, bconfig)
+    return obj

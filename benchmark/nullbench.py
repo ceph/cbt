@@ -9,8 +9,11 @@ from benchmark import Benchmark
 
 class Nullbench(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(Nullbench, self).__init__(cluster, config)
+    def __init__(self):
+        super(Nullbench, self).__init__()
+
+    def load_config(self, cluster, config):
+        super(Nullbench, self).load_config(cluster, config)
 
     def initialize(self): 
         super(Nullbench, self).initialize()

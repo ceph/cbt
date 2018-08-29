@@ -18,7 +18,10 @@ logger = logging.getLogger("cbt")
 class Radosbench(Benchmark):
 
     def __init__(self, cluster, config):
-        super(Radosbench, self).__init__(cluster, config)
+        super(Radosbench, self).__init__()
+
+    def load_config(self, cluster, config):
+        super(Radosbench, self).load_config(cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
         self.time =  str(config.get('time', '300'))

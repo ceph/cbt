@@ -13,8 +13,11 @@ logger = logging.getLogger("cbt")
 
 class KvmRbdFio(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(KvmRbdFio, self).__init__(cluster, config)
+    def __init__(self):
+        super(KvmRbdFio, self).__init__()
+
+    def load_config(self, cluster, config):
+        super(KvmRbdFio, self).load_config(cluster, config)
         # comma-separated list of block devices to use inside the client host/VM/container
         self.block_device_list = config.get('block_devices', '/dev/vdb' )
         self.block_devices = [ d.strip() for d in self.block_device_list.split(',') ]

@@ -14,8 +14,11 @@ from benchmark import Benchmark
 
 class CephTestRados(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(CephTestRados, self).__init__(cluster, config)
+    def __init__(self):
+        super(CephTestRados, self).__init__()
+
+    def load_config(self, cluster, config):
+        super(CephTestRados, self).load_config(cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
 

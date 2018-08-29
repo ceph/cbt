@@ -13,7 +13,10 @@ logger = logging.getLogger("cbt")
 class RbdFio(Benchmark):
 
     def __init__(self, cluster, config):
-        super(RbdFio, self).__init__(cluster, config)
+        super(RbdFio, self).__init__()
+
+    def load_config(self, cluster, config):
+        super(RbdFio, self).load_config(cluster, config)
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
