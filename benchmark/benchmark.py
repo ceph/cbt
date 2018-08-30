@@ -8,6 +8,7 @@ import hashlib
 import os
 import yaml
 import json
+import time
 
 logger = logging.getLogger('cbt')
 
@@ -66,7 +67,7 @@ class Benchmark(object):
             with open(config_file, 'w') as fd:
                 yaml.dump(self.config_dict, fd, default_flow_style=False)
 
-    def run(self):
+    def pre_run(self):
         self.reset_run_dir()
         self.dump_config()
 
@@ -80,6 +81,36 @@ class Benchmark(object):
 
         # Set the full command path
         self.cmd_path_full += self.cmd_path
+
+        # We'll always drop caches before running benchmarks 
+        self.dropcaches()
+
+        # dump the cluster config
+        self.cluster.dump_config(self.run_dir)
+
+        monitoring.start(self.run_dir)
+
+        time.sleep(5)
+
+        # Run the backfill testing thread if requested
+        if 'recovery_test' in self.cluster.config:
+            recovery_callback = self.recovery_callback
+            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
+
+    def run(self):
+        pass
+
+    def post_run(self):
+        # If we were doing recovery, wait until it's done.
+        if 'recovery_test' in self.cluster.config:
+            self.cluster.wait_recovery_done()
+
+        monitoring.stop(self.run_dir)
+
+        # Finally, get the historic ops
+        self.cluster.dump_historic_ops(self.run_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+
 
     def exists(self):
         if os.path.exists(self.archive_dir):

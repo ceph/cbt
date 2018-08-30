@@ -3,7 +3,6 @@ import common
 import settings
 import monitoring
 import os
-import time
 import logging
 
 from benchmark import Benchmark
@@ -67,24 +66,27 @@ class RbdFio(Benchmark):
 
         return True
 
-
-    def run(self):
-        super(RbdFio, self).run()
+    def pre_run(self):
+        super(RbdFio, self).pre_run()
 
         # Set client readahead
         self.set_client_param('read_ahead_kb', self.client_ra)
 
-        # We'll always drop caches for rados bench
-        self.dropcaches()
 
-        monitoring.start(self.run_dir)
+    def run(self):
+        self.pre_run()
 
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
+        logger.info('Running rbd fio %s test.', self.mode)
+        ps = []
+        for i in xrange(self.concurrent_procs):
+            p = common.pdsh(settings.getnodes('clients'), self.make_command(i))
+            ps.append(p)
+        for p in ps:
+            p.wait()
 
-        time.sleep(5)
+        self.post_run()
+
+    def make_command(self, i):
         out_file = '%s/output' % self.run_dir
         fio_cmd = 'sudo %s' % (self.cmd_path_full)
         fio_cmd += ' --rw=%s' % self.mode
@@ -111,18 +113,8 @@ class RbdFio(Benchmark):
         fio_cmd += ' %s > %s' % (self.names, out_file)
         if self.log_avg_msec is not None:
             fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
-        logger.info('Running rbd fio %s test.', self.mode)
-        common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
 
-        # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_done()
-
-        monitoring.stop(self.run_dir)
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        return fio_cmd
 
     def cleanup(self):
         super(RbdFio, self).cleanup()

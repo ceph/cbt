@@ -3,7 +3,6 @@ import common
 import settings
 import monitoring
 import os, sys
-import time
 import threading
 import lxml.etree as ET
 import re
@@ -207,10 +206,7 @@ class Cosbench(Benchmark):
                 self.add_leaf_to_tree(leaf_content, ET.SubElement(parent, leaf))
 
     def run(self):
-        super(Cosbench, self).run()
-        self.dropcaches()
-        self.cluster.dump_config(self.run_dir)
-        monitoring.start(self.run_dir)
+        self.pre_run()
 
         # Run cosbench test
         try:
@@ -224,10 +220,7 @@ class Cosbench(Benchmark):
         self.check_workload_status()
         self.check_cosbench_res_dir()
 
-        monitoring.stop(self.run_dir)
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
-        common.sync_files('%s/archive/%s*' % (self.config["cosbench_dir"], self.runid), self.archive_dir)
+        self.post_run()
 
     def check_workload_status(self):
         logger.info("Checking workload status")

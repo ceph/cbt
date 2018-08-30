@@ -81,71 +81,64 @@ class KvmRbdFio(Benchmark):
         common.make_remote_dir(self.run_dir)
 
     def run(self):
-        super(KvmRbdFio, self).run()
+        self.pre_run()
+
         # Set client readahead
         self.set_client_param('read_ahead_kb', self.client_ra)
         clnts = settings.getnodes('clients')
-
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
-        monitoring.start(self.run_dir)
-
-        time.sleep(5)
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
         logger.info('Starting rbd fio %s test.', self.mode)
 
         fio_process_list = []
         for i in range(self.concurrent_procs):
-            b = self.block_devices[i % len(self.block_devices)]
-            bnm = os.path.basename(b)
-            mtpt = '/srv/rbdfio-`hostname -s`-%s' % bnm
-            fiopath = os.path.join(mtpt, 'fio%d.img' % i)
-            out_file = '%s/output.%d' % (self.run_dir, i)
-            fio_cmd = 'sudo %s' % self.fio_cmd
-            fio_cmd += ' --rw=%s' % self.mode
-            if (self.mode == 'readwrite' or self.mode == 'randrw'):
-                fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
-            fio_cmd += ' --ioengine=%s' % self.ioengine
-            fio_cmd += ' --runtime=%s' % self.time
-            fio_cmd += ' --ramp_time=%s' % self.ramp
-            if self.startdelay:
-                fio_cmd += ' --startdelay=%s' % self.startdelay
-            if self.rate_iops:
-                fio_cmd += ' --rate_iops=%s' % self.rate_iops
-            fio_cmd += ' --numjobs=%s' % self.numjobs
-            fio_cmd += ' --direct=1'
-            fio_cmd += ' --bs=%dB' % self.op_size
-            fio_cmd += ' --iodepth=%d' % self.iodepth
-            fio_cmd += ' --size=%dM' % self.vol_size 
-            fio_cmd += ' --write_iops_log=%s' % out_file
-            fio_cmd += ' --write_bw_log=%s' % out_file
-            fio_cmd += ' --write_lat_log=%s' % out_file
-            if 'recovery_test' in self.cluster.config:
-                fio_cmd += ' --time_based'
-            fio_cmd += ' --name=%s > %s' % (fiopath, out_file)
-            fio_process_list.append(common.pdsh(clnts, fio_cmd, continue_if_error=False))
+            fio_process_list.append(common.pdsh(clnts, self.make_command(i), continue_if_error=False))
         for p in fio_process_list:
             p.communicate()
-        monitoring.stop(self.run_dir)
-        logger.info('Finished rbd fio test')
 
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        self.post_run()
+
+    def make_command(self, i):
+        b = self.block_devices[i % len(self.block_devices)]
+        bnm = os.path.basename(b)
+        mtpt = '/srv/rbdfio-`hostname -s`-%s' % bnm
+        fiopath = os.path.join(mtpt, 'fio%d.img' % i)
+        out_file = '%s/output.%d' % (self.run_dir, i)
+
+        fio_cmd = 'sudo %s' % self.fio_cmd
+        fio_cmd += ' --rw=%s' % self.mode
+        if (self.mode == 'readwrite' or self.mode == 'randrw'):
+            fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
+        fio_cmd += ' --ioengine=%s' % self.ioengine
+        fio_cmd += ' --runtime=%s' % self.time
+        fio_cmd += ' --ramp_time=%s' % self.ramp
+        if self.startdelay:
+           fio_cmd += ' --startdelay=%s' % self.startdelay
+        if self.rate_iops:
+           fio_cmd += ' --rate_iops=%s' % self.rate_iops
+        fio_cmd += ' --numjobs=%s' % self.numjobs
+        fio_cmd += ' --direct=1'
+        fio_cmd += ' --bs=%dB' % self.op_size
+        fio_cmd += ' --iodepth=%d' % self.iodepth
+        fio_cmd += ' --size=%dM' % self.vol_size
+        fio_cmd += ' --write_iops_log=%s' % out_file
+        fio_cmd += ' --write_bw_log=%s' % out_file
+        fio_cmd += ' --write_lat_log=%s' % out_file
+        if 'recovery_test' in self.cluster.config:
+            fio_cmd += ' --time_based'
+        fio_cmd += ' --name=%s > %s' % (fiopath, out_file)
+ 
+        return fio_cmd
 
     def cleanup(self):
-         super(KvmRbdFio, self).cleanup()
-         clnts = settings.getnodes('clients')
-         common.pdsh(clnts, 'killall fio').communicate()
-         time.sleep(3)
-         common.pdsh(clnts, 'killall -9 fio').communicate()
-         time.sleep(3)
-         common.pdsh(clnts, 'rm -rf /srv/*/*',
-                     continue_if_error=False).communicate()
-         common.pdsh(clnts, 'sudo umount /srv/* || echo -n').communicate()
+        super(KvmRbdFio, self).cleanup()
+        clnts = settings.getnodes('clients')
+        common.pdsh(clnts, 'killall fio').communicate()
+        time.sleep(3)
+        common.pdsh(clnts, 'killall -9 fio').communicate()
+        time.sleep(3)
+        common.pdsh(clnts, 'rm -rf /srv/*/*',
+                    continue_if_error=False).communicate()
+        common.pdsh(clnts, 'sudo umount /srv/* || echo -n').communicate()
 
     def set_client_param(self, param, value):
          cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)

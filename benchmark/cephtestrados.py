@@ -3,7 +3,6 @@ import common
 import settings
 import monitoring
 import os
-import time
 import threading
 import logging
 
@@ -64,19 +63,10 @@ class CephTestRados(Benchmark):
         return True
 
     def run(self):
-        super(CephTestRados, self).run()
+        self.pre_run()
         
         # Remake the pool
         self.mkpool()
-        self.dropcaches()
-        self.cluster.dump_config(self.run_dir)
-        monitoring.start(self.run_dir)
-        time.sleep(5)
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
-
         logger.info('Running ceph_test_rados.')
         ps = []
         for i in xrange(1):
@@ -84,15 +74,8 @@ class CephTestRados(Benchmark):
             ps.append(p)
         for p in ps:
             p.wait()
-        # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        self.post_run()
 
     def mkcmd(self):
         cmd = [self.cmd_path]

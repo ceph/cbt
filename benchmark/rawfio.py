@@ -67,55 +67,48 @@ class RawFio(Benchmark):
         common.make_remote_dir(self.run_dir)
 
     def run(self):
-        super(RawFio, self).run()
-        # Set client readahead
+        self.pre_run()
+
         clnts = settings.getnodes('clients')
 
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
-        monitoring.start(self.run_dir)
-
-        time.sleep(5)
-
         logger.info('Starting raw fio %s test.', self.mode)
-
         fio_process_list = []
         for i in range(self.concurrent_procs):
-            b = self.block_devices[i % len(self.block_devices)]
-            fiopath = b
-            out_file = '%s/output.%d' % (self.run_dir, i)
-            fio_cmd = 'sudo %s' % self.fio_cmd
-            fio_cmd += ' --rw=%s' % self.mode
-            if (self.mode == 'readwrite' or self.mode == 'randrw'):
-                fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
-            fio_cmd += ' --ioengine=%s' % self.ioengine
-            fio_cmd += ' --runtime=%s' % self.time
-            fio_cmd += ' --ramp_time=%s' % self.ramp
-            if self.startdelay:
-                fio_cmd += ' --startdelay=%s' % self.startdelay
-            if self.rate_iops:
-                fio_cmd += ' --rate_iops=%s' % self.rate_iops
-            fio_cmd += ' --numjobs=%s' % self.numjobs
-            fio_cmd += ' --direct=%s' % self.direct
-            fio_cmd += ' --bs=%dB' % self.op_size
-            fio_cmd += ' --iodepth=%d' % self.iodepth
-            fio_cmd += ' --size=%dM' % self.vol_size 
-            fio_cmd += ' --write_iops_log=%s' % out_file
-            fio_cmd += ' --write_bw_log=%s' % out_file
-            fio_cmd += ' --write_lat_log=%s' % out_file
-            fio_cmd += ' --output-format=%s' % self.fio_out_format
-            if 'recovery_test' in self.cluster.config:
-                fio_cmd += ' --time_based'
-            fio_cmd += ' --name=%s > %s' % (fiopath, out_file)
-            logger.debug("FIO CMD: %s" % fio_cmd)
-            fio_process_list.append(common.pdsh(clnts, fio_cmd, continue_if_error=False))
+            fio_process_list.append(common.pdsh(clnts, self.make_command(i), continue_if_error=False))
         for p in fio_process_list:
             p.communicate()
-        monitoring.stop(self.run_dir)
-        logger.info('Finished raw fio test')
 
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        self.post_run()
+
+    def make_command(self, i):
+        b = self.block_devices[i % len(self.block_devices)]
+        fiopath = b
+        out_file = '%s/output.%d' % (self.run_dir, i)
+        fio_cmd = 'sudo %s' % self.fio_cmd
+        fio_cmd += ' --rw=%s' % self.mode
+        if (self.mode == 'readwrite' or self.mode == 'randrw'):
+            fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
+        fio_cmd += ' --ioengine=%s' % self.ioengine
+        fio_cmd += ' --runtime=%s' % self.time
+        fio_cmd += ' --ramp_time=%s' % self.ramp
+        if self.startdelay:
+            fio_cmd += ' --startdelay=%s' % self.startdelay
+        if self.rate_iops:
+            fio_cmd += ' --rate_iops=%s' % self.rate_iops
+        fio_cmd += ' --numjobs=%s' % self.numjobs
+        fio_cmd += ' --direct=%s' % self.direct
+        fio_cmd += ' --bs=%dB' % self.op_size
+        fio_cmd += ' --iodepth=%d' % self.iodepth
+        fio_cmd += ' --size=%dM' % self.vol_size
+        fio_cmd += ' --write_iops_log=%s' % out_file
+        fio_cmd += ' --write_bw_log=%s' % out_file
+        fio_cmd += ' --write_lat_log=%s' % out_file
+        fio_cmd += ' --output-format=%s' % self.fio_out_format
+        if 'recovery_test' in self.cluster.config:
+            fio_cmd += ' --time_based'
+        fio_cmd += ' --name=%s > %s' % (fiopath, out_file)
+
+        return fio_cmd
 
     def cleanup(self):
          super(RawFio, self).cleanup()
@@ -134,5 +127,5 @@ class RawFio(Benchmark):
         return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(RawFio, self).__str__())
 
     def recovery_callback(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
 

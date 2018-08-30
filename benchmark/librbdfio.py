@@ -3,7 +3,6 @@ import common
 import settings
 import monitoring
 import os
-import time
 import threading
 import logging
 import json
@@ -22,7 +21,6 @@ class LibrbdFio(Benchmark):
     def load_config(self, cluster, config):
         super(LibrbdFio, self).load_config(cluster, config)
 
-        # FIXME there are too many permutations, need to put results in SQLITE3 
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         self.pool_profile = config.get('pool_profile', 'default')
         self.data_pool_profile = config.get('data_pool_profile', None)
@@ -77,43 +75,23 @@ class LibrbdFio(Benchmark):
         return True
 
     def run(self):
-        super(LibrbdFio, self).run()
-
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
-        # dump the cluster config
-        self.cluster.dump_config(self.run_dir)
-
-        monitoring.start(self.run_dir)
-
-        time.sleep(5)
-
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
+        self.pre_run();
 
         logger.info('Running rbd fio %s test.', self.mode)
         ps = []
         for i in xrange(self.volumes_per_client):
-            fio_cmd = self.mkfiocmd(i)
-            p = common.pdsh(settings.getnodes('clients'), fio_cmd)
+            p = common.pdsh(settings.getnodes('clients'), self.make_command(i))
             ps.append(p)
         for p in ps:
             p.wait()
-        # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        self.post_run()
 
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+    def post_run(self):
+        super(LibrbdFio, self).post_run()
         self.analyze()
 
-    def mkfiocmd(self, volnum):
+    def make_command(self, volnum):
         rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
         out_file = '%s/output.%d' % (self.run_dir, volnum)
 

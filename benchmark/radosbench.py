@@ -3,7 +3,6 @@ import common
 import settings
 import monitoring
 import os
-import time
 import threading
 import logging
 import re
@@ -37,32 +36,56 @@ class Radosbench(Benchmark):
         self.readmode = config.get('readmode', 'seq')
         self.max_objects = config.get('max_objects', None)
         self.write_omap = config.get('write_omap', False)
+        self.run_dir_orig = self.run_dir
+        self.archive_dir_orig = self.archive_dir
 
     def get_rados_version(self):
-        output = ""
         stdout,stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
         return stdout
 
     def run(self):
-        super(Radosbench, self).run()
-        
         # Remake the pools
         self.mkpools()
 
         # Run write test
-        self._run('write', '%s/write' % self.run_dir, '%s/write' % self.archive_dir)
+        self.run_dir = os.path.join(self.run_dir, 'write')
+        self.archive_dir = os.path.join(self.archive_dir, 'write')
+        self._run('write')
+
         # Run read test unless write_only
-        if self.write_only: return
-        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.archive_dir, self.readmode))
+        if self.write_only:
+            return
 
-    def _run(self, mode, run_dir, archive_dir):
-        # We'll always drop caches for rados bench
-        self.dropcaches()
+        self.run_dir = os.path.join(self.run_dir, 'read')
+        self.archive_dir = os.path.join(self.archive_dir, 'read')
+        self._run(self.readmode) 
 
+        self.run_dir = self.run_dir_orig
+        self.archive_dir = self.archive_dir_orig
+
+    def _run(self, mode):
+        self.pre_run()
+
+        # Run rados bench
+        logger.info('Running radosbench %s test.' % mode)
+        ps = []
+        for i in xrange(self.concurrent_procs):
+            p = common.pdsh(settings.getnodes('clients'), self.make_command(i, mode))
+            ps.append(p)
+        for p in ps:
+            p.wait()
+
+        self.post_run()
+
+    def post_run(self):
+        super(Radosbench, self).post_run()
+        self.analyze()
+
+    def make_command(self, i, mode):
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
-        #determine rados version
 
+        #determine rados version
         rados_version_str = self.get_rados_version()
 
         m = re.findall("version (\d+)", rados_version_str)
@@ -90,47 +113,31 @@ class Radosbench(Benchmark):
         if self.write_omap and rados_version > 9:
            write_omap_str = '--write-omap'
 
+        out_file = '%s/output.%s' % (self.run_dir, i)
+        objecter_log = '%s/objecter.%s.log' % (self.run_dir, i)
+        # default behavior is to use a single storage pool 
+        pool_name = self.pool
 
-        common.make_remote_dir(run_dir)
+        run_name = '--run-name %s`%s`-%s'%(self.object_set_id, common.get_fqdn_cmd(), i)
+        if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
+            pool_name = 'rados-bench-``-%s'% (common.get_fqdn_cmd(), i)
+            run_name = ''
 
-        # dump the cluster config
-        self.cluster.dump_config(run_dir)
+        command = self.cmd_path_full
+        command += ' -c %s' % self.tmp_conf
+        command += ' -p %s' % pool_name
+        command += ' bench'
+        command += ' %s' % op_size_str
+        command += ' %s' % self.time
+        command += ' %s' % mode
+        command += ' %s' % concurrent_ops_str
+        command += ' %s' % max_objects_str
+        command += ' %s' % write_omap_str
+        command += ' %s' % run_name
+        command += ' --nocleanup 2> %s' % objecter_log
+        command += ' > %s' % out_file
 
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(run_dir, recovery_callback)
-
-        # Run rados bench
-        monitoring.start(run_dir)
-        logger.info('Running radosbench %s test.' % mode)
-        ps = []
-        for i in xrange(self.concurrent_procs):
-            out_file = '%s/output.%s' % (run_dir, i)
-            objecter_log = '%s/objecter.%s.log' % (run_dir, i)
-            # default behavior is to use a single storage pool 
-            pool_name = self.pool
-
-            run_name = '--run-name %s`%s`-%s'%(self.object_set_id, common.get_fqdn_cmd(), i)
-            if self.pool_per_proc: # support previous behavior of 1 storage pool per rados process
-                pool_name = 'rados-bench-``-%s'% (common.get_fqdn_cmd(), i)
-                run_name = ''
-            rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s %s %s --no-cleanup 2> %s > %s' % \
-                 (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, max_objects_str, write_omap_str, run_name, objecter_log, out_file)
-            p = common.pdsh(settings.getnodes('clients'), rados_bench_cmd)
-            ps.append(p)
-        for p in ps:
-            p.wait()
-        monitoring.stop(run_dir)
-
-        # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_done()
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(run_dir)
-        common.sync_files('%s/*' % run_dir, archive_dir)
-        self.analyze(archive_dir)
+        return command
 
     def mkpools(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)

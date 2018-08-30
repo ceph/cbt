@@ -3,7 +3,6 @@ import common
 import settings
 import monitoring
 import os
-import time
 import threading
 import logging
 import re
@@ -96,22 +95,12 @@ class Getput(Benchmark):
         return getput_cmd
 
     def run(self):
+        self.pre_run()
+
         # First create a credential file for each gateway
         self.mkcredfiles()
 
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-        
-        # dump the cluster config
-        self.cluster.dump_config(self.run_dir)
-
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
-
         # Run getput 
-        monitoring.start(self.run_dir)
         logger.info('Running getput %s test.' % self.test)
 
         ps = []
@@ -121,15 +110,8 @@ class Getput(Benchmark):
             ps.append(p)
         for p in ps:
             p.wait()
-        monitoring.stop(self.run_dir)
 
-        # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_done()
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        self.post_run()
 
     def recovery_callback(self): 
         self.cleanup()
