@@ -21,7 +21,8 @@ class Benchmark(object):
         self.cluster = cluster
         self.config_dict = dict(benchmark=self.config.copy())
         self.config_dict.update(cluster=self.cluster.config.copy())
-        bench_hash = hash(json.dumps(self.config_dict, sort_keys=True))
+        # Use a 128-bit truncated sha256 to keep the DB from getting too big.
+        bench_hash = hashlib.sha256(json.dumps(self.config_dict, sort_keys=True)).hexdigest()[:32]
 
         archive_results  = os.path.join(settings.general.get('archive_dir'), 'results')
         self.archive_dir = os.path.join(archive_results, str(bench_hash))
