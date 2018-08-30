@@ -50,8 +50,6 @@ class CephTestRados(Benchmark):
             self.weights['write'] = self.weights['write'] / 2
             self.weights['write_excl'] = self.weights['write']
 
-        self.run_dir = '%s/osd_ra-%08d/object_size-%08d' % (self.run_dir, int(self.osd_ra), int(self.variables['object_size']))
-        self.out_dir = '%s/osd_ra-%08d/object_size-%08d' % (self.archive_dir, int(self.osd_ra), int(self.variables['object_size']))
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', '/usr/bin/ceph_test_rados')
 
@@ -59,12 +57,6 @@ class CephTestRados(Benchmark):
         value = self.config.get("%s_weight" % weight, None)
         if value is not None:
             self.weights[weight] = int(value)
-
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
-            return True
-        return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
@@ -100,7 +92,7 @@ class CephTestRados(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
 
     def mkcmd(self):
         cmd = [self.cmd_path]
@@ -130,4 +122,4 @@ class CephTestRados(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados').communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(CephTestRados, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(CephTestRados, self).__str__())

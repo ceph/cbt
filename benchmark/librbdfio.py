@@ -51,8 +51,6 @@ class LibrbdFio(Benchmark):
         self.use_existing_volumes = config.get('use_existing_volumes', False)
 
 	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.out_dir = self.archive_dir
 
         self.norandommap = config.get("norandommap", False)
         # Make the file names string (repeated across volumes)
@@ -61,26 +59,8 @@ class LibrbdFio(Benchmark):
             rbd_name = 'cbt-librbdfio-`%s`-file-%d' % (common.get_fqdn_cmd(), proc_num)
             self.names += '--name=%s ' % rbd_name
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     def initialize(self): 
         super(LibrbdFio, self).initialize()
-
-        # Clean and Create the run directory
-        common.clean_remote_dir(self.run_dir)
-        common.make_remote_dir(self.run_dir)
-
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
         self.mkimages()
 
         # populate the fio files
@@ -130,8 +110,8 @@ class LibrbdFio(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-        self.analyze(self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        self.analyze()
 
     def mkfiocmd(self, volnum):
         rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
@@ -192,12 +172,12 @@ class LibrbdFio(Benchmark):
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
 
-    def parse(self, out_dir):
+    def parse(self):
         for client in settings.cluster.get('clients'):
             for i in xrange(self.volumes_per_client):
                 found = 0
-                out_file = '%s/output.%d.%s' % (out_dir, i, client)
-                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)
+                out_file = '%s/output.%d.%s' % (self.archive_dir, i, client)
+                json_out_file = '%s/json_output.%d.%s' % (self.archive_dir, i, client)
                 with open(out_file) as fd:
                     with open(json_out_file, 'w') as json_fd:
                         for line in fd.readlines():
@@ -210,9 +190,9 @@ class LibrbdFio(Benchmark):
                                 if "Starting" in line:
                                     found = 1
 
-    def analyze(self, out_dir):
+    def analyze(self):
         logger.info('Convert results to json format.')
-        self.parse(out_dir)
+        self.parse()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(LibrbdFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(LibrbdFio, self).__str__())

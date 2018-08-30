@@ -38,15 +38,6 @@ class RawFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.vol_size = config.get('vol_size', 65536) * 0.9
         self.fio_cmd = config.get('fio_cmd', 'sudo /usr/bin/fio')
-        # FIXME there are too many permutations, need to put results in SQLITE3 
-        self.run_dir = '%s/raw_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/raw_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-
-    # def exists(self):
-    #     if os.path.exists(self.out_dir):
-    #         logger.info('Skipping existing test in %s.', self.out_dir)
-    #         return True
-    #     return False
 
     def initialize(self): 
         super(RawFio, self).initialize()
@@ -124,7 +115,7 @@ class RawFio(Benchmark):
         monitoring.stop(self.run_dir)
         logger.info('Finished raw fio test')
 
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
 
     def cleanup(self):
          super(RawFio, self).cleanup()
@@ -140,7 +131,7 @@ class RawFio(Benchmark):
          common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RawFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(RawFio, self).__str__())
 
     def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()

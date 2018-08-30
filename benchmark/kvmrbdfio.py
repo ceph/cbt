@@ -42,15 +42,6 @@ class KvmRbdFio(Benchmark):
         self.rbdadd_options = config.get('rbdadd_options')
         self.client_ra = config.get('client_ra', '128')
         self.fio_cmd = config.get('fio_cmd', '/usr/bin/fio')
-        # FIXME there are too many permutations, need to put results in SQLITE3 
-        self.run_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
-
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
 
     def initialize(self): 
         super(KvmRbdFio, self).initialize()
@@ -143,7 +134,7 @@ class KvmRbdFio(Benchmark):
         monitoring.stop(self.run_dir)
         logger.info('Finished rbd fio test')
 
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
 
     def cleanup(self):
          super(KvmRbdFio, self).cleanup()
@@ -161,7 +152,7 @@ class KvmRbdFio(Benchmark):
          common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(KvmRbdFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(KvmRbdFio, self).__str__())
 
     def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()

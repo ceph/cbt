@@ -181,6 +181,7 @@ class Ceph(Cluster):
 
         # Peform Idle Monitoring
         if self.idle_duration > 0:
+            logger.info('Pausing for %s seconds of idle cluster monitoring.' % self.idle_duration)
             monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
             time.sleep(self.idle_duration)
             monitoring.stop()

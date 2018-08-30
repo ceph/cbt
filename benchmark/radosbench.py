@@ -31,33 +31,12 @@ class Radosbench(Benchmark):
         self.write_only = config.get('write_only', False)
         self.op_size = config.get('op_size', 4194304)
         self.object_set_id = config.get('object_set_id', '')
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
-        self.out_dir = self.archive_dir
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', self.cluster.rados_cmd)
         self.pool = config.get('target_pool', 'rados-bench-cbt')
         self.readmode = config.get('readmode', 'seq')
         self.max_objects = config.get('max_objects', None)
         self.write_omap = config.get('write_omap', False)
-
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
-    # Initialize may only be called once depending on rebuild_every_test setting
-    def initialize(self): 
-        super(Radosbench, self).initialize()
-
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
-        return True
 
     def get_rados_version(self):
         output = ""
@@ -71,12 +50,12 @@ class Radosbench(Benchmark):
         self.mkpools()
 
         # Run write test
-        self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
+        self._run('write', '%s/write' % self.run_dir, '%s/write' % self.archive_dir)
         # Run read test unless write_only
         if self.write_only: return
-        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
+        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.archive_dir, self.readmode))
 
-    def _run(self, mode, run_dir, out_dir):
+    def _run(self, mode, run_dir, archive_dir):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
@@ -150,8 +129,8 @@ class Radosbench(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(run_dir)
-        common.sync_files('%s/*' % run_dir, out_dir)
-        self.analyze(out_dir)
+        common.sync_files('%s/*' % run_dir, archive_dir)
+        self.analyze(archive_dir)
 
     def mkpools(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
@@ -169,13 +148,13 @@ class Radosbench(Benchmark):
     def recovery_callback(self): 
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
 
-    def parse(self, out_dir):
+    def parse(self):
         for client in settings.cluster.get('clients'):
             for i in xrange(self.concurrent_procs):
                 result = {}
                 found = 0
-                out_file = '%s/output.%s.%s' % (out_dir, i, client)
-                json_out_file = '%s/json_output.%s.%s' % (out_dir, i, client)
+                out_file = '%s/output.%s.%s' % (self.archive_dir, i, client)
+                json_out_file = '%s/json_output.%s.%s' % (self.archive_dir, i, client)
                 with open(out_file) as fd:
                     for line in fd.readlines():
                         if found == 0:
@@ -189,9 +168,9 @@ class Radosbench(Benchmark):
                     json.dump(result, json_fd)
 
 
-    def analyze(self, out_dir):
+    def analyze(self):
         logger.info('Convert results to json format.')
-        self.parse(out_dir)
+        self.parse(self.archive_dir)
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(Radosbench, self).__str__())

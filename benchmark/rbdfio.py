@@ -44,35 +44,21 @@ class RbdFio(Benchmark):
         self.direct = config.get('direct', 1)
         self.poolname = "cbt-kernelrbdfio"
 
-        self.run_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
-        self.out_dir = '%s/rbdfio/osd_ra-%08d/client_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.client_ra), int(self.op_size), int(self.concurrent_procs), int(self.iodepth), self.mode)
-
         # Make the file names string
         self.names = ''
         for i in xrange(self.concurrent_procs):
             self.names += '--name=%s/cbt-kernelrbdfio-`hostname -s`/cbt-kernelrbdfio-%d ' % (self.cluster.mnt_dir, i)
 
     def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
+        if os.path.exists(self.archive_dir):
+            logger.info('Skipping existing test in %s.', self.archive_dir)
             return True
         return False
 
     def initialize(self): 
         super(RbdFio, self).initialize()
-
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
         self.mkimages()
  
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
-
         # populate the fio files
         logger.info('Attempting to populating fio files...')
         size = self.vol_size * 0.9 / self.concurrent_procs
@@ -136,7 +122,7 @@ class RbdFio(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
 
     def cleanup(self):
         super(RbdFio, self).cleanup()
@@ -145,7 +131,7 @@ class RbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'find /sys/block/rbd* -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)).communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RbdFio, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(RbdFio, self).__str__())
 
     def mkimages(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)

@@ -11,16 +11,16 @@ VERSION = 0.1
 class DB:
     def __init__(self, rebuild):
         self.archive_dir = settings.general.get('archive_dir')
-        self.db_file = os.path.join(self.archive_dir, 'archive.db')
+        self.db_file = os.path.join(self.archive_dir, 'results.sqlite3')
         create_db = False
 
         if os.path.exists(self.db_file):
             if rebuild:
-                print 'Database found.  Rebuilding.'
+                print 'Results index found.  Rebuilding.'
                 os.remove(self.db_file)
                 create_db = True
         else:
-            print 'Database not found.  Creating.'
+            print 'Results index not found.  Creating.'
             create_db = True
 
         self.conn = sqlite3.connect(self.db_file)
@@ -29,29 +29,16 @@ class DB:
         if create_db:
             self.create()
 
-    def rebuild(self):
-        if os.path.exists(self.db_file):
-            print 'Existing Database found.  Rebuilding.'
-
-
     def create(self):
         self.c.execute('''CREATE TABLE if not exists settings (key TEXT, value TEXT)''')
         self.c.execute("INSERT INTO settings VALUES ('version', %s)" % VERSION)
         results_dir = os.path.join(self.archive_dir, 'results')
-        test_dirs = []
 
-        iter_dirs = [os.path.join(results_dir, o) 
-            for o in os.listdir(results_dir)
-            if os.path.isdir(os.path.join(results_dir, o))]
-         
-        for d in iter_dirs:
-            test_dirs = test_dirs + [os.path.join(d, o)
-                for o in os.listdir(d)
-                if os.path.isdir(os.path.join(d, o))]
+        for test_dir in os.listdir(results_dir):
+            test_dir_full = os.path.join(results_dir, test_dir)
+            if os.path.isdir(test_dir_full):
+                self.analyze_dir(test_dir_full)
 
-        for test_dir in test_dirs:
-            self.analyze_dir(test_dir) 
-            
         self.conn.commit()
 
     def analyze_dir(self, test_dir):

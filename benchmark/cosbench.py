@@ -36,9 +36,6 @@ class Cosbench(Benchmark):
         self.use_existing = settings.cluster.get('use_existing')
         self.is_teuthology = settings.cluster.get('is_teuthology', False)
 
-        self.run_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.run_dir, int(self.osd_ra), self.op_size, int(self.total_procs), int(self.containers),int(self.objects), self.mode)
-        self.out_dir = self.archive_dir
-
     def prerun_check(self):
         #1. check cosbench
         if not self.check_workload_status():
@@ -87,12 +84,6 @@ class Cosbench(Benchmark):
             self.container_prepared = True
         else:
             self.container_prepared = False
-
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.debug('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
 
     def choose_template(self, temp_name, conf):
         ratio = { "read": 0, "write": 0 }
@@ -160,13 +151,6 @@ class Cosbench(Benchmark):
 
         logger.debug('Running cosbench and radosgw check.')
         self.prerun_check()
-
-        logger.debug('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s' % self.run_dir, self.out_dir)
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
@@ -242,8 +226,8 @@ class Cosbench(Benchmark):
 
         monitoring.stop(self.run_dir)
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-        common.sync_files('%s/archive/%s*' % (self.config["cosbench_dir"], self.runid), self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
+        common.sync_files('%s/archive/%s*' % (self.config["cosbench_dir"], self.runid), self.archive_dir)
 
     def check_workload_status(self):
         logger.info("Checking workload status")
@@ -297,4 +281,4 @@ class Cosbench(Benchmark):
         time.sleep(wait_time)
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Cosbench, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(Cosbench, self).__str__())

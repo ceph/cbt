@@ -34,8 +34,6 @@ class Getput(Benchmark):
         self.debug = config.get('debug', None)
         self.logops = config.get('logops', None)
         self.grace = config.get('grace', None)
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.test, self.ctype)
-        self.out_dir = '%s/osd_ra-%08d/op_size-%08d/procs-%08d/%s/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.procs), self.test, self.ctype)
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', "/usr/bin/getput")
         self.user = config.get('user', 'cbt')
@@ -45,31 +43,12 @@ class Getput(Benchmark):
         self.cleanup()
         self.cleandir()
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
-
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
         super(Getput, self).initialize()
 
         # create the user and key
         self.cluster.add_swift_user(self.user, self.subuser, self.key)
-
-        # Clean and Create the run directory
-        common.clean_remote_dir(self.run_dir)
-        common.make_remote_dir(self.run_dir)
-
-        logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
-        time.sleep(60)
-        monitoring.stop()
-
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
-        return True
 
     def mkcredfiles(self):
         for i in xrange(0, len(self.auth_urls)):
@@ -150,7 +129,7 @@ class Getput(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        common.sync_files('%s/*' % self.run_dir, self.archive_dir)
 
     def recovery_callback(self): 
         self.cleanup()
@@ -159,4 +138,4 @@ class Getput(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 getput').communicate()
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Getput, self).__str__())
+        return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(Getput, self).__str__())
