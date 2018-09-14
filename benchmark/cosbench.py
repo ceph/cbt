@@ -240,7 +240,6 @@ class Cosbench(Benchmark):
         monitoring.stop(self.run_dir)
         self.cluster.dump_historic_ops(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
-        common.sync_files('%s/archive/%s*' % (self.config["cosbench_dir"], self.runid), self.out_dir)
 
     def check_workload_status(self):
         logger.info("Checking workload status")
