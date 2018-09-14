@@ -128,5 +128,8 @@ class Benchmark(object):
         common.pdsh(nodes, 'sync').communicate()
         common.pdsh(nodes, 'echo 3 | sudo tee /proc/sys/vm/drop_caches').communicate()
 
+    def index_results(self, directory, db):
+        logger.info("index_results not implemented.  Skipping: %s" % directory)
+
     def __str__(self):
         return str(self.config)

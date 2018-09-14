@@ -6,6 +6,7 @@ import os
 import threading
 import logging
 import json
+import collections
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
@@ -171,6 +172,27 @@ class LibrbdFio(Benchmark):
     def analyze(self):
         logger.info('Convert results to json format.')
         self.parse()
+
+    def index_results(self, test_dir, db):
+        create_db(db)
+
+#    def create_db(self, db):
+#        librbdfio_schema = OrderedDict(
+#            'hash':'text primary key',
+#            'iteration':'integer',
+#            'ioengine':'text',
+#            'invalidate':'integer',
+#            'rw':'text',
+#            'runtime':'integer',
+#            'ramp_time':'integer',
+#            'direct':'integer',
+#            'bs':'integer',
+#            'iodepth':'integer',
+#            'end_fsync':'integer')
+            
+
+#        db.execute('''CREATE TABLE if not exists librbdfio (
+
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.archive_dir, super(LibrbdFio, self).__str__())
