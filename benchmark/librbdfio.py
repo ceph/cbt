@@ -73,9 +73,10 @@ class LibrbdFio(Benchmark):
 
         logger.info('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
+        monitoring.start_pbench("%s/idle" % self.out_dir)
         time.sleep(60)
         monitoring.stop()
-
+        monitoring.stop_pbench("%s/idle" % self.out_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
         self.mkimages()
