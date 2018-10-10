@@ -1,3 +1,11 @@
+"""
+This is an unfinished module, supposed to implement a 'cluster factory' which probably sorts 
+clusters depending on the config profiles given, and matches them to the benchmarks using the
+benchmark factory.
+Referred to as a 'parametric' matching of cluster and benchmark.
+
+Possible implementation of multiple cluster benchmarking in parallel.
+"""
 import subprocess
 
 import settings

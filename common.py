@@ -5,6 +5,7 @@ import subprocess
 
 import settings
 
+# acquire the pointer to the logging object for logging
 logger = logging.getLogger("cbt")
 
 # this class overrides the communicate() method to check the return code and

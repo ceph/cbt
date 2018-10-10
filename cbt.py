@@ -1,4 +1,8 @@
 #!/usr/bin/python
+
+"""
+    This is where all the action happens!
+"""
 import argparse
 import collections
 import logging
@@ -10,10 +14,13 @@ import benchmarkfactory
 from cluster.ceph import Ceph
 from log_support import setup_loggers
 
+# The get the pointer to the logger instance named 'cbt' for usage
 logger = logging.getLogger("cbt")
 
-
+# using the Argument Parser class, to create custom instance for program
 def parse_args(args):
+    """Simple argument parsing, usual stuff"""
+
     parser = argparse.ArgumentParser(description='Continuously run ceph tests.')
     parser.add_argument(
         '-a', '--archive',
@@ -32,18 +39,31 @@ def parse_args(args):
         help='YAML config file.',
         )
 
+    # call the argparse.ArgumentParser.parse_args function on the instance of the class
     return parser.parse_args(args[1:])
 
 
 def main(argv):
+    """The main function which does all the action"""
+
+    # setup all the logging functionality of the 'cbt' logger
     setup_loggers()
+
+    # perform the argument parsing stuff
     ctx = parse_args(argv)
+
+    # initialize the benchmarking by handling CLI args, creating files/dirs given in the YAML(s)
     settings.initialize(ctx)
 
+    # iteration counter for each iteration of benchmarking to perform as per the settings
     iteration = 0
+
+    # pretty printing into the debug function itself, instead of on any file descriptor
+    # printing all the cluster configs given to CBT
     logger.debug("Settings.cluster:\n    %s",
                  pprint.pformat(settings.cluster).replace("\n", "\n    "))
 
+    # dictionary to keep track of all benchmarks that have been initialized already
     global_init = collections.OrderedDict()
 
     # FIXME: Create ClusterFactory and parametrically match benchmarks and clusters.

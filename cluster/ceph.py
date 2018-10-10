@@ -1,3 +1,7 @@
+"""
+The biggest piece of code in the entire CBT framework!
+"""
+
 import subprocess
 import common
 import settings
@@ -10,10 +14,12 @@ import logging
 
 from cluster import Cluster
 
-
+# acquire the pointer to the logger for logging
 logger = logging.getLogger("cbt")
 
+
 def sshtarget(user, host):
+    """simply return a string with ssh-target"""
     h = host
     if user:
         h = '%s@%s' % (user, host)
@@ -24,25 +30,56 @@ def sshtarget(user, host):
 # in parallel.
 
 class OsdThread(threading.Thread):
+    """A thread to bring up an OSD.
+    The sequence in which these steps are performed is important.
+    Since each OSD process is independent of the other, multiple OSDs can be brought up independently. 
+    Hence, the option for multithreading."""
     def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir):
+        # initialize and give thread name using parent constructor
         threading.Thread.__init__(self, name='OsdThread-%d'%osdnum)
+
+        # determine start time for timestamping? or perhaps duration measurement
         self.start_time = time.time()
+        
+        # response time from the disk?
         self.response_time = -1.0
+        
+        # cluster object on which to operate
         self.cl_obj = cl_obj
+
+        # device number string
         self.devnumstr = devnumstr
+        # osd number, simple integer
         self.osdnum = osdnum
+        # UUID as created when installing the cluster
         self.clusterid = clusterid
+        # hostname on which the OSD process is going to run
         self.host = host
+        # OSD UUID for management I guess?
         self.osduuid = osduuid
+        # directory on which the OSD data partition is going to be mounted
         self.osddir = osddir
+
+        # the executable program to be run by this thread, initially NULL
         self.exc = None
 
     def run(self):
+        """Run the OSD thread to bring up a certain OSD process."""
         try:
+            # get the keyring
             key_fn = '%s/keyring'%self.osddir
+            # get the ceph.conf file from the cluster object (which is going to hold the location as provided in YAML)
             ceph_conf = self.cl_obj.tmp_conf
+            # determine the SSH target string
             phost = sshtarget(settings.cluster.get('user'), self.host)
+            # run the ceph command with pdsh and given parameters as:
+            #   command string (probably 'ceph')
+            #   config file (-c /ceph.conf)
+            #   osd number (osd.%d)
+            #   host (host=)
+            #   along with some default crush values, ensuring failure domains
             common.pdsh(phost, 'sudo %s -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.cl_obj.ceph_cmd, ceph_conf, self.osdnum, self.host)).communicate()
+            
             cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
             common.pdsh(phost, 'sudo sh -c "%s"' % cmd).communicate()
             common.pdsh(phost, 'sudo %s -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd" mgr "allow"' % (self.cl_obj.ceph_cmd, ceph_conf, key_fn, self.osdnum)).communicate()
