@@ -13,6 +13,7 @@ import common
 import monitoring
 
 class Cluster(object):
+    """ As of now, the cluster object only has attributes to store the given directories in the YAML file of CBT"""
     def __init__(self, config):
         self.config = config
         base_tmp = config.get('tmp_dir', '/tmp/cbt')
