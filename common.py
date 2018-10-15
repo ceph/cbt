@@ -241,7 +241,7 @@ def setup_valgrind(mode, name, tmp_dir):
     if mode == 'memcheck':
         return 'valgrind --tool=memcheck --soname-synonyms=somalloc=*tcmalloc* --log-file=%s ' % (logfile)
 
-    # if mode wansn't 'memcheck' or 'massif' then it's not supported, log a warning, and bail out!
+    # if mode wasn't 'memcheck' or 'massif' then it's not supported, log a warning, and bail out!
     logger.warning('valgrind mode: %s is not supported.', mode)
     return ''
 
