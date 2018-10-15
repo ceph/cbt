@@ -110,6 +110,8 @@ def getnodes(*nodelists):
 
 
 def uniquenodes(nodes):
+    """Filter out for empty strings in nodes, also use list comprehension to perform uniqueness check.
+    Give output as a set of user@node strings."""
     # rule out empty strings
     ret = [node for node in nodes if node]
 
