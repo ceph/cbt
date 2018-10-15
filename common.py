@@ -1,5 +1,5 @@
 """
-This module contains common utilities that have been tailored made to handle the given ceph cluster.
+This module contains common utilities that have been tailor made to handle the given ceph cluster.
 Most importantly, it implements the 'return code checking' on the subprocess.Popen.communicate() function
 by overriding the function and performing error handling. It provides a 'CheckedPopen' class as a wrapper
 to the actual subprocess.Popen with all the nice error handling embedded.
@@ -220,7 +220,8 @@ def setup_valgrind(mode, name, tmp_dir):
     Return the string with command to run a specific 'mode' of valgrind.
     Return empty string if mode isn't supported, after logging a warning."""
 
-    # mode simply referes to the tool which is to be used with valgrind. Two supported ones are 'massif' and 'memcheck'
+    # mode simply referes to the tool which is to be used with valgrind. 
+    # Two supported ones are 'massif' and 'memcheck'
 
     # directory in which to do valgrind stuff
     valdir = '%s/valgrind' % tmp_dir
