@@ -79,8 +79,7 @@ def main(argv):
             benchmarks = benchmarkfactory.get_all(cluster, iteration)
             # iterate over the generator to get each benchmkar object
             for b in benchmarks:
-                # exists simply means the benchmark has already been created, which is never the case
-                # will exist in future probably
+                # a benchmark 'run_dir' already exists, with the exact test profile, skip it!
                 if b.exists():
                     continue
 
