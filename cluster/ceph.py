@@ -729,9 +729,21 @@ class Ceph(Cluster):
         """Dump the historic ops using admin socket in a dump file in the given run_dir"""
         common.pdsh(settings.getnodes('osds'), 'find "/var/run/ceph/ceph-osd*.asok" -maxdepth 1 -exec sudo %s --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % (self.ceph_cmd, run_dir)).communicate()
 
-    #
+    # setup the disk parameters for all OSD disks on all OSD nodes
     def set_osd_param(self, param, value):
-        #
+        """
+        This command works as follows:
+        - Find the osd 'data' disks in /dev/disk/by-partlabel/, these will be symlinks
+        - 'Readlink' to resolve those names to get the actual locations
+        - Parse the output to get only the disk name string like 'sda1', 'sda2' etc
+        - Remove the number from the end
+        - xargs is used to 'execute arguments' to it
+        - xargs -I option performs 'replace_str', in our case, we're replacing the drive 'sda' etc
+        - xargs will then execute the rest of the thing with the {} replaced by the string given
+          to it in stdin, which in our case was say 'sda'
+        - This makes the final command as a shell command which is doing the basic parameter
+        - Writing 'value' to the /sys/block/<drive letter from xargs>/queue/<parameter>
+        """        
         common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
 
     # cool error handling
@@ -739,13 +751,18 @@ class Ceph(Cluster):
         """Cool way of error handling, I guess"""
         return "foo"
 
+    # create a recovery test thread and start it
     def create_recovery_test(self, run_dir, callback):
+        """Create a 'RecoveryTestThread' and run it with the given callback."""
         rt_config = self.config.get("recovery_test", {})
         rt_config['run_dir'] = run_dir
+        # create a new thread to start
         self.rt = RecoveryTestThread(rt_config, self, callback, self.stoprequest, self.haltrequest)
         self.rt.start()
 
+    # let all the spawned recovery threads to finish up
     def wait_recovery_done(self):
+        """"Wait for all the recovery threads to finish up. Setup the 'stop req event'"""
         self.stoprequest.set()
         while True:
             threads = threading.enumerate()
@@ -962,22 +979,34 @@ class Ceph(Cluster):
         # common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 
+    # make a new image in RBD pool with the given params
     def mkimage(self, name, size, pool, data_pool, order):
+        """Simply create a new image in the RBD pool"""
         dp_option = ''
         if data_pool:
             dp_option = "--data-pool %s" % data_pool
         common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order)).communicate()
 
+    # auth_urls needed for RADOSGW related stuff
     def get_auth_urls(self):
         return self.auth_urls
 
+    # create a new swift use particular to the benchmark 
     def add_swift_user(self, user, subuser, key):
+        """Add a swift user with given credentials into the 'current' cluster."""
+        # only if the auth_urls have been defined
         if self.auth_urls:
+            # command to execute
             cmd = "%s" % self.radosgw_admin_cmd
+            # all the 'head' nodes - CBT mngmnt nodes
             node = settings.getnodes('head')
+            # create a user
             common.pdsh(node, '%s -c %s user create --uid=%s --display-name=%s' % (cmd, self.tmp_conf, user, user)).communicate()
+            # create a subuser because of swift multi-tier auth-style
             common.pdsh(node, '%s -c %s subuser create --uid=%s --subuser=%s --access=full' % (cmd, self.tmp_conf, user, subuser)).communicate()
+            # create a key for the new subuser
             common.pdsh(node, '%s -c %s key create --subuser=%s --key-type=swift --secret=%s' % (cmd, self.tmp_conf, subuser, key)).communicate()
+            # limit the amount of resources available to the user
             common.pdsh(node, '%s -c %s user modify --uid=%s --max-buckets=0' % (cmd, self.tmp_conf, user)).communicate()
 
     # make 3 pools needed for RGW
@@ -993,7 +1022,22 @@ class Ceph(Cluster):
         self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index'), 'default', 'rgw')
         self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data'), 'default', 'rgw')
 
+# thread to bring up a screwed cluster
 class RecoveryTestThread(threading.Thread):
+    """
+        This thread performs the cluster recovery by handling OSD errors, makes the\n
+         cluster go through a series of states testing health at each one and in each \n
+         state a particular aspect of the OSDs is changed, in whatever state the cluster \n
+         appears to be healed, events are 'set'. At the end, the control is returned to the \n
+         callback.
+        
+        Attributes are:
+        - config - the YAML configuration file
+        - cluster - the cluster definition
+        - callback - the callback function to return to
+        - stoprequest - the Threading.Event object to signal the recovery request stopped
+        - haltrequest - the Threading.Event object to signal the recovery was interrupted
+    """
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
         threading.Thread.__init__(self)
         self.config = config
