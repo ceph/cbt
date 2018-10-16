@@ -761,13 +761,21 @@ class Ceph(Cluster):
         self.ruleset_map[name] = self.cur_ruleset
         self.cur_ruleset += 1
 
+    # get a ruleset from a rule_set map
     def get_ruleset(self, name):
+        """Get the given ruleset from the ruleset_map"""
         name = str(name)
+        # log the ruleset map
         logger.info("%s", self.ruleset_map)
         return self.ruleset_map[name]
 
+    # make new CRUSH profiles if necessary
     def make_profiles(self):
+        """Creates CRUSH and EC pool profiles. In the cluster reading information from the YAML file."""
+        # get the crush_profiles from the config, if defined
         crush_profiles = self.config.get('crush_profiles', {})
+
+        # create the profile for each profile CRUSH profile name given in the list
         for name,profile in crush_profiles.items():
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush add-bucket %s-root root' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush add-bucket %s-rack rack' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
@@ -775,16 +783,21 @@ class Ceph(Cluster):
             # FIXME: We need to build a dict mapping OSDs to hosts and create a proper hierarchy!
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush add-bucket %s-host host' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush move %s-host rack=%s-rack' % (self.ceph_cmd, self.tmp_conf, name, name)).communicate()
-            
+
+            # check if OSDs are defined    
             osds = profile.get('osds', None)
             if not osds:
                 raise Exception("No OSDs defined for crush profile, bailing!")
+            # apply the crush profile to OSDs
             for i in osds:
                 common.pdsh(settings.getnodes('head'), '%s -c %s osd crush set %s 1.0 host=%s-host' % (self.ceph_cmd, self.tmp_conf, i, name)).communicate()
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush rule create-simple %s %s-root osd' % (self.ceph_cmd, self.tmp_conf, name, name)).communicate()
             self.set_ruleset(name)
 
+        # get names of any EC profiles in the YAML
         erasure_profiles = self.config.get('erasure_profiles', {})
+        
+        # create each profile
         for name,profile in erasure_profiles.items():
             k = profile.get('erasure_k', 6)
             m = profile.get('erasure_m', 2)
@@ -942,9 +955,11 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name),
                     continue_if_error=False).communicate()
 
+    # unmount rbd mounted volumes from the loadgenerators
     def rbd_unmount(self):
+        """Unmount all the rbd mounted drives in the all the clients (load generators)"""
         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-#        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
+        # common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
 
     def mkimage(self, name, size, pool, data_pool, order):
