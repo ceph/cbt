@@ -73,9 +73,14 @@ def main(argv):
     return_code = 0
 
     try:
+        # perform all the iterations of the benchmarking
         for iteration in range(settings.cluster.get("iterations", 0)):
+            # get all the benchmarks objects from the 'factory' given the YAML config
             benchmarks = benchmarkfactory.get_all(cluster, iteration)
+            # iterate over the generator to get each benchmkar object
             for b in benchmarks:
+                # exists simply means the benchmark has already been created, which is never the case
+                # will exist in future probably
                 if b.exists():
                     continue
 
@@ -90,6 +95,7 @@ def main(argv):
                 try:
                     b.run()
                 finally:
+                    # unless rebuilding every test, cleanup the benchmark when done
                     if b.getclass() not in global_init:
                         b.cleanup()
     except:
