@@ -30,6 +30,9 @@ cluster:
   # temporary directory for storing stuff
   tmp_dir: "/tmp/cbt"
 
+  # cluster id to create tmp_dir easily
+  cluster_id: "ceph"
+
   # pool profile(s) to use
   pool_profiles:
     rbd2rep:
