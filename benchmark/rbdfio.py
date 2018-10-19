@@ -247,7 +247,11 @@ class RbdFio(Benchmark):
         """Create RBD images in the given pool, map them to clients\n
         format them with xfs and mount with all the optimization options."""
         monitoring.start("%s/pool_monitoring" % self.run_dir)
-        self.cluster.rmpool(self.poolname, self.pool_profile)
+        try:
+            self.cluster.rmpool(self.poolname, self.pool_profile)
+        except OSError as e:
+            logging.warning("Exception in rbdfio.py @mkimages")
+
         self.cluster.mkpool(self.poolname, self.pool_profile, 'rbd')
         common.pdsh(settings.getnodes('clients'), '/usr/bin/rbd create cbt-kernelrbdfio-`hostname -s` --size %s --pool %s' % (self.vol_size, self.poolname)).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo rbd map cbt-kernelrbdfio-`hostname -s` --pool %s --id admin' % self.poolname).communicate()
