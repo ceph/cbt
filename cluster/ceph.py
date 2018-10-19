@@ -320,8 +320,14 @@ class Ceph(Cluster):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds', 'mgrs')
         # log before destruction
         logger.info('Deleting %s', self.tmp_dir)
-        # bombs away!
-        common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
+
+        # add exception handling in case of very first test_run
+        try:
+            # attempt to delete previous stuff
+            common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
+        except Exception as e:
+            # put a message on the console
+            logger.info("In ceph.py when cleaning up %s ", e.message)
 
     # setting up filesystem on the OSD created
     def setup_fs(self):
