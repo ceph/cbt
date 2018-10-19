@@ -325,9 +325,9 @@ class Ceph(Cluster):
         try:
             # attempt to delete previous stuff
             common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
-        except Exception as e:
+        except OSError as e:
             # put a message on the console
-            logger.info("In ceph.py when cleaning up %s ", e.message)
+            logger.warning("Exception in ceph.py @cleanup %s" %  e.message)
 
     # setting up filesystem on the OSD created
     def setup_fs(self):
