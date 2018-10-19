@@ -9,6 +9,9 @@ cluster:
   # load generating clients
   clients: ["client0"]
 
+  # ceph.conf file to use
+  conf_file: "/etc/ceph/ceph.conf"
+
   # OSD nodes
   osds: ["stor0", "stor1", "stor2"]
 
