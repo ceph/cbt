@@ -877,8 +877,9 @@ class Ceph(Cluster):
                 common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s allow_ec_overwrites true' % (self.ceph_cmd, self.tmp_conf, name), continue_if_error=False).communicate()
         else:
             print("ceph_cmd:{}\ntmp_conf:{}\nname:{}\npg_size:{}\npgp_size:{}".format(self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size))
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
+            (stdout, stderr) = common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
                         continue_if_error=False).communicate()
+            print("returned data: {}".format((stdout, stderr)))
 
         # in case of newer versions (post luminous) pool 'application' option is available to optimize pool usage
         if self.version_compat not in ['argonaut', 'bobcat', 'cuttlefish', 'dumpling', 'emperor', 'firefly', 'giant', 'hammer', 'infernalis', 'jewel']:
