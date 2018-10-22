@@ -38,7 +38,6 @@ cluster:
 
   # pool profile(s) to use
   pool_profile:
-    rbd2rep:
       pg_size: 128
       pgp_size: 128
       replication: 2
