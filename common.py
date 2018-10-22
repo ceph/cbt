@@ -180,7 +180,7 @@ def make_remote_dir(remote_dir):
     # get the node list
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
     # run the mkdir process on each
-    pdsh(nodes, 'sudo mkdir -p -m0755 -- %s' % remote_dir,
+    pdsh(nodes, 'sudo mkdir -p -m0775 -- %s' % remote_dir,
          continue_if_error=False).communicate()
 
 # sync up the contents of a remote dir with local dir
