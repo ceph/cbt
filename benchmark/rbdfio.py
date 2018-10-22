@@ -119,7 +119,7 @@ class RbdFio(Benchmark):
             # this directory won't exist if there was no monitoring performed, need to handle the exceptions
             common.sync_files('%s/*' % self.run_dir, self.out_dir)
         except Exception as e:
-            logging.warning("Exception in rbdfio @initialize: {}".format(e.message))
+            logger.warning("Exception in rbdfio @initialize: {}".format(e.message))
 
         self.mkimages()
  
