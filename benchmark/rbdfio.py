@@ -221,7 +221,7 @@ class RbdFio(Benchmark):
         logger.info('Running rbd fio %s test.', self.mode)
 
         # run the command on the remote cluster
-        common.pdsh(settings.getnodes('clients'), fio_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), fio_cmd, continue_if_error=False).communicate()
 
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
