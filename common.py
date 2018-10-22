@@ -204,11 +204,15 @@ def sync_files(remote_dir, local_dir):
         except OSError as e:
             # log it as a warning, if remote files don't exist
             logger.warning("Exception in common.py @sync_files %s" % e.message)
+        except Exception as e:
+            logger.warning("Exception in common.py @sync_files %s" % e.message)
 
     # copy files from remote host
     try:
         rpdcp(nodes, '-r', remote_dir, local_dir).communicate()
     except OSError as e:
+        logger.warning("Exception in common.py @sync_files %s" % e.message)
+    except Exception as e:
         logger.warning("Exception in common.py @sync_files %s" % e.message)
 
 # mkdir -p for the current node
