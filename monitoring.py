@@ -27,7 +27,7 @@ def start(directory):
 def stop(directory=None):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
 
-    common.pdsh(nodes, 'killall -SIGINT -f collectl').communicate()
+    common.pdsh(nodes, 'killall -SIGINT collectl').communicate()
     common.pdsh(nodes, 'sudo pkill -SIGINT -f perf_3.6').communicate()
     common.pdsh(settings.getnodes('osds'), 'sudo pkill -SIGINT -f blktrace').communicate()
     if directory:
