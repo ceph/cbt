@@ -876,6 +876,7 @@ class Ceph(Cluster):
             if ec_overwrites is True:
                 common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s allow_ec_overwrites true' % (self.ceph_cmd, self.tmp_conf, name), continue_if_error=False).communicate()
         else:
+            print("ceph_cmd:{}\ntmp_conf:{}\nname:{}\npg_size:{}\npgp_size:{}".format(self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size))
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
                         continue_if_error=False).communicate()
 
