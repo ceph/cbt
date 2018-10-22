@@ -87,7 +87,7 @@ class Benchmark(object):
 
         # Create a new empty run_dir after this for the benchmarking
         logger.debug('Creating new run directory: %s', self.run_dir)
-        self.cluster.make_remote_dir(self.run_dir)
+        common.make_remote_dir(self.run_dir)
 
         # handle valgrind stuff
         if self.valgrind is not None:
