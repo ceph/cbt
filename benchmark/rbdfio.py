@@ -27,6 +27,7 @@ class RbdFio(Benchmark):
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         # setup the pool profile given in YAML conf
         self.pool_profile = config.get('pool_profile', 'default')
+        print("pool_profile: {}".format(self.pool_profile))
         # number of concurrent processes to run, default 1
         self.concurrent_procs = config.get('concurrent_procs', 1)
         # total number of processes to run
