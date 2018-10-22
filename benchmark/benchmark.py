@@ -84,6 +84,11 @@ class Benchmark(object):
         logger.debug('Cleaning existing temporary run directory: %s', self.run_dir)
         # cleanup the rundir on remote nodes
         common.pdsh(settings.getnodes('clients', 'osds', 'mons', 'rgws'), 'sudo rm -rf %s' % self.run_dir).communicate()
+
+        # Create a new empty run_dir after this for the benchmarking
+        logger.debug('Creating new run directory: %s', self.run_dir)
+        self.cluster.make_remote_dir(self.run_dir)
+
         # handle valgrind stuff
         if self.valgrind is not None:
             logger.debug('Adding valgrind to the command path.')
