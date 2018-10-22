@@ -37,9 +37,10 @@ cluster:
   clusterid: "ceph"
 
   # pool profile(s) to use
-  pool_profile:
-      pg_size: 128
-      pgp_size: 128
+  pool_profiles:
+    rbd2rep:
+      pg_size: 64
+      pgp_size: 64
       replication: 2
   
 
