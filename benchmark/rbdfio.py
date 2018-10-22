@@ -108,13 +108,18 @@ class RbdFio(Benchmark):
 
         # do idle monitoring to determine 'normal' operation metrics
         # these will serve as the 'point of comparison' from the test results
-        logger.info('Pausing for 60s for idle monitoring.')
+        logger.info('Pausing for 10s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
         # time to perform idle monitoring for
         time.sleep(10)
         monitoring.stop()
 
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        # need to handle in case of not using a monitoring stack issued by the CBT by default
+        try:
+            # this directory won't exist if there was no monitoring performed, need to handle the exceptions
+            common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        except Exception as e:
+            logging.warning("Exception in rbdfio @initialize: {}".format(e.message))
 
         self.mkimages()
  
