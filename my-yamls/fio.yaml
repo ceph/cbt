@@ -55,7 +55,7 @@ benchmarks:
       time: 600
 
       # ramp time, in sec
-      ramp: '0'
+      ramp: 30
 
       # I/O queue size
       iodepth: [8]
@@ -73,7 +73,7 @@ benchmarks:
       op_size: [4096]
 
       # size of test volume to create, in MB
-      vol_size: 512 
+      vol_size: 2048
 
       # use directI/O
       direct: 1
@@ -88,7 +88,7 @@ benchmarks:
       use_dir: True
      
       # number of concurrent jobs to run
-      concurrent_procs: 2
+      concurrent_procs: 1
      
       # path of FIO binary
       fio_cmd: '/usr/bin/fio'
