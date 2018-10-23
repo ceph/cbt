@@ -52,7 +52,7 @@ benchmarks:
       iterations: 1
 
       # duration, in sec
-      time: 120
+      time: 30
 
       # ramp time, in sec
       ramp: '0'
@@ -64,7 +64,7 @@ benchmarks:
       numjobs: 1    
 
       # operation to perform
-      mode: [randwrite]
+      mode: [randread]
 
       # backend library to use
       ioengine: libaio
@@ -73,7 +73,7 @@ benchmarks:
       op_size: [4096]
 
       # size of test volume to create, in MB
-      vol_size: 1024 
+      vol_size: 512 
 
       # use directI/O
       direct: 1
