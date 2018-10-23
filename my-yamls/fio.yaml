@@ -64,7 +64,7 @@ benchmarks:
       numjobs: 1    
 
       # operation to perform
-      mode: [ write]
+      mode: [randwrite]
 
       # backend library to use
       ioengine: libaio
@@ -77,6 +77,9 @@ benchmarks:
 
       # use directI/O
       direct: 1
+
+      # don't use buffered I/O, enabled by default
+      buffered: 0
 
       # Readahead settings
       client_ra: 128
