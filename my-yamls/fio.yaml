@@ -52,7 +52,7 @@ benchmarks:
       iterations: 1
 
       # duration, in sec
-      time: 30
+      time: 600
 
       # ramp time, in sec
       ramp: '0'
