@@ -182,6 +182,9 @@ def make_remote_dir(remote_dir):
     # run the mkdir process on each
     pdsh(nodes, 'sudo mkdir -p -m0775 -- %s' % remote_dir,
          continue_if_error=False).communicate()
+    # set correct permissions on the directory to allow fio to write to it 
+    pdsh(nodes, 'sudo chown -R cbt:cbt %s' % remote_dir,
+     continue_if_error=False).communicate()
 
 # sync up the contents of a remote dir with local dir
 def sync_files(remote_dir, local_dir):
