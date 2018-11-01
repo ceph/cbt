@@ -20,7 +20,7 @@ class Getput(Benchmark):
         super(Getput, self).__init__(cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
-        self.runtime =  config.get('runtime', '300')
+        self.runtime =  config.get('runtime', None)
         self.container_prefix = config.get('container_prefix', 'cbt-getput')
         self.object_prefix = config.get('object_prefix', 'cbt-getput')
         self.procs = config.get('procs', 1)
