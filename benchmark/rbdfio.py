@@ -182,6 +182,8 @@ class RbdFio(Benchmark):
         # set the test duration (optional)
         if self.time is not None:
             fio_cmd += ' --runtime=%s' % self.time
+            # option to run time based tests implicitly set if a runtime is given
+            fio_cmd += ' --time_based'
         # set the ramp duration (optional)
         if self.ramp is not None:
             fio_cmd += ' --ramp_time=%s' % self.ramp
