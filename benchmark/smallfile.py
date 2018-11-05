@@ -120,16 +120,25 @@ class Smallfile(Benchmark):
         logger.info('Running smallfile test, see %s for parameters' % yaml_input_pathname)
         smfcmd = [ 'smallfile_cli.py', 
                    '--host-set', client_list_path,
+                   '--response-times', 'Y',
                    '--yaml-input-file', yaml_input_pathname, 
                    '--verbose', 'Y', 
                    '--output-json', '%s/smfresult.json' % self.out_dir ]
         logger.info('smallfile command: %s' % ' '.join(smfcmd))
+        logger.info('YAML inputs: %s' % yaml.dump(smfparams))
         smf_out_path = os.path.join(self.out_dir, 'smf-out.log')
         (smf_out_str, smf_err_str) = common.pdsh(self.head, ' '.join(smfcmd), continue_if_error=False).communicate()
         with open(smf_out_path, 'w') as smf_outf:
             smf_outf.write(smf_out_str + '\n')
         logger.info('smallfile result: %s' % smf_out_path)
         monitoring.stop(self.run_dir)
+
+        # save response times
+        rsptimes_target_dir = os.path.join(self.out_dir, 'rsptimes')
+        common.mkdir_p(rsptimes_target_dir)
+        common.rpdcp(self.any_client, '', 
+                     os.path.join(os.path.join(topdir, 'network_shared'), 'rsptimes*csv'), 
+                     rsptimes_target_dir)
 
         if operation == 'cleanup':
             common.pdsh(self.any_client, 'rm -rf ' + topdir, continue_if_error=False).communicate()

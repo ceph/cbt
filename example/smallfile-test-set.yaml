@@ -20,6 +20,9 @@
 # the smallfile CBT benchmark module will do that for you 
 # using 'clients' host group
 #
+# you should not specify "response-times: Y" in your YAML input,
+# the smallfile CBT benchmark defaults to this behavior
+#
 # it has only been tested with a single Cephfs mountpoint/host
 
 cluster:
