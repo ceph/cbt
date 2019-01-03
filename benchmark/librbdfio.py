@@ -37,7 +37,7 @@ class LibrbdFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
-        self.vol_order = config.get('vol_order', 22)
+        self.vol_object_size = config.get('vol_object_size', '4M')
         self.volumes_per_client = config.get('volumes_per_client', 1)
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
@@ -183,7 +183,7 @@ class LibrbdFio(Benchmark):
           for node in common.get_fqdn_list('clients'):
               for volnum in xrange(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]
-                  self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_order)
+                  self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
         monitoring.stop()
 
     def recovery_callback(self): 

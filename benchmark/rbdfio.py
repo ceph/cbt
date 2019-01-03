@@ -33,7 +33,7 @@ class RbdFio(Benchmark):
         self.ioengine = config.get('ioengine', 'libaio')
         self.op_size = config.get('op_size', 4194304)
         self.vol_size = config.get('vol_size', 65536)
-        self.vol_order = config.get('vol_order', 22)
+        self.vol_object_size = config.get('vol_object_size', '4M')
         self.random_distribution = config.get('random_distribution', None)
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options', 'share')
