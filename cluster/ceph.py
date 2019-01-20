@@ -447,7 +447,7 @@ class Ceph(Cluster):
         # Match any of these things to continue checking health
         check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery", "stale"]
         while True:
-            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s health %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
+            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s status %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
             if check_list and not any(x in stdout for x in check_list):
                 break
             if "HEALTH_OK" in stdout:
