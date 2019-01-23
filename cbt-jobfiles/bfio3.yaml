@@ -7,22 +7,23 @@ cluster:
   head: "ceph-admin"
 
   # load generating clients
-  clients: ["client0"]
+#  clients: ["loadgen0", "loadgen1", "loadgen2", "loadgen3", "loadgen6", "loadgen8"]
+  clients: ["loadgen0" , "loadgen1", "loadgen2" , "loadgen3", "loadgen4"] # , "loadgen5", "loadgen6", "loadgen7", "loadgen8", "loadgen9"] #, "loadgen4", "loadgen5", "loadgen6", "loadgen7", "loadgen8"]
 
   # ceph.conf file to use
   conf_file: "/etc/ceph/ceph.conf"
 
   # OSD nodes
-  osds: ["stor0", "stor1", "stor2"]
+  osds: ["hstor0", "hstor1", "hstor2", "hstor3"]
 
   # MON nodes
-  mon: ["stor0", "stor1", "stor2"]
+  mon: ["hstor0", "hstor1", "hstor2"]
   
   # using existing cluster
   use_existing: True
   
   # OSD processes running per node
-  osds_per_node: 1
+  osds_per_node: 4
   
   # number of iterations of the whole benchmark profile
   iterations: 1
@@ -31,37 +32,40 @@ cluster:
   rebuild_every_test: True
 
   # temporary directory for storing stuff
-  tmp_dir: "/tmp/cbt"
+  tmp_dir: "/home/cbt/cbt"
 
   # cluster id to create tmp_dir easily
   clusterid: "ceph"
 
   # pool profile(s) to use
   pool_profiles:
+
+
     rbd2rep:
-      pg_size: 64
-      pgp_size: 64
+      pg_size: 8192
+      pgp_size: 8192
       replication: 2
+  
   
 
 benchmarks:
   # just going to perform an FIO benchmark against the cluster
-  rbdfio:
+  librbdfio:
 
       # just one iteration of this particular benchmark
       iterations: 1
 
       # duration, in sec
-      time: 600
+      #time: 300
 
       # ramp time, in sec
-      ramp: 30
+      ramp: 15
 
       # I/O queue size
-      iodepth: [8]
+      iodepth: [32]
 
       # number of such jobs
-      numjobs: 1    
+      numjobs: 1
 
       # operation to perform
       mode: [randread]
@@ -69,11 +73,12 @@ benchmarks:
       # backend library to use
       ioengine: libaio
 
+      rwmixread: 70
       # Block Size in Bytes, standard 4K
-      op_size: [4096]
+      op_size: [4096] #, 8192]
 
       # size of test volume to create, in MB
-      vol_size: 2048
+      vol_size: 20480
 
       # use directI/O
       direct: 1
@@ -82,14 +87,21 @@ benchmarks:
       buffered: 0
 
       # Readahead settings
-      client_ra: 128
+      #client_ra: 128
      
       # Use directory from / if you set to False the script will format client_dev
       use_dir: True
-     
+      output-format: json 
       # number of concurrent jobs to run
-      concurrent_procs: 1
+      volumes_per_client: 100
+      #procs_per_volume: 4
      
       # path of FIO binary
       fio_cmd: '/usr/bin/fio'
 
+      # pool profile to use
+      pool_profile: rbd2rep
+
+      # Average FIO Stats
+      bwavgtime: 10000
+      log_avg_msec: 10000

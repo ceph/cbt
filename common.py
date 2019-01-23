@@ -171,7 +171,7 @@ def clean_remote_dir (remote_dir):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
     # run the subprocess to get rid of the directory data
     pdsh(nodes, 'if [ -d "%s" ]; then rm -rf %s; fi' % (remote_dir, remote_dir),
-         continue_if_error=False).communicate()
+         continue_if_error=True).communicate()
 
 # create a given directory on each cluster node
 def make_remote_dir(remote_dir):

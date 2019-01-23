@@ -1,0 +1,43 @@
+cluster:
+  user: 'cbt'
+  head: "ceph-admin"
+  clients: ["loadgen0", "loadgen1", "loadgen2", "loadgen3"] #, "loadgen4", "loadgen5", "loadgen6", "loadgen7", "loadgen8", "loadgen9"]
+  conf_file: "/etc/ceph/ceph.conf"
+  osds: ["hstor0", "hstor1", "hstor2", "hstor3"]
+  mon: ["hstor0", "hstor1", "hstor2"]
+  use_existing: True
+  osds_per_node: 1
+  iterations: 1
+  rebuild_every_test: True
+  tmp_dir: "/home/cbt/cbt"
+  clusterid: "ceph"
+  pool_profiles:
+    rbd2rep:
+      pg_size: 4096
+      pgp_size: 4096
+      replication: 2
+
+benchmarks:
+  librbdfio:
+      iterations: 1
+      clientname: admin
+      time: 600
+      ramp: 90
+      iodepth: [4]
+      numjobs: 1
+      mode: [randread, randwrite, randrw]
+      ioengine: libaio
+      rwmixread: 70
+      op_size: [4096, 4194304] #, 8192]
+      vol_size: 10240
+      direct: 1
+      buffered: 0
+      use_dir: True
+      output-format: json 
+      volumes_per_client: 100
+      #procs_per_volume: 4
+      #path of FIO binary
+      fio_cmd: '/usr/bin/fio'
+      pool_profile: rbd2rep
+      bwavgtime: 10000
+      log_avg_msec: 10000

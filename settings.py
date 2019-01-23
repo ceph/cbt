@@ -54,6 +54,7 @@ def initialize(ctx):
     # create corresponding path objects with desired dir/file names
     cbt_results = os.path.join(ctx.archive, 'results')
     config_file = os.path.join(cbt_results, 'cbt_config.yaml')
+
     # create directories if they don't exist already, inside the archive directory provided as the CLI argument
     if not os.path.exists(ctx.archive):
         os.makedirs(ctx.archive)
@@ -66,7 +67,12 @@ def initialize(ctx):
         with open(config_file, 'w') as fd:
             # this is the actual action, writing YAML-type object config_dict, into a stream given by descriptor fd
             yaml.dump(config_dict, fd, default_flow_style=False)
-
+        print '>>>>>>>>>>'
+        conf_loc = config_dict["cluster"]["conf_file"]
+        conf_cp = os.path.join(cbt_results, 'ceph.conf')
+        command = 'cp ' + conf_loc + ' ' + conf_cp
+      #  print command
+        os.system(command)
     # set the tmp_dir if not set.
     if 'tmp_dir' not in cluster:
         # create a temp directory with PID name for temporal uniqueness

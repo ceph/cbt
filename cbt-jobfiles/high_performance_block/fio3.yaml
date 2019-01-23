@@ -1,0 +1,107 @@
+cluster:
+  
+# the user to use on the load generators
+  user: 'cbt'
+
+  # head node hostname
+  head: "ceph-admin"
+
+  # load generating clients
+#  clients: ["loadgen0", "loadgen1", "loadgen2", "loadgen3", "loadgen6", "loadgen8"]
+  clients: ["loadgen4"] #["loadgen0", "loadgen1", "loadgen2", "loadgen3", "loadgen4", "loadgen5", "loadgen6", "loadgen7", "loadgen8", "loadgen9"]
+
+  # ceph.conf file to use
+  conf_file: "/etc/ceph/ceph.conf"
+
+  # OSD nodes
+  osds: ["bstor0", "bstor1", "bstor2", "bstor3"]
+
+  # MON nodes
+  mon: ["bstor0", "bstor1", "bstor2"]
+  
+  # using existing cluster
+  use_existing: True
+  
+  # OSD processes running per node
+  osds_per_node: 1
+  
+  # number of iterations of the whole benchmark profile
+  iterations: 1
+
+  # erase previous test when rerun
+  rebuild_every_test: True
+
+  # temporary directory for storing stuff
+  tmp_dir: "/home/cbt/cbt"
+
+  # cluster id to create tmp_dir easily
+  clusterid: "ceph"
+
+  # pool profile(s) to use
+  pool_profiles:
+
+
+    rbd2rep:
+      pg_size: 4096
+      pgp_size: 4096
+      replication: 2
+  
+  
+
+benchmarks:
+  # just going to perform an FIO benchmark against the cluster
+  librbdfio:
+
+      # just one iteration of this particular benchmark
+      iterations: 1
+      clientname: client.admin
+      # duration, in sec
+      time: 600
+
+      # ramp time, in sec
+      ramp: 15
+
+      # I/O queue size
+      iodepth: [32]
+
+      # number of such jobs
+      numjobs: 1
+
+      # operation to perform
+      mode: [randread, randwrite, randrw]
+
+      # backend library to use
+      ioengine: libaio
+
+      rwmixread: 70
+      # Block Size in Bytes, standard 4K
+      op_size: [4096] #, 8192]
+
+      # size of test volume to create, in MB
+      vol_size: 20480
+
+      # use directI/O
+      direct: 1
+
+      # don't use buffered I/O, enabled by default
+      buffered: 0
+
+      # Readahead settings
+      #client_ra: 128
+     
+      # Use directory from / if you set to False the script will format client_dev
+      use_dir: True
+      output-format: json 
+      # number of concurrent jobs to run
+      volumes_per_client: 100
+      #procs_per_volume: 4
+     
+      # path of FIO binary
+      fio_cmd: '/usr/bin/fio'
+
+      # pool profile to use
+      pool_profile: rbd2rep
+
+      # Average FIO Stats
+      bwavgtime: 10000
+      log_avg_msec: 10000

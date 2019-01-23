@@ -1,0 +1,36 @@
+---
+cluster:
+  user: 'cbt'
+  head: "ceph-admin"
+  clients: ["loadgen1","loadgen2","loadgen3"]
+  osds: ["hstor0","hstor1","hstor2","hstor3"]
+  mons: ["hstor0","hstor1","hstor2"]
+  osds_per_node: 1
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048 -n size=8k'
+  mount_opts: 'noatime,nodiratime,attr2,logbufs=8,logbsize=256k,largeio,inode64,swalloc'
+  conf_file: '/etc/ceph/ceph.conf'
+  iterations: 1
+  use_existing: True
+  rebuild_every_test: True
+  clusterid: ”CBT_Cluster"
+  tmp_dir: "/tmp/cbt"
+  pool_profiles:
+    rbd3rep:
+      pg_size: 100
+      pgp_size: 100
+      replication: 2
+benchmarks:
+  radosbench:
+    time: 60 #seconds
+    write_only: False
+    readmode: ‘seq’
+    pool_per_proc: False
+    #Object size
+    op_size: [128]
+    # Number of rados bench processes generating concurrent_ops
+    concurrent_procs: 1
+    # Number of outstanding IO that rados bench keeps open
+    concurrent_ops: 64
+    osd_ra: [0]
+    bwavgtime: 2000

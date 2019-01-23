@@ -87,7 +87,7 @@ class LibrbdFio(Benchmark):
           for volnum in xrange(self.volumes_per_client):
               rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
               pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
-              p = common.pdsh(settings.getnodes('clients'), pre_cmd)
+              p = common.pdsh(settings.getnodes('clients'), pre_cmd, continue_if_error=False)
               ps.append(p)
           for p in ps:
               p.wait()
@@ -133,8 +133,8 @@ class LibrbdFio(Benchmark):
     def mkfiocmd(self, volnum):
         rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
         out_file = '%s/output.%d' % (self.run_dir, volnum)
-
-        fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
+        fio_cmd = 'sudo echo $(($(date +%s%N)/1000000)) >> ' + out_file + '_st_end; '
+        fio_cmd += 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
         fio_cmd += ' --output-format=%s' % self.fio_out_format
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
@@ -169,6 +169,8 @@ class LibrbdFio(Benchmark):
 
         # End the fio_cmd
         fio_cmd += ' %s > %s' % (self.names, out_file)
+        fio_cmd += '; sudo echo $(($(date +%s%N)/1000000)) >> ' + out_file + '_st_end;'
+        print fio_cmd
         return fio_cmd
 
     def mkimages(self):
@@ -195,6 +197,9 @@ class LibrbdFio(Benchmark):
                 found = 0
                 out_file = '%s/output.%d.%s' % (out_dir, i, client)
                 json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)
+#                command = 'touch ' + out_file + ' ' + json_out_file
+#                os.system(command)
+                #print 'out_file' + out_file + ' json_file' + json_out_file
                 with open(out_file) as fd:
                     with open(json_out_file, 'w') as json_fd:
                         for line in fd.readlines():

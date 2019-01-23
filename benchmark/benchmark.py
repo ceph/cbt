@@ -104,7 +104,8 @@ class Benchmark(object):
             config_dict = dict(cluster=self.config)
             with open(config_file, 'w') as fd:
                 yaml.dump(config_dict, fd, default_flow_style=False)
-
+        
+        print dir(self)
     # the benchmark already exists, it doesn't! It's being created.
     def exists(self):
         return False
