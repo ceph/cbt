@@ -59,8 +59,8 @@ class RbdFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         # size of the test data to create in megabytes, default 64K MBs
         self.vol_size = config.get('vol_size', 65536)
-        # order of an RBD image is the size of image expressed in 2^order bytes,  default 22 -> 2^22 bytes or 4Mbytes
-        self.vol_order = config.get('vol_order', 22)
+        # size of object/block to determine 'r/w transaction size'
+        self.vol_object_size = config.get('vol_object_size', '4M')
         # if to use random distribution of bits in the generated data
         self.random_distribution = config.get('random_distribution', None)
         # not sure that these two are for
