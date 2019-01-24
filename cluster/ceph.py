@@ -24,7 +24,7 @@ def sshtarget(user, host):
 # in parallel.
 
 class OsdThread(threading.Thread):
-    def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir):
+    def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir, tmp_dir):
         threading.Thread.__init__(self, name='OsdThread-%d'%osdnum)
         self.start_time = time.time()
         self.response_time = -1.0
@@ -35,17 +35,26 @@ class OsdThread(threading.Thread):
         self.host = host
         self.osduuid = osduuid
         self.osddir = osddir
+        self.tmp_dir = tmp_dir
         self.exc = None
 
     def run(self):
         try:
-            key_fn = '%s/keyring'%self.osddir
             ceph_conf = self.cl_obj.tmp_conf
             phost = sshtarget(settings.cluster.get('user'), self.host)
+
+            # Setup the keyring directory
+            data_dir = '%s/osd.%s' % (self.tmp_dir, self.osdnum)
+            common.pdsh(phost, 'sudo rm -rf %s' % data_dir).communicate()
+            common.pdsh(phost, 'mkdir -p %s' % data_dir).communicate()
+            key_fn = '%s/keyring' % data_dir
+
+            # Setup crush and the keyring
+            common.pdsh(phost, 'sudo %s auth get-or-create osd.%s mon \'allow rwx\' osd \'allow *\' -o %s' % (self.cl_obj.ceph_cmd, self.osdnum, key_fn)).communicate()
+
             common.pdsh(phost, 'sudo %s -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.cl_obj.ceph_cmd, ceph_conf, self.osdnum, self.host)).communicate()
-            cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
+            cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
             common.pdsh(phost, 'sudo sh -c "%s"' % cmd).communicate()
-            common.pdsh(phost, 'sudo %s -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd" mgr "allow"' % (self.cl_obj.ceph_cmd, ceph_conf, key_fn, self.osdnum)).communicate()
 
             # Start the OSD
             pidfile="%s/ceph-osd.%d.pid" % (self.cl_obj.pid_dir, self.osdnum)
@@ -90,7 +99,6 @@ class Ceph(Cluster):
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
         self.monitoring_dir = "%s/monitoring" % self.tmp_dir
-        self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
         self.use_existing = config.get('use_existing', True)
@@ -253,7 +261,7 @@ class Ceph(Cluster):
             t.communicate()
 
     def distribute_conf(self):
-        nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
+        nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs')
         conf_file = self.config.get("conf_file")
         logger.info("Distributing %s.", conf_file)
         common.pdsh(nodes, 'mkdir -p -m0755 /etc/ceph').communicate()
@@ -263,10 +271,15 @@ class Ceph(Cluster):
 
     def make_mons(self):
         # Build and distribute the keyring
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % self.keyring_fn).communicate()
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % self.keyring_fn).communicate()
-        common.rscp(settings.getnodes('head'), self.keyring_fn, '%s.tmp' % self.keyring_fn).communicate()
-        common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds', 'mgrs'), '', '%s.tmp' % self.keyring_fn, self.keyring_fn).communicate()
+        client_admin_dir = "%s/client.admin" % self.tmp_dir
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'rm -rf %s' % client_admin_dir).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'mkdir -p %s' % client_admin_dir).communicate()
+
+        keyring_fn = os.path.join(client_admin_dir, "keyring")
+        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % keyring_fn).communicate()
+        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % keyring_fn).communicate()
+        common.rscp(settings.getnodes('head'), keyring_fn, '%s.tmp' % keyring_fn).communicate()
+        common.pdcp(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), '', '%s.tmp' % keyring_fn, keyring_fn).communicate()
 
         # Build the monmap, retrieve it, and distribute it
         mons = settings.getnodes('mons').split(',')
@@ -289,8 +302,8 @@ class Ceph(Cluster):
             for mon, addr in mons.iteritems():
                 common.pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
-                common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, self.keyring_fn)).communicate()
-                common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (self.keyring_fn, self.tmp_dir, mon)).communicate()
+                common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, keyring_fn)).communicate()
+                common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (keyring_fn, self.tmp_dir, mon)).communicate()
             
         # Start the mons
         for monhost, mons in monhosts.iteritems():
@@ -298,7 +311,7 @@ class Ceph(Cluster):
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
                 pidfile="%s/%s.pid" % (self.pid_dir, monhost)
-                cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.keyring_fn, pidfile)
+                cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, keyring_fn, pidfile)
                 if self.mon_valgrind:
                     cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
                 else:
@@ -337,7 +350,7 @@ class Ceph(Cluster):
                 # create the OSD first, so we know what number it has been assigned.
                 common.pdsh(pdshhost, 'sudo %s -c %s osd create %s' % (self.ceph_cmd, self.tmp_conf, osduuid)).communicate()
                 # bring the OSD online in background while continuing to create OSDs in foreground
-                thrd = OsdThread(self, devnumstr, osdnum, clusterid, host, osduuid, osddir)
+                thrd = OsdThread(self, devnumstr, osdnum, clusterid, host, osduuid, osddir, self.tmp_dir)
                 logger.info('starting creation of OSD %d ' % osdnum)
                 thrd.start()
                 thread_list.append(thrd)
@@ -374,6 +387,9 @@ class Ceph(Cluster):
                     cmd = "%s %s" % (self.ceph_run_cmd, cmd)
                 if user:
                     pdshhost = '%s@%s' % (user, mgrhost)
+                data_dir = "%s/mgr.%s" % (self.tmp_dir, mgrname)
+                common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
+                common.pdsh(pdshhost, 'sudo %s auth get-or-create mgr.%s mon \'allow profile mgr\' mds \'allow *\' osd \'allow *\' -o %s/keyring' % (self.ceph_cmd, mgrname, data_dir)).communicate()
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
     def start_rgw(self):
