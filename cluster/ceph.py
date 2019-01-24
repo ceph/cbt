@@ -272,6 +272,7 @@ class Ceph(Cluster):
     def make_mons(self):
         # Build and distribute the keyring
         client_admin_dir = "%s/client.admin" % self.tmp_dir
+        common.mkdir_p("%s/client.admin" % self.tmp_dir)        
         common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'rm -rf %s' % client_admin_dir).communicate()
         common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'mkdir -p %s' % client_admin_dir).communicate()
 
