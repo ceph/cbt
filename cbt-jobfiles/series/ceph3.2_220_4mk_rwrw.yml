@@ -34,7 +34,7 @@ benchmarks:
       buffered: 0
       use_dir: True
       output-format: json 
-      volumes_per_client: 20
+      volumes_per_client: 22
       #procs_per_volume: 4
       #path of FIO binary
       fio_cmd: '/usr/bin/fio'

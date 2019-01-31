@@ -6,7 +6,7 @@ cluster:
   osds: ["hstor0", "hstor1", "hstor2", "hstor3"]
   mon: ["hstor0", "hstor1", "hstor2"]
   use_existing: True
-  osds_per_node: 2
+  osds_per_node: 1
   iterations: 1
   rebuild_every_test: True
   tmp_dir: "/home/cbt/cbt"
@@ -21,20 +21,20 @@ benchmarks:
   librbdfio:
       iterations: 1
       clientname: admin
-      time: 600
+      time: 1000
       ramp: 90
       iodepth: [32]
       numjobs: 1
       mode: [randread, randwrite, randrw]
       ioengine: libaio
       rwmixread: 70
-      op_size: [4096, 4194304]
-      vol_size: 40960
+      op_size: [4194304]
+      vol_size: 51200
       direct: 1
       buffered: 0
       use_dir: True
       output-format: json 
-      volumes_per_client: 20
+      volumes_per_client: 30
       #procs_per_volume: 4
       #path of FIO binary
       fio_cmd: '/usr/bin/fio'
