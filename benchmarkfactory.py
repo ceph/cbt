@@ -3,10 +3,12 @@ import itertools
 
 import settings
 from benchmark.radosbench import Radosbench
+from benchmark.fio import Fio
 from benchmark.rbdfio import RbdFio
 from benchmark.rawfio import RawFio
 from benchmark.kvmrbdfio import KvmRbdFio
 from benchmark.librbdfio import LibrbdFio
+from benchmark.cephfsfio import CephFSFio
 from benchmark.nullbench import Nullbench
 from benchmark.cosbench import Cosbench
 from benchmark.cephtestrados import CephTestRados
@@ -43,12 +45,13 @@ def all_configs(config):
         current.update(zip(cycle_over_names, permutation))
         yield current
 
-
 def get_object(cluster, benchmark, bconfig):
     if benchmark == "nullbench":
         return Nullbench(cluster, bconfig)
     if benchmark == "radosbench":
         return Radosbench(cluster, bconfig)
+    if benchmark == "fio":
+        return Fio(cluster, bconfig)
     if benchmark == "rbdfio":
         return RbdFio(cluster, bconfig)
     if benchmark == "kvmrbdfio":
@@ -57,6 +60,8 @@ def get_object(cluster, benchmark, bconfig):
         return RawFio(cluster, bconfig)
     if benchmark == 'librbdfio':
         return LibrbdFio(cluster, bconfig)
+    if benchmark == 'cephfsfio':
+        return CephFSFio(cluster, bconfig)
     if benchmark == 'cosbench':
         return Cosbench(cluster, bconfig)
     if benchmark == 'cephtestrados':
