@@ -52,11 +52,9 @@ class CheckedPopen:
 def ansible_hostfile(hosts):
     
     inventory_file = '/tmp/cbtinventory'
-    print hosts
     hosts = hosts.split(",")
     with open(inventory_file, 'w') as f:
         for item in hosts:
-            print item
             f.write("%s\n" % item)
             
     return inventory_file
