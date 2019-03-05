@@ -49,6 +49,15 @@ class CheckedPopen:
 # pdsh() calls that require full parallelism (workload generation)
 # work correctly.
 
+def ansible_hostfile(hosts):
+    
+    inventory_file = '/tmp/cbtinventory'
+    with open(inventory_file, 'w') as f:
+        for item in hosts:
+            f.write("%s\n" % item)
+            
+    return inventory_file
+
 def expanded_node_list(nodes):
     # nodes is a comma-separated list for pdsh "-w" parameter
     # nodes may have some entries with '^' prefix, pdsh syntax meaning
@@ -66,7 +75,8 @@ def expanded_node_list(nodes):
 
 def pdsh(nodes, command, continue_if_error=True):
     #args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
-    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "%s" % command, '-i', nodes, 'all']
+    inventory = ansible_hostfile(nodes)
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "%s" % command, '-i', inventory, 'all']
     # -S means pdsh fails if any host fails 
     #if not continue_if_error: args.insert(1, '-S')
     return CheckedPopen(args,continue_if_error=continue_if_error)
@@ -85,7 +95,8 @@ def rpdcp(nodes, flags, remotefile, localfile):
     #args = ['ansible', '-f', '10', '-m', 'fetch', '-a', "flat==yes src=%s dest=%s" % (remotefile, localfile), '-i', nodes, 'all']
     lhost = socket.gethostname()
     remotefile = remotefile.replace("*", "")
-    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "scp -r %s %s:%s" % (remotefile, lhost, localfile), '-i', nodes, 'all']
+    inventory = ansible_hostfile(nodes)
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "scp -r %s %s:%s" % (remotefile, lhost, localfile), '-i', inventory, 'all']
 #     if flags:
 #         args += [flags]
     #return CheckedPopen(args + [remotefile, localfile], 
