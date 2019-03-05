@@ -80,11 +80,13 @@ def pdcp(nodes, flags, localfile, remotefile):
 
 
 def rpdcp(nodes, flags, remotefile, localfile):
-    args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+    #args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+    args = ['ansible', '-f', '10', '-m', 'fetch', "src=remotefile dest=localfile", '-i', nodes, 'all']
     if flags:
         args += [flags]
-    return CheckedPopen(args + [remotefile, localfile], 
-                        continue_if_error=False)
+    #return CheckedPopen(args + [remotefile, localfile], 
+    #                    continue_if_error=False)
+    return CheckedPopen(args,continue_if_error=continue_if_error)
 
 
 def scp(node, localfile, remotefile):
