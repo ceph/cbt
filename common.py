@@ -2,6 +2,7 @@ import errno
 import logging
 import os
 import subprocess
+import socket
 
 import settings
 
@@ -81,7 +82,9 @@ def pdcp(nodes, flags, localfile, remotefile):
 
 def rpdcp(nodes, flags, remotefile, localfile):
     #args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
-    args = ['ansible', '-f', '10', '-m', 'fetch', '-a', "flat==yes src=%s dest=%s" % (remotefile, localfile), '-i', nodes, 'all']
+    #args = ['ansible', '-f', '10', '-m', 'fetch', '-a', "flat==yes src=%s dest=%s" % (remotefile, localfile), '-i', nodes, 'all']
+    lhost = socket.gethostname()
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "scp -r %s %s:%s" % (remotefile, lhost, localfiles), '-i', nodes, 'all']
 #     if flags:
 #         args += [flags]
     #return CheckedPopen(args + [remotefile, localfile], 
