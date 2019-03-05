@@ -85,7 +85,7 @@ def rpdcp(nodes, flags, remotefile, localfile):
     #args = ['ansible', '-f', '10', '-m', 'fetch', '-a', "flat==yes src=%s dest=%s" % (remotefile, localfile), '-i', nodes, 'all']
     lhost = socket.gethostname()
     remotefile = remotefile.replace("*", "")
-    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', '''"scp -r %s %s:%s"''' % (remotefile, lhost, localfile), '-i', nodes, 'all']
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "scp -r %s %s:%s" % (remotefile, lhost, localfile), '-i', nodes, 'all']
 #     if flags:
 #         args += [flags]
     #return CheckedPopen(args + [remotefile, localfile], 
