@@ -64,7 +64,8 @@ def expanded_node_list(nodes):
     return node_list
 
 def pdsh(nodes, command, continue_if_error=True):
-    args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
+    #args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', command, '-i', nodes]
     # -S means pdsh fails if any host fails 
     if not continue_if_error: args.insert(1, '-S')
     return CheckedPopen(args,continue_if_error=continue_if_error)
