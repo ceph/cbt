@@ -86,7 +86,7 @@ def rpdcp(nodes, flags, remotefile, localfile):
         args += [flags]
     #return CheckedPopen(args + [remotefile, localfile], 
     #                    continue_if_error=False)
-    return CheckedPopen(args,continue_if_error=continue_if_error)
+    return CheckedPopen(args,continue_if_error=False)
 
 
 def scp(node, localfile, remotefile):
