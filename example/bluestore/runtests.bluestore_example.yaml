@@ -46,3 +46,8 @@ benchmarks:
     log_iops: False
     log_bw: False
     log_lat: False
+    # Optionally, set the rbd and pool names
+    poolname: 'rbd'
+    rbdname: 'img01'
+    # use_existing_volumes needs to be true to set the pool and rbd names
+    use_existing_volumes: True
