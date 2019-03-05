@@ -108,7 +108,13 @@ def get_fqdn_cmd():
 def get_fqdn_list(nodes):
     stdout, stderr = pdsh(settings.getnodes(nodes), '%s' % get_fqdn_cmd()).communicate()
     print stdout
-    ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
+    
+    ret = []
+    for line in stdout:
+        if "CHANGED" not in line:
+            ret.append(line)
+    
+    #ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
     print ret
     return ret
 
