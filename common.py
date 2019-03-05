@@ -110,7 +110,7 @@ def get_fqdn_list(nodes):
     print stdout
     
     ret = []
-    for line in stdout:
+    for line in stdout.splitlines():
         if "CHANGED" not in line:
             ret.append(line)
     
