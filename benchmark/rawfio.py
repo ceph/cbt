@@ -107,9 +107,12 @@ class RawFio(Benchmark):
             fio_cmd += ' --bs=%dB' % self.op_size
             fio_cmd += ' --iodepth=%d' % self.iodepth
             fio_cmd += ' --size=%dM' % self.vol_size 
-            fio_cmd += ' --write_iops_log=%s' % out_file
-            fio_cmd += ' --write_bw_log=%s' % out_file
-            fio_cmd += ' --write_lat_log=%s' % out_file
+            if self.log_iops:
+                fio_cmd += ' --write_iops_log=%s' % out_file
+            if self.log_bw:
+                fio_cmd += ' --write_bw_log=%s' % out_file
+            if self.log_lat:
+                fio_cmd += ' --write_lat_log=%s' % out_file
             fio_cmd += ' --output-format=%s' % self.fio_out_format
             if 'recovery_test' in self.cluster.config:
                 fio_cmd += ' --time_based'
