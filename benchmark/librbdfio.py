@@ -46,6 +46,9 @@ class LibrbdFio(Benchmark):
         self.fio_out_format = "json,normal"
         self.data_pool = None 
         self.use_existing_volumes = config.get('use_existing_volumes', False)
+        self.log_iops = config.get('log_iops', True)
+        self.log_bw = config.get('log_bw', True)
+        self.log_lat = config.get('log_lat', True)
 
 	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
@@ -154,10 +157,13 @@ class LibrbdFio(Benchmark):
 #        if self.vol_size:
 #            fio_cmd += ' -- size=%dM' % self.vol_size
         if self.norandommap:
-            fio_cmd += ' --norandommap' 
-        fio_cmd += ' --write_iops_log=%s' % out_file
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
+            fio_cmd += ' --norandommap'
+        if self.log_iops:
+            fio_cmd += ' --write_iops_log=%s' % out_file
+        if self.log_bw:
+            fio_cmd += ' --write_bw_log=%s' % out_file
+        if self.log_lat:
+            fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:
