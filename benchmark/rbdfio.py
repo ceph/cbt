@@ -112,9 +112,12 @@ class RbdFio(Benchmark):
         fio_cmd += ' --iodepth=%d' % self.iodepth
         if self.vol_size:
             fio_cmd += ' --size=%dM' % (int(self.vol_size) * 0.9)
-        fio_cmd += ' --write_iops_log=%s' % out_file
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
+        if self.log_iops:
+            fio_cmd += ' --write_iops_log=%s' % out_file
+        if self.log_bw:
+            fio_cmd += ' --write_bw_log=%s' % out_file
+        if self.log_lat:
+            fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:
