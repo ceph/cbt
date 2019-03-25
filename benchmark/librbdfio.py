@@ -194,6 +194,12 @@ class LibrbdFio(Benchmark):
 
     def parse(self, out_dir):
         for client in settings.cluster.get('clients'):
+            try:
+                socket.inet_aton(client)
+                client = socket.gethostbyaddr(client)
+            except:
+                pass
+                
             for i in xrange(self.volumes_per_client):
                 found = 0
                 out_file = '%s/output.%d.%s' % (out_dir, i, client)
