@@ -7,6 +7,7 @@ import time
 import threading
 import logging
 import json
+import socket
 
 from cluster.ceph import Ceph
 from benchmark import Benchmark
