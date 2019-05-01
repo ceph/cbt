@@ -38,15 +38,17 @@ class LibrbdFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
-        self.vol_order = config.get('vol_order', 22)
+        self.vol_object_size = config.get('vol_object_size', '4M')
         self.volumes_per_client = config.get('volumes_per_client', 1)
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
-        self.pool_name = "cbt-librbdfio"
         self.fio_out_format = "json,normal"
         self.data_pool = None 
+        # use_existing_volumes needs to be true to set the pool and rbd names
         self.use_existing_volumes = config.get('use_existing_volumes', False)
+        self.pool_name = config.get("poolname", "cbt-librbdfio")
+        self.rbdname = config.get('rbdname', '')
 
 	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
@@ -135,8 +137,13 @@ class LibrbdFio(Benchmark):
         self.analyze(self.out_dir)
 
     def mkfiocmd(self, volnum):
-        rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
-        out_file = '%s/output.%d.`%s`' % (self.run_dir, volnum, common.get_fqdn_cmd())
+        if self.use_existing_volumes and len(self.rbdname):
+            rbdname = self.rbdname
+        else:
+            rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
+
+        logger.debug('Using rbdname %s', rbdname)
+        out_file = '%s/output.%d' % (self.run_dir, volnum)
 
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
@@ -158,10 +165,13 @@ class LibrbdFio(Benchmark):
 #        if self.vol_size:
 #            fio_cmd += ' -- size=%dM' % self.vol_size
         if self.norandommap:
-            fio_cmd += ' --norandommap' 
-        fio_cmd += ' --write_iops_log=%s' % out_file
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
+            fio_cmd += ' --norandommap'
+        if self.log_iops:
+            fio_cmd += ' --write_iops_log=%s' % out_file
+        if self.log_bw:
+            fio_cmd += ' --write_bw_log=%s' % out_file
+        if self.log_lat:
+            fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:
@@ -187,7 +197,7 @@ class LibrbdFio(Benchmark):
           for node in common.get_fqdn_list('clients'):
               for volnum in xrange(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]
-                  self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_order)
+                  self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
         monitoring.stop()
 
     def recovery_callback(self): 

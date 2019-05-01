@@ -33,7 +33,7 @@ class RbdFio(Benchmark):
         self.ioengine = config.get('ioengine', 'libaio')
         self.op_size = config.get('op_size', 4194304)
         self.vol_size = config.get('vol_size', 65536)
-        self.vol_order = config.get('vol_order', 22)
+        self.vol_object_size = config.get('vol_object_size', '4M')
         self.random_distribution = config.get('random_distribution', None)
         self.rbdadd_mons = config.get('rbdadd_mons')
         self.rbdadd_options = config.get('rbdadd_options', 'share')
@@ -112,9 +112,12 @@ class RbdFio(Benchmark):
         fio_cmd += ' --iodepth=%d' % self.iodepth
         if self.vol_size:
             fio_cmd += ' --size=%dM' % (int(self.vol_size) * 0.9)
-        fio_cmd += ' --write_iops_log=%s' % out_file
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
+        if self.log_iops:
+            fio_cmd += ' --write_iops_log=%s' % out_file
+        if self.log_bw:
+            fio_cmd += ' --write_bw_log=%s' % out_file
+        if self.log_lat:
+            fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:

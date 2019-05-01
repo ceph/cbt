@@ -23,6 +23,9 @@ class Benchmark(object):
         self.cmd_path = ''
         self.valgrind = config.get('valgrind', None)
         self.cmd_path_full = '' 
+        self.log_iops = config.get('log_iops', True)
+        self.log_bw = config.get('log_bw', True)
+        self.log_lat = config.get('log_lat', True)
         if self.valgrind is not None:
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
 
