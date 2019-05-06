@@ -125,7 +125,7 @@ class Radosbench(Benchmark):
         logger.info('Running radosbench %s test.' % mode)
         ps = []
         for i in xrange(self.concurrent_procs):
-            out_file = '%s/output.%s' % (run_dir, i)
+            out_file = '%s/output.%s.`%s`' % (run_dir, i, common.get_fqdn_cmd())
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
             # default behavior is to use a single storage pool 
             pool_name = self.pool
@@ -144,7 +144,7 @@ class Radosbench(Benchmark):
         monitoring.stop(run_dir)
 
         # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
+        -if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
         # Finally, get the historic ops

@@ -143,7 +143,7 @@ class LibrbdFio(Benchmark):
             rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
 
         logger.debug('Using rbdname %s', rbdname)
-        out_file = '%s/output.%d' % (self.run_dir, volnum)
+        out_file = '%s/output.%d.`%s`' % (self.run_dir, volnum, common.get_fqdn_cmd())
 
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
