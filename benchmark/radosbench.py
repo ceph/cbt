@@ -125,7 +125,7 @@ class Radosbench(Benchmark):
         logger.info('Running radosbench %s test.' % mode)
         ps = []
         for i in xrange(self.concurrent_procs):
-            out_file = '%s/output.%s.`%s' % (run_dir, i, common.get_fqdn_cmd())
+            out_file = '%s/output.%s.`%s`' % (run_dir, i, common.get_fqdn_cmd())
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
             # default behavior is to use a single storage pool 
             pool_name = self.pool
