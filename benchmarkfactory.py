@@ -2,6 +2,7 @@ import copy
 import itertools
 
 import settings
+from benchmark.smallfile import Smallfile
 from benchmark.radosbench import Radosbench
 from benchmark.rbdfio import RbdFio
 from benchmark.rawfio import RawFio
@@ -63,3 +64,5 @@ def get_object(cluster, benchmark, bconfig):
         return CephTestRados(cluster, bconfig)
     if benchmark == 'getput':
         return Getput(cluster, bconfig)
+    if benchmark == 'smallfile':
+        return Smallfile(cluster, bconfig)
