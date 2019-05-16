@@ -132,7 +132,7 @@ class Smallfile(Benchmark):
         with open(smf_out_path, 'w') as smf_outf:
             smf_outf.write(smf_out_str + '\n')
         logger.info('smallfile result: %s' % smf_out_path)
-        monitoring.start_pbench(self.out_dir)
+        monitoring.stop_pbench(self.out_dir)
         monitoring.stop(self.run_dir)
 
 
