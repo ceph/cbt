@@ -117,6 +117,7 @@ class Smallfile(Benchmark):
 
         # Run smallfile
         monitoring.start(self.run_dir)
+        monitoring.start_pbench(self.out_dir)
         logger.info('Running smallfile test, see %s for parameters' % yaml_input_pathname)
         smfcmd = [ 'smallfile_cli.py', 
                    '--host-set', client_list_path,
@@ -131,7 +132,9 @@ class Smallfile(Benchmark):
         with open(smf_out_path, 'w') as smf_outf:
             smf_outf.write(smf_out_str + '\n')
         logger.info('smallfile result: %s' % smf_out_path)
+        monitoring.start_pbench(self.out_dir)
         monitoring.stop(self.run_dir)
+
 
         # save response times
         rsptimes_target_dir = os.path.join(self.out_dir, 'rsptimes')
