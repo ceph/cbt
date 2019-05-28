@@ -139,7 +139,7 @@ class Smallfile(Benchmark):
         # save response times
         rsptimes_target_dir = os.path.join(self.out_dir, 'rsptimes')
         common.mkdir_p(rsptimes_target_dir)
-        common.rpdcp(self.any_client, '', 
+        common.rpdcp(self.head, '', 
                      os.path.join(os.path.join(topdir, 'network_shared'), 'rsptimes*csv'), 
                      rsptimes_target_dir)
 
