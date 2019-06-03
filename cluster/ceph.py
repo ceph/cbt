@@ -91,10 +91,14 @@ class Ceph(Cluster):
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.ceph_mgr_cmd = config.get('ceph-mgr_cmd', '/usr/bin/ceph-mgr')
+        self.ceph_mds_cmd = config.get('ceph-mds_cmd', '/usr/bin/ceph-mds')
         self.radosgw_admin_cmd = config.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
+        self.ceph_fuse_cmd = config.get('ceph-fuse_cmd', '/usr/bin/ceph-fuse')
         self.rados_cmd = config.get('rados_cmd', '/usr/bin/rados')
         self.rbd_cmd = config.get('rbd_cmd', '/usr/bin/rbd')
+        self.rbd_nbd_cmd = config.get('rbd-nbd_cmd', '/usr/bin/rbd-nbd')
+        self.rbd_fuse_cmd = config.get('rbd-fuse_cmd', '/usr/bin/rbd-fuse')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
@@ -141,8 +145,8 @@ class Ceph(Cluster):
 
         super(Ceph, self).initialize()
 
-        # unmount any kernel rbd volumes
-        self.rbd_unmount()
+        # unmount any rbd volumes
+        self.unmount_all()
 
         # shutdown any old processes
         self.shutdown()
@@ -150,15 +154,15 @@ class Ceph(Cluster):
         # Cleanup old junk and create new junk
         self.cleanup()
         common.mkdir_p(self.tmp_dir)
-        common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
         self.distribute_conf()
 
         # Set the core directory
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'echo "%s/core.%%e.%%p.%%h.%%t" | sudo tee /proc/sys/kernel/core_pattern' % self.tmp_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'echo "%s/core.%%e.%%p.%%h.%%t" | sudo tee /proc/sys/kernel/core_pattern' % self.tmp_dir).communicate()
 
         # Create the filesystems
         self.setup_fs()
@@ -186,7 +190,7 @@ class Ceph(Cluster):
 
         # Start any higher level daemons
         self.start_rgw()
-
+        self.start_mds()
         # Peform Idle Monitoring
         if self.idle_duration > 0:
             monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
@@ -196,7 +200,7 @@ class Ceph(Cluster):
         return True
 
     def shutdown(self):
-        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds', 'mgrs')
+        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mdss', 'mgrs')
 
         common.pdsh(nodes, 'sudo killall -9 massif-amd64-li').communicate()
         common.pdsh(nodes, 'sudo killall -9 memcheck-amd64-').communicate()
@@ -213,7 +217,7 @@ class Ceph(Cluster):
         monitoring.stop()
 
     def cleanup(self):
-        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds', 'mgrs')
+        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mdss', 'mgrs')
         logger.info('Deleting %s', self.tmp_dir)
         common.pdsh(nodes, 'sudo rm -rf %s' % self.tmp_dir).communicate()
 
@@ -390,6 +394,27 @@ class Ceph(Cluster):
                 data_dir = "%s/mgr.%s" % (self.tmp_dir, mgrname)
                 common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
                 common.pdsh(pdshhost, 'sudo %s auth get-or-create mgr.%s mon \'allow profile mgr\' mds \'allow *\' osd \'allow *\' -o %s/keyring' % (self.ceph_cmd, mgrname, data_dir)).communicate()
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
+
+    def start_mds(self):
+        user = settings.cluster.get('user')
+        mdshosts = settings.cluster.get('mdss')
+
+        if not mdshosts:
+            return
+
+        for mdshost, mds in mdshosts.iteritems():
+            for mdsname, mdssettings in mds.iteritems():
+                cmd = '%s -i %s' % (self.ceph_mds_cmd, mdsname)
+                if self.mgr_valgrind:
+                    cmd = "%s %s" % (common.setup_valgrind(self.mds_valgrind, mdsname, self.tmp_dir), cmd)
+                else:
+                    cmd = "%s %s" % (self.ceph_run_cmd, cmd)
+                if user:
+                    pdshhost = '%s@%s' % (user, mdshost)
+                data_dir = "%s/mgr.%s" % (self.tmp_dir, mdsname)
+                common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
+                common.pdsh(pdshhost, 'sudo %s auth get-or-create mds.%s mon \'allow profile mgr\' mds \'allow *\' osd \'allow *\' -o %s/keyring' % (self.ceph_cmd, mdsname, data_dir)).communicate()
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
     def start_rgw(self):
@@ -663,16 +688,22 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name),
                     continue_if_error=False).communicate()
 
-    def rbd_unmount(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-#        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
+    def unmount_all(self):
+        # Should take care of pretty much everything so long as wierd mnt_dirs aren't used.
+        common.pdsh(settings.getnodes('clients'), 'sudo umount $(grep %s /proc/mounts | cut -f2 -d" " | sort -r)' % self.mnt_dir).communicate()
+        
+        # Kill the fuse processes for good measure
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -SIGKILL %s' % self.rbd_fuse_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -SIGKILL %s' % self.ceph_fuse_cmd).communicate()
 
-    def mkimage(self, name, size, pool, data_pool, object_size):
-        dp_option = ''
-        if data_pool:
-            dp_option = "--data-pool %s" % data_pool
-        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --object-size %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, object_size)).communicate()
+        # Unmount RBD and NBD for good measure
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+
+        # Unmap rbd, nbd, and clear the targetcli config
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_nbd_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo targetcli clearconfig confirm=True', continue_if_error=False).communicate()
 
     def get_auth_urls(self):
         return self.auth_urls

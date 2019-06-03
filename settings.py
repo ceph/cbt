@@ -8,11 +8,11 @@ import logging
 logger = logging.getLogger("cbt")
 
 cluster = {}
+client_endpoints = {}
 benchmarks = {}
 
-
 def initialize(ctx):
-    global cluster, benchmarks
+    global cluster, client_endpoints, benchmarks
 
     config = {}
     try:
@@ -22,10 +22,14 @@ def initialize(ctx):
         raise argparse.ArgumentTypeError(str(e))
 
     cluster = config.get('cluster', {})
+    client_endpoints = config.get('client_endpoints', {})
     benchmarks = config.get('benchmarks', {})
 
     if not cluster:
         shutdown('No cluster section found in config file, bailing.')
+
+    if not client_endpoints:
+        shutdown('No client_endpoints section found in config file, bailing.')
 
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')

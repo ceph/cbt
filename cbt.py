@@ -67,6 +67,10 @@ def main(argv):
                     if not settings.cluster.get('rebuild_every_test', False):
                         global_init[b.getclass()] = b
 
+                # always try to initialize endpoints.
+                b.initialize_endpoints()
+
+
                 try:
                     b.run()
                 finally:
