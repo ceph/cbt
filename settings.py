@@ -28,9 +28,6 @@ def initialize(ctx):
     if not cluster:
         shutdown('No cluster section found in config file, bailing.')
 
-    if not client_endpoints:
-        shutdown('No client_endpoints section found in config file, bailing.')
-
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
 
