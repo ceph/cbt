@@ -8,7 +8,6 @@ from benchmark.rbdfio import RbdFio
 from benchmark.rawfio import RawFio
 from benchmark.kvmrbdfio import KvmRbdFio
 from benchmark.librbdfio import LibrbdFio
-from benchmark.cephfsfio import CephFSFio
 from benchmark.nullbench import Nullbench
 from benchmark.cosbench import Cosbench
 from benchmark.cephtestrados import CephTestRados
@@ -60,8 +59,6 @@ def get_object(cluster, benchmark, bconfig):
         return RawFio(cluster, bconfig)
     if benchmark == 'librbdfio':
         return LibrbdFio(cluster, bconfig)
-    if benchmark == 'cephfsfio':
-        return CephFSFio(cluster, bconfig)
     if benchmark == 'cosbench':
         return Cosbench(cluster, bconfig)
     if benchmark == 'cephtestrados':
