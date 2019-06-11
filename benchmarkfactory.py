@@ -14,7 +14,7 @@ from benchmark.cephtestrados import CephTestRados
 from benchmark.getput import Getput
 
 def get_all(cluster, iteration):
-    for benchmark, config in sorted(settings.benchmarks.iteritems()):
+    for benchmark, config in sorted(settings.benchmarks.items()):
         default = {"benchmark": benchmark,
                    "iteration": iteration}
         for current in all_configs(config):
@@ -32,7 +32,7 @@ def all_configs(config):
     cycle_over_names = []
     default = {}
 
-    for param, value in config.iteritems():
+    for param, value in config.items():
         if isinstance(value, list):
             cycle_over_lists.append(value)
             cycle_over_names.append(param)
