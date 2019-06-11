@@ -10,7 +10,7 @@ import json
 import socket
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from benchmark.benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
