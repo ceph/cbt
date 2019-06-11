@@ -688,6 +688,12 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name),
                     continue_if_error=False).communicate()
 
+    def mkimage(self, name, size, pool, data_pool, order):
+        dp_option = ''
+        if data_pool:
+            dp_option = "--data-pool %s" % data_pool
+        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order)).communicate()
+
     def unmount_all(self):
         # Should take care of pretty much everything so long as wierd mnt_dirs aren't used.
         common.pdsh(settings.getnodes('clients'), 'sudo umount $(grep %s /proc/mounts | cut -f2 -d" " | sort -r)' % self.mnt_dir).communicate()
