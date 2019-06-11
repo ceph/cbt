@@ -18,7 +18,7 @@ def initialize(ctx):
     try:
         with file(ctx.config_file) as f:
             map(config.update, yaml.safe_load_all(f))
-    except IOError, e:
+    except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 
     cluster = config.get('cluster', {})
