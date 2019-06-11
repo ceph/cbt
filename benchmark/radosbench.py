@@ -10,7 +10,7 @@ import re
 import json
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from benchmark.benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
@@ -121,10 +121,11 @@ class Radosbench(Benchmark):
 
         # Run rados bench
         monitoring.start(run_dir)
+        monitoring.start_pbench("%s/%s" % (self.out_dir, mode))
         logger.info('Running radosbench %s test.' % mode)
         ps = []
         for i in xrange(self.concurrent_procs):
-            out_file = '%s/output.%s' % (run_dir, i)
+            out_file = '%s/output.%s.`%s`' % (run_dir, i, common.get_fqdn_cmd())
             objecter_log = '%s/objecter.%s.log' % (run_dir, i)
             # default behavior is to use a single storage pool 
             pool_name = self.pool
@@ -139,6 +140,7 @@ class Radosbench(Benchmark):
             ps.append(p)
         for p in ps:
             p.wait()
+        monitoring.stop_pbench("%s/%s" % (self.out_dir, mode))
         monitoring.stop(run_dir)
 
         # If we were doing recovery, wait until it's done.

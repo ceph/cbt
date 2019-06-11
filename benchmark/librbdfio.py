@@ -7,9 +7,10 @@ import time
 import threading
 import logging
 import json
+import socket
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from benchmark.benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
@@ -49,14 +50,14 @@ class LibrbdFio(Benchmark):
         self.pool_name = config.get("poolname", "cbt-librbdfio")
         self.rbdname = config.get('rbdname', '')
 
-	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
+        self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = self.archive_dir
 
         self.norandommap = config.get("norandommap", False)
         # Make the file names string (repeated across volumes)
         self.names = ''
-        for proc_num in xrange(self.procs_per_volume):
+        for proc_num in range(self.procs_per_volume):
             rbd_name = 'cbt-librbdfio-`%s`-file-%d' % (common.get_fqdn_cmd(), proc_num)
             self.names += '--name=%s ' % rbd_name
 
@@ -75,9 +76,10 @@ class LibrbdFio(Benchmark):
 
         logger.info('Pausing for 60s for idle monitoring.')
         monitoring.start("%s/idle_monitoring" % self.run_dir)
+        monitoring.start_pbench("%s/idle" % self.out_dir)
         time.sleep(60)
         monitoring.stop()
-
+        monitoring.stop_pbench("%s/idle" % self.out_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
         self.mkimages()
@@ -86,7 +88,7 @@ class LibrbdFio(Benchmark):
         ps = []
         logger.info('Attempting to populating fio files...')
         if (self.use_existing_volumes == False):
-          for volnum in xrange(self.volumes_per_client):
+          for volnum in range(self.volumes_per_client):
               rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
               pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
               p = common.pdsh(settings.getnodes('clients'), pre_cmd)
@@ -105,6 +107,7 @@ class LibrbdFio(Benchmark):
         self.cluster.dump_config(self.run_dir)
 
         monitoring.start(self.run_dir)
+        monitoring.start_pbench(self.out_dir)
 
         time.sleep(5)
 
@@ -115,7 +118,7 @@ class LibrbdFio(Benchmark):
 
         logger.info('Running rbd fio %s test.', self.mode)
         ps = []
-        for i in xrange(self.volumes_per_client):
+        for i in range(self.volumes_per_client):
             fio_cmd = self.mkfiocmd(i)
             p = common.pdsh(settings.getnodes('clients'), fio_cmd)
             ps.append(p)
@@ -125,6 +128,7 @@ class LibrbdFio(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
+        monitoring.stop_pbench(self.out_dir)
         monitoring.stop(self.run_dir)
 
         # Finally, get the historic ops
@@ -139,7 +143,7 @@ class LibrbdFio(Benchmark):
             rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
 
         logger.debug('Using rbdname %s', rbdname)
-        out_file = '%s/output.%d' % (self.run_dir, volnum)
+        out_file = '%s/output.%d.`%s`' % (self.run_dir, volnum, common.get_fqdn_cmd())
 
         fio_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
@@ -191,7 +195,7 @@ class LibrbdFio(Benchmark):
               self.cluster.rmpool(self.data_pool, self.data_pool_profile)
               self.cluster.mkpool(self.data_pool, self.data_pool_profile, 'rbd')
           for node in common.get_fqdn_list('clients'):
-              for volnum in xrange(0, self.volumes_per_client):
+              for volnum in range(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]
                   self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
         monitoring.stop()
@@ -201,7 +205,13 @@ class LibrbdFio(Benchmark):
 
     def parse(self, out_dir):
         for client in settings.cluster.get('clients'):
-            for i in xrange(self.volumes_per_client):
+            try:
+                socket.inet_aton(client)
+                client = socket.gethostbyaddr(client)
+            except:
+                pass
+                
+            for i in range(self.volumes_per_client):
                 found = 0
                 out_file = '%s/output.%d.%s' % (out_dir, i, client)
                 json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)

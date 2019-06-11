@@ -2,6 +2,7 @@ import errno
 import logging
 import os
 import subprocess
+import socket
 
 import settings
 
@@ -48,6 +49,16 @@ class CheckedPopen:
 # pdsh() calls that require full parallelism (workload generation)
 # work correctly.
 
+def ansible_hostfile(hosts):
+    
+    inventory_file = '/tmp/cbtinventory'
+    hosts = hosts.split(",")
+    with open(inventory_file, 'w') as f:
+        for item in hosts:
+            f.write("%s\n" % item)
+            
+    return inventory_file
+
 def expanded_node_list(nodes):
     # nodes is a comma-separated list for pdsh "-w" parameter
     # nodes may have some entries with '^' prefix, pdsh syntax meaning
@@ -64,9 +75,11 @@ def expanded_node_list(nodes):
     return node_list
 
 def pdsh(nodes, command, continue_if_error=True):
-    args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
+    #args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
+    inventory = ansible_hostfile(nodes)
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "%s" % command, '-i', inventory, 'all']
     # -S means pdsh fails if any host fails 
-    if not continue_if_error: args.insert(1, '-S')
+    #if not continue_if_error: args.insert(1, '-S')
     return CheckedPopen(args,continue_if_error=continue_if_error)
  
 
@@ -79,11 +92,16 @@ def pdcp(nodes, flags, localfile, remotefile):
 
 
 def rpdcp(nodes, flags, remotefile, localfile):
-    args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
-    if flags:
-        args += [flags]
-    return CheckedPopen(args + [remotefile, localfile], 
-                        continue_if_error=False)
+    #args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+    #args = ['ansible', '-f', '10', '-m', 'fetch', '-a', "flat==yes src=%s dest=%s" % (remotefile, localfile), '-i', nodes, 'all']
+    lhost = socket.gethostname()
+    inventory = ansible_hostfile(nodes)
+    args = ['ansible', '-f', str(len(expanded_node_list(nodes))), '-m', 'shell', '-a', "scp -r %s %s:%s" % (remotefile, lhost, localfile), '-i', inventory, 'all']
+#     if flags:
+#         args += [flags]
+    #return CheckedPopen(args + [remotefile, localfile], 
+    #                    continue_if_error=False)
+    return CheckedPopen(args,continue_if_error=True)
 
 
 def scp(node, localfile, remotefile):
@@ -100,13 +118,20 @@ def get_fqdn_cmd():
 
 def get_fqdn_list(nodes):
     stdout, stderr = pdsh(settings.getnodes(nodes), '%s' % get_fqdn_cmd()).communicate()
-    print stdout
-    ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
-    print ret
+    stdout = stdout.decode()
+    print (stdout)
+    
+    ret = []
+    for line in stdout.splitlines():
+        if "CHANGED" not in line:
+            ret.append(line)
+    
+    #ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
+    print (ret)
     return ret
 
 def clean_remote_dir (remote_dir):
-    print "cleaning remote dir %s" % remote_dir
+    print ("cleaning remote dir %s" % remote_dir)
     if remote_dir == "/" or not os.path.isabs(remote_dir):
        raise SystemExit("Cleaning the remote dir doesn't seem safe, bailing.")
 

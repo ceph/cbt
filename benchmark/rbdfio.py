@@ -6,7 +6,7 @@ import os
 import time
 import logging
 
-from benchmark import Benchmark
+from benchmark.benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 

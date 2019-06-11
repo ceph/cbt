@@ -1,0 +1,48 @@
+# this example runs the smallfile benchmark
+# 
+# we are using a kernel Cephfs shared filesystem
+# which must be mounted on head node as well as clients
+# 
+# CBT lets you specify multiple operations and file sizes,
+# something that smallfile_cli.py cannot do on its own
+#
+# the smallfile CBT benchmark not create the filesystem or mount it,
+# all clients and head node must have filesystem mounted
+#
+# it assumes that all hosts are accessed with the same user account
+# so that user@hostname pdsh syntax is not needed 
+#
+# ensure that smallfile_cli.py (or softlink) appears in the PATH
+# on the 'head' node and that smallfile_remote.py (or softlink) appears
+# in PATH on the 'clients' hosts.
+#
+# you should not specify host-set in your smallfile input parameters,
+# the smallfile CBT benchmark module will do that for you 
+# using 'clients' host group
+#
+# you should not specify "response-times: Y" in your YAML input,
+# the smallfile CBT benchmark defaults to this behavior
+#
+# it has only been tested with a single Cephfs mountpoint/host
+
+cluster:
+  use_existing: True
+  head: "localhost"
+  clients: [ "192.168.121.64", "192.168.121.112", "192.168.121.158" ]
+  osds: [ "192.168.121.64", "192.168.121.112", "192.168.121.158" ]
+  mons: [ "192.168.121.64" ]
+  rebuild_every_test: False
+  tmp_dir: "/tmp/cbt"
+  osds_per_node: 1
+  pool_profiles:
+    replicated:
+      replication: 3
+      crush_profile: 1
+  iterations: 1
+benchmarks:
+  smallfile:
+    operation: [ cleanup, create, read, delete ]
+    file-size: [ 4, 64 ]
+    top: /mnt/cephfs/smf
+    files: 2000
+    pause: 2000

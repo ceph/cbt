@@ -8,7 +8,7 @@ import uuid
 import threading
 import logging
 
-from cluster import Cluster
+from cluster.cluster import Cluster
 
 
 logger = logging.getLogger("cbt")
@@ -489,6 +489,7 @@ class Ceph(Cluster):
         check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery", "stale"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s health %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
+            stdout = stdout.decode()
             if check_list and not any(x in stdout for x in check_list):
                 break
             if "HEALTH_OK" in stdout:
@@ -571,8 +572,8 @@ class Ceph(Cluster):
         for name,profile in erasure_profiles.items():
             k = profile.get('erasure_k', 6)
             m = profile.get('erasure_m', 2)
-	    common.pdsh(settings.getnodes('head'), '%s -c %s osd erasure-code-profile set %s crush-failure-domain=osd k=%s m=%s' % (self.ceph_cmd, self.tmp_conf, name, k, m)).communicate()
-            self.set_ruleset(name)
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd erasure-code-profile set %s crush-failure-domain=osd k=%s m=%s' % (self.ceph_cmd, self.tmp_conf, name, k, m)).communicate()
+        self.set_ruleset(name)
 
     def mkpool(self, name, profile_name, application, base_name=None):
         pool_profiles = self.config.get('pool_profiles', {'default': {}})
@@ -595,7 +596,7 @@ class Ceph(Cluster):
         target_max_bytes = profile.get('target_max_bytes', None)
         min_read_recency_for_promote = profile.get('min_read_recency_for_promote', None)
         min_write_recency_for_promote = profile.get('min_write_recency_for_promote', None)
-        # Options for prefilling objects
+        # Options for prefilling obImportError: cannot import name ''jects
         prefill_objects = profile.get('prefill_objects', 0)
         prefill_object_size = profile.get('prefill_object_size', 0)
         prefill_time = profile.get('prefill_time', 0)
