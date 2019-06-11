@@ -20,8 +20,8 @@ def initialize(ctx):
         file = open(ctx.config_file)
         with open(ctx.config_file, 'r') as f:
             #map(config.update,
-            for kv in yaml.safe_load(f)):
-            config.update(kv)
+            for kv in yaml.safe_load(f):
+                config.update(kv)
         print(config)
     except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
