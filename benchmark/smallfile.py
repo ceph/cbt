@@ -23,7 +23,7 @@ import yaml
 import json
 import subprocess
 
-from benchmark import Benchmark
+from benchmark.benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
