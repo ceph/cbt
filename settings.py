@@ -19,10 +19,7 @@ def initialize(ctx):
     try:
         file = open(ctx.config_file)
         with open(ctx.config_file, 'r') as f:
-            #map(config.update,
-            dict = yaml.safe_load(f)
-            config.update(dict)
-        print(config)
+            config.update(yaml.safe_load(f))
     except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 
