@@ -118,7 +118,7 @@ def get_fqdn_cmd():
 
 def get_fqdn_list(nodes):
     stdout, stderr = pdsh(settings.getnodes(nodes), '%s' % get_fqdn_cmd()).communicate()
-    print stdout
+    print (stdout)
     
     ret = []
     for line in stdout.splitlines():
@@ -126,11 +126,11 @@ def get_fqdn_list(nodes):
             ret.append(line)
     
     #ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
-    print ret
+    print (ret)
     return ret
 
 def clean_remote_dir (remote_dir):
-    print "cleaning remote dir %s" % remote_dir
+    print ("cleaning remote dir %s" % remote_dir)
     if remote_dir == "/" or not os.path.isabs(remote_dir):
        raise SystemExit("Cleaning the remote dir doesn't seem safe, bailing.")
 
