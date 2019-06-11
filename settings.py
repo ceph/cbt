@@ -3,6 +3,7 @@ import yaml
 import sys
 import os
 import logging
+import io
 
 
 logger = logging.getLogger("cbt")
@@ -16,7 +17,7 @@ def initialize(ctx):
 
     config = {}
     try:
-        with open(ctx.config_file) as f:
+        with io.file(ctx.config_file) as f:
             map(config.update, yaml.safe_load_all(f))
     except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
