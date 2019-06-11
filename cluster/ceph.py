@@ -8,7 +8,7 @@ import uuid
 import threading
 import logging
 
-from cluster import Cluster
+from cluster.cluster import Cluster
 
 
 logger = logging.getLogger("cbt")
