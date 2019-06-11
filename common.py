@@ -118,6 +118,7 @@ def get_fqdn_cmd():
 
 def get_fqdn_list(nodes):
     stdout, stderr = pdsh(settings.getnodes(nodes), '%s' % get_fqdn_cmd()).communicate()
+    stdout = stdout.decode()
     print (stdout)
     
     ret = []
