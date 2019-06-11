@@ -547,7 +547,7 @@ class Ceph(Cluster):
             k = profile.get('erasure_k', 6)
             m = profile.get('erasure_m', 2)
 	    common.pdsh(settings.getnodes('head'), '%s -c %s osd erasure-code-profile set %s crush-failure-domain=osd k=%s m=%s' % (self.ceph_cmd, self.tmp_conf, name, k, m)).communicate()
-            self.set_ruleset(name)
+        self.set_ruleset(name)
 
     def mkpool(self, name, profile_name, application, base_name=None):
         pool_profiles = self.config.get('pool_profiles', {'default': {}})
@@ -570,7 +570,7 @@ class Ceph(Cluster):
         target_max_bytes = profile.get('target_max_bytes', None)
         min_read_recency_for_promote = profile.get('min_read_recency_for_promote', None)
         min_write_recency_for_promote = profile.get('min_write_recency_for_promote', None)
-        # Options for prefilling objects
+        # Options for prefilling obImportError: cannot import name ''jects
         prefill_objects = profile.get('prefill_objects', 0)
         prefill_object_size = profile.get('prefill_object_size', 0)
         prefill_time = profile.get('prefill_time', 0)
