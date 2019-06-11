@@ -546,7 +546,7 @@ class Ceph(Cluster):
         for name,profile in erasure_profiles.items():
             k = profile.get('erasure_k', 6)
             m = profile.get('erasure_m', 2)
-	    common.pdsh(settings.getnodes('head'), '%s -c %s osd erasure-code-profile set %s crush-failure-domain=osd k=%s m=%s' % (self.ceph_cmd, self.tmp_conf, name, k, m)).communicate()
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd erasure-code-profile set %s crush-failure-domain=osd k=%s m=%s' % (self.ceph_cmd, self.tmp_conf, name, k, m)).communicate()
         self.set_ruleset(name)
 
     def mkpool(self, name, profile_name, application, base_name=None):
