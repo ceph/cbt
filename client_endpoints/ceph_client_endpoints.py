@@ -25,7 +25,7 @@ class CephClientEndpoints(ClientEndpoints):
 
         # get the list of mons
         self.mon_addrs  = []
-        mon_hosts = self.cluster.config.get('mons')
+        mon_hosts = self.cluster.get_mon_hosts()
         for mon_host, mons in mon_hosts.iteritems():
             for mon, addr in mons.iteritems():
                  self.mon_addrs.append(addr)

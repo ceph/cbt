@@ -2,6 +2,7 @@ import argparse
 import yaml
 import sys
 import os
+import socket
 import logging
 
 
@@ -56,6 +57,18 @@ def initialize(ctx):
     if ctx.archive:
         cluster['archive_dir'] = ctx.archive
 
+def host_info(host):
+    ret = {}
+    user = cluster.get('user')
+
+    if '@' in host:
+        user, host = host.split('@')
+        ret['user'] = user
+    if user:
+        ret['user'] = user
+    ret['host'] = host
+    ret['addr'] = socket.gethostbyname(host)
+    return ret
 
 def getnodes(*nodelists):
     nodes = []
@@ -78,14 +91,16 @@ def getnodes(*nodelists):
 
 
 def uniquenodes(nodes):
-    ret = [node for node in nodes if node]
+    unique = [node for node in nodes if node]
+    ret = []
 
-    user = cluster.get('user')
-    if user is not None:
-        ret = ['%s@%s' % (user, node) for node in ret]
-
+    for host in unique:
+        info = host_info(host)
+        host_str = info['host']
+        if 'user' in info:
+            host_str = "%s@%s" % (info['user'], host_str)
+        ret.append(host_str)
     return set(ret)
-
 
 def shutdown(message):
     sys.exit(message)
