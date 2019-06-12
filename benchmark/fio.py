@@ -33,7 +33,7 @@ class Fio(Benchmark):
         self.log_avg_msec = config.get('log_avg_msec', None)
         self.ioengine = config.get('ioengine', 'libaio')
         self.op_size = config.get('op_size', 4194304)
-        self.size = config.get('size', 65536)
+        self.size = config.get('size', 4096)
         self.procs_per_endpoint = config.get('procs_per_endpoint', 1)
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
@@ -72,6 +72,13 @@ class Fio(Benchmark):
         self.endpoints_type = self.client_endpoints_object.get_endpoints_type()
         self.endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()
         self.endpoints = self.client_endpoints_object.get_endpoints()
+
+        # Error out if the aggregate fio size is going to be larger than the endpoint size
+        aggregate_size = self.numjobs * self.procs_per_endpoint * self.size
+        endpoint_size = self.client_endpoints_object.get_endpoints_size()
+        if aggregate_size > endpoint_size:
+            raise ValueError("Aggregate fio data size (%dKB) exceeds end_point size (%dKB)! Please check numjobs, procs_per_endpoint, and size settings." % (aggregate_size, endpoint_size))
+
         if self.endpoints_type == 'rbd' and self.ioengine != 'rbd':
             logger.warn('rbd endpoints must use the librbd fio engine! Setting ioengine=rbd')
             self.ioengine = 'rbd'
