@@ -13,8 +13,8 @@ cluster:
   clusterid: "ceph"
   pool_profiles:
     rbd2rep:
-      pg_size: 4096
-      pgp_size: 4096
+      pg_size: 2048
+      pgp_size: 2048
       replication: 2
       expected_num_objects: 3000000
 
