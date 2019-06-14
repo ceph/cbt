@@ -167,12 +167,13 @@ class Radosbench(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
 
     def parse(self, out_dir):
-        for client in settings.cluster.get('clients'):
+        for client in settings.getnodes('clients').split(','):
+            host = settings.host_info(client)["host"]
             for i in xrange(self.concurrent_procs):
                 result = {}
                 found = 0
-                out_file = '%s/output.%s.%s' % (out_dir, i, client)
-                json_out_file = '%s/json_output.%s.%s' % (out_dir, i, client)
+                out_file = '%s/output.%s.%s' % (out_dir, i, host)
+                json_out_file = '%s/json_output.%s.%s' % (out_dir, i, host)
                 with open(out_file) as fd:
                     for line in fd.readlines():
                         if found == 0:

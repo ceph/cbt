@@ -200,11 +200,12 @@ class LibrbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
 
     def parse(self, out_dir):
-        for client in settings.cluster.get('clients'):
+        for client in settings.getnodes('clients').split(','):
+            host = settings.host_info(client)["host"]
             for i in xrange(self.volumes_per_client):
                 found = 0
-                out_file = '%s/output.%d.%s' % (out_dir, i, client)
-                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)
+                out_file = '%s/output.%d.%s' % (out_dir, i, host)
+                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)
                 with open(out_file) as fd:
                     with open(json_out_file, 'w') as json_fd:
                         for line in fd.readlines():

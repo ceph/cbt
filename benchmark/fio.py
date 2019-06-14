@@ -224,11 +224,12 @@ class Fio(Benchmark):
 
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
-        for client in settings.cluster.get('clients'):
+        for client in settings.getnodes('clients').split(','):
+            host = settings.host_info(client)["host"]
             for i in xrange(self.endpoints_per_client):
                 found = 0
-                out_file = '%s/output.%d.%s' % (out_dir, i, client)
-                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)
+                out_file = '%s/output.%d.%s' % (out_dir, i, host)
+                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)
                 with open(out_file) as fd:
                     with open(json_out_file, 'w') as json_fd:
                         for line in fd.readlines():
