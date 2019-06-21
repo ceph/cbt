@@ -535,6 +535,29 @@ class Ceph(Cluster):
             time.sleep(1)
         return ret
 
+    def check_backfill(self, check_list=None, logfile=None):
+        # Wait for a defined amount of time in case ceph health is delayed
+        time.sleep(self.health_wait)
+        logline = ""
+        if logfile:
+            logline = "| tee -a %s" % logfile
+        ret = 0
+
+        # Match any of these things to continue checking backfill 
+        check_list = ["backfill", "misplaced"]
+        while True:
+            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
+            if check_list and not any(x in stdout for x in check_list):
+                break
+            else:
+                ret = ret + 1
+            for line in stdout.splitlines():
+                if 'misplaced' in line:
+                    logger.info("%s", line)
+            time.sleep(1)
+        return ret
+
+
     def check_scrub(self):
         logger.info('Waiting until Scrubbing completes...')
         while True:
@@ -780,6 +803,7 @@ class RecoveryTestThread(threading.Thread):
         self.maxhealthtries = 60
         self.health_checklist = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
         self.ceph_cmd = self.cluster.ceph_cmd
+        self.lasttime = time.time()
 
     def logcmd(self, message):
         return 'echo "[`date`] %s" >> %s/recovery.log' % (message, self.config.get('run_dir'))
@@ -799,7 +823,7 @@ class RecoveryTestThread(threading.Thread):
             lcmd = self.logcmd("Marking OSD %s out." % osdnum)
             common.pdsh(settings.getnodes('head'), '%s -c %s osd out %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
         common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
-
+        self.lasttime = time.time()
         self.state = 'osdout'
 
     def osdout(self):
@@ -814,7 +838,7 @@ class RecoveryTestThread(threading.Thread):
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
         else:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
-
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % str(time.time() - self.lasttime))).communicate()
         lcmd = self.logcmd("Unsetting the ceph osd noup flag")
         common.pdsh(settings.getnodes('head'), '%s -c %s osd unset noup;%s' % (self.ceph_cmd, self.cluster.tmp_conf, lcmd)).communicate()
         for osdnum in self.config.get('osds'):
@@ -822,20 +846,23 @@ class RecoveryTestThread(threading.Thread):
             common.pdsh(settings.getnodes('head'), '%s -c %s osd up %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
             lcmd = self.logcmd("Marking OSD %s in." % osdnum)
             common.pdsh(settings.getnodes('head'), '%s -c %s osd in %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-
+        self.lasttime = time.time()
         self.state = "osdin"
 
     def osdin(self):
-        # Wait until the cluster is healthy.
-        ret = self.cluster.check_health(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
+        # Wait until the cluster is done backfilling.
+        ret = self.cluster.check_backfill(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
+        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+
         if self.inhealthtries < self.maxhealthtries and ret == 0:
             self.inhealthtries = self.inhealthtries + 1
             return # Cluster hasn't become unhealthy yet.
 
         if ret == 0:
-            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went into backfill.')).communicate()
         else:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % str(time.time() - self.lasttime))).communicate()
         self.state = "post"
 
     def post(self):
