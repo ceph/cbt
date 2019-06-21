@@ -16,6 +16,8 @@ class CephClientEndpoints(ClientEndpoints):
         self.rbd_nbd_cmd = cluster.rbd_nbd_cmd
         self.rbd_fuse_cmd = cluster.rbd_fuse_cmd
         self.tmp_conf = cluster.tmp_conf
+        self.client_keyring = cluster.client_keyring
+        self.client_secret = cluster.client_secret
         self.pool = None
         self.pool_profile = config.get('pool_profile', 'default')
         self.data_pool = None

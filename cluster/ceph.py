@@ -92,6 +92,7 @@ class Ceph(Cluster):
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.ceph_mgr_cmd = config.get('ceph-mgr_cmd', '/usr/bin/ceph-mgr')
         self.ceph_mds_cmd = config.get('ceph-mds_cmd', '/usr/bin/ceph-mds')
+        self.ceph_authtool_cmd = config.get('ceph-authtool_cmd', '/usr/bin/ceph-authtool')
         self.radosgw_admin_cmd = config.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
         self.ceph_fuse_cmd = config.get('ceph-fuse_cmd', '/usr/bin/ceph-fuse')
@@ -113,6 +114,8 @@ class Ceph(Cluster):
         self.ceph_osd_online_tmo = config.get('osd_online_timeout', 120)
         self.ceph_osd_parallel_creates = config.get('osd_parallel_creates')
 
+        self.client_keyring = '/etc/ceph/ceph.keyring'
+        self.client_secret = '/etc/ceph/ceph.secret'
         # If making the cluster, use the ceph.conf file distributed by initialize to the tmp_dir
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         # If using an existing cluster, defualt to /etc/ceph/ceph.conf
@@ -310,17 +313,20 @@ class Ceph(Cluster):
 
 
     def make_mons(self):
-        # Build and distribute the keyring
+        # Build and distribute the client keyring
         client_admin_dir = "%s/client.admin" % self.tmp_dir
         common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'rm -rf %s' % client_admin_dir).communicate()
         common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'mkdir -p %s' % client_admin_dir).communicate()
 
         keyring_fn = os.path.join(client_admin_dir, "keyring")
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % keyring_fn).communicate()
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % keyring_fn).communicate()
+        common.pdsh(settings.getnodes('head'), '%s --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
+        common.pdsh(settings.getnodes('head'), '%s --gen-key --name=client.admin --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
         common.rscp(settings.getnodes('head'), keyring_fn, '%s.tmp' % keyring_fn).communicate()
         common.pdcp(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), '', '%s.tmp' % keyring_fn, keyring_fn).communicate()
-
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo mv %s %s.cbt.bak' % (self.client_keyring, self.client_keyring)).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo ln -s %s %s' % (keyring_fn, self.client_keyring)).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo mv %s %s.cbt.bak' % (self.client_secret, self.client_secret)).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo sh -c \'%s --print-key %s > %s\'' % (self.ceph_authtool_cmd, self.client_keyring, self.client_secret)).communicate()
         # Build the monmap, retrieve it, and distribute it
         mons = settings.getnodes('mons').split(',')
         cmd = 'monmaptool --create --clobber'
@@ -448,9 +454,9 @@ class Ceph(Cluster):
                     cmd = "%s %s" % (self.ceph_run_cmd, cmd)
                 if user:
                     pdshhost = '%s@%s' % (user, mdshost)
-                data_dir = "%s/mgr.%s" % (self.tmp_dir, mdsname)
+                data_dir = "%s/mds.%s" % (self.tmp_dir, mdsname)
                 common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
-                common.pdsh(pdshhost, 'sudo %s auth get-or-create mds.%s mon \'allow profile mgr\' mds \'allow *\' osd \'allow *\' -o %s/keyring' % (self.ceph_cmd, mdsname, data_dir)).communicate()
+                common.pdsh(pdshhost, 'sudo %s auth get-or-create mds.%s mon \'allow profile mds\' osd \'allow rw tag cephfs *=*\' mds \'allow\' mgr \'allow profile mds\' -o %s/keyring' % (self.ceph_cmd, mdsname, data_dir)).communicate()
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
     def start_rgw(self):
