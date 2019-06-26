@@ -10,6 +10,5 @@ class CephfsKernelClientEndpoints(CephClientEndpoints):
         self.mount_fs()
 
     def mount_fs_helper(self, node, dir_name):
-        kmon_addrs = [addr + ':/' for addr in self.mon_addrs]
-        cmd = 'sudo mount -t ceph -o mds_namespace=%s %s %s' % (self.name, ','.join(kmon_addrs), dir_name)
+        cmd = 'sudo mount -t ceph -o name=admin,secretfile=%s,mds_namespace=%s %s:/ %s' % (self.client_secret, self.name, ','.join(self.mon_addrs), dir_name)
         common.pdsh(node, cmd, continue_if_error=False).communicate()
