@@ -97,7 +97,7 @@ class Fio(Benchmark):
         # typical directory endpoints
         if self.endpoints_type == 'directory':
             for proc_num in xrange(self.procs_per_endpoint):
-                cmd += ' --name=%s/`%s`-%s' % (self.endpoints[ep_num], common.get_fqdn_cmd(), proc_num)
+                cmd += ' --name=%s/`%s`-%s-%s' % (self.endpoints[ep_num], common.get_fqdn_cmd(), ep_num, proc_num)
 
         # handle rbd endpoints with the librbbd engine.
         elif self.endpoints_type == 'rbd':
