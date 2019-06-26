@@ -36,6 +36,9 @@ class Radosbench(Benchmark):
         self.readmode = config.get('readmode', 'seq')
         self.max_objects = config.get('max_objects', None)
         self.write_omap = config.get('write_omap', False)
+        self.prefill_time = config.get('prefill_time', None)
+        self.prefill_objects = config.get('prefill_objects', None)
+
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -67,6 +70,9 @@ class Radosbench(Benchmark):
         # Remake the pools
         self.mkpools()
 
+        # Run prefill
+        if self.prefill_time or self.prefill_objects:
+            self._run('prefill', '%s/prefill' % self.run_dir, '%s/prefill' % self.out_dir)
         # Run write test
         self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
         # Run read test unless write_only
@@ -79,8 +85,8 @@ class Radosbench(Benchmark):
 
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
-        #determine rados version
 
+        #determine rados version
         rados_version_str = self.get_rados_version()
 
         m = re.findall("version (\d+)", rados_version_str)
@@ -89,17 +95,34 @@ class Radosbench(Benchmark):
 
         rados_version = int(m[0])
 
-        if mode in ['write'] or rados_version < 9:
-            op_size_str = '-b %s' % self.op_size
+        # Time to run
+        runtime = 0 
+        if mode is 'prefill' and self.prefill_time:
+            runtime = self.prefill_time
         else:
-            op_size_str = ''
+            runtime = self.time
 
         # Max Objects
+        max_objects = None
+        if mode is 'prefill':
+            max_objects = self.prefill_objects
+        else:
+            max_objects = self.max_objects
         max_objects_str = ''
-        if self.max_objects and rados_version < 9:
-           raise ValueError('max_objects not supported by rados_version < 9')
-        if self.max_objects and rados_version > 9:
-           max_objects_str = '--max-objects %s' % self.max_objects
+        if max_objects and rados_version > 9:
+            max_objects_str = '--max-objects %s' % max_objects
+        else:
+            raise ValueError('max_objects not supported by rados_version < 9')
+
+        # Operation type 
+        op_type = mode
+        if mode is 'prefill':
+            op_type = 'write'
+
+        if op_type in ['write'] or rados_version < 9:
+            op_size_str = '-b %s' % self.op_size
+        else:
+            op_size_str = ''  
 
         # Write to OMAP
         write_omap_str = ''
@@ -108,14 +131,13 @@ class Radosbench(Benchmark):
         if self.write_omap and rados_version > 9:
            write_omap_str = '--write-omap'
 
-
         common.make_remote_dir(run_dir)
 
         # dump the cluster config
         self.cluster.dump_config(run_dir)
 
-        # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
+        # Run the backfill testing thread if requested (but not for prefill)
+        if mode is not 'prefill' and 'recovery_test' in self.cluster.config:
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
@@ -134,15 +156,15 @@ class Radosbench(Benchmark):
                 pool_name = 'rados-bench-``-%s'% (common.get_fqdn_cmd(), i)
                 run_name = ''
             rados_bench_cmd = '%s -c %s -p %s bench %s %s %s %s %s %s %s --no-cleanup 2> %s > %s' % \
-                 (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, self.time, mode, concurrent_ops_str, max_objects_str, write_omap_str, run_name, objecter_log, out_file)
+                 (self.cmd_path_full, self.tmp_conf, pool_name, op_size_str, runtime, op_type, concurrent_ops_str, max_objects_str, write_omap_str, run_name, objecter_log, out_file)
             p = common.pdsh(settings.getnodes('clients'), rados_bench_cmd)
             ps.append(p)
         for p in ps:
             p.wait()
         monitoring.stop(run_dir)
 
-        # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
+        # If we were doing recovery, wait until it's done (but not for prefill).
+        if mode is not 'prefill' and 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
         # Finally, get the historic ops
