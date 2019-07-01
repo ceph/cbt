@@ -109,10 +109,10 @@ class Radosbench(Benchmark):
         else:
             max_objects = self.max_objects
         max_objects_str = ''
-        if max_objects and rados_version > 9:
+        if max_objects:
+            if rados_version < 10:
+                raise ValueError('max_objects not supported by rados_version < 10')
             max_objects_str = '--max-objects %s' % max_objects
-        else:
-            raise ValueError('max_objects not supported by rados_version < 9')
 
         # Operation type 
         op_type = mode
