@@ -86,16 +86,16 @@ class Radosbench(Benchmark):
 
         # Run prefill
         if do_prefill:
-            self._run('prefill', '%s/prefill' % self.run_dir, '%s/prefill' % self.out_dir,
-                      self.prefill_time or self.time)
+            self._run(mode='prefill', run_dir='prefill', out_dir='prefill',
+                      runtime=self.prefill_time or self.time)
         # Run write test
         if not self.read_only:
-            self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir,
-                      self.read_time)
+            self._run(mode='write', run_dir='write', out_dir='write',
+                      runtime=self.read_time)
         # Run read test unless write_only
         if not self.write_only:
-            self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode),
-                      self.write_time)
+            self._run(mode=self.readmode, run_dir=self.readmode, out_dir=self.readmode,
+                      runtime=self.write_time)
 
     def _run(self, mode, run_dir, out_dir, runtime):
         # We'll always drop caches for rados bench
@@ -142,6 +142,7 @@ class Radosbench(Benchmark):
         if self.write_omap and rados_version > 9:
            write_omap_str = '--write-omap'
 
+        run_dir = os.path.join(self.run_dir, run_dir)
         common.make_remote_dir(run_dir)
 
         # dump the cluster config
@@ -180,6 +181,8 @@ class Radosbench(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(run_dir)
+
+        out_dir = os.path.join(self.out_dir, out_dir)
         common.sync_files('%s/*' % run_dir, out_dir)
         self.analyze(out_dir)
 
