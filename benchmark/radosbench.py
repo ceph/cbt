@@ -87,17 +87,20 @@ class Radosbench(Benchmark):
         # Run prefill
         if do_prefill:
             self._run(mode='prefill', run_dir='prefill', out_dir='prefill',
+                      max_objects=self.prefill_objects,
                       runtime=self.prefill_time or self.time)
         # Run write test
         if not self.read_only:
             self._run(mode='write', run_dir='write', out_dir='write',
+                      max_objects=self.max_objects,
                       runtime=self.read_time)
         # Run read test unless write_only
         if not self.write_only:
             self._run(mode=self.readmode, run_dir=self.readmode, out_dir=self.readmode,
+                      max_objects=None,
                       runtime=self.write_time)
 
-    def _run(self, mode, run_dir, out_dir, runtime):
+    def _run(self, mode, run_dir, out_dir, max_objects, runtime):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
@@ -114,11 +117,6 @@ class Radosbench(Benchmark):
         rados_version = int(m[0])
 
         # Max Objects
-        max_objects = None
-        if mode is 'prefill':
-            max_objects = self.prefill_objects
-        else:
-            max_objects = self.max_objects
         max_objects_str = ''
         if max_objects:
             if rados_version < 10:
