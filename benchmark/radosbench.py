@@ -63,9 +63,10 @@ class Radosbench(Benchmark):
         return True
 
     def get_rados_version(self):
-        output = ""
-        stdout,stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
-        return stdout
+        stdout, _ = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
+        m = (re.findall("version (\d+)", stdout) or
+             re.findall("version v(\d+)", stdout))
+        return int(m[0])
 
     def run(self):
         super(Radosbench, self).run()
@@ -107,14 +108,7 @@ class Radosbench(Benchmark):
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
 
-        #determine rados version
-        rados_version_str = self.get_rados_version()
-
-        m = re.findall("version (\d+)", rados_version_str)
-        if not m:
-           m = re.findall("version v(\d+)", rados_version_str)
-
-        rados_version = int(m[0])
+        rados_version = self.get_rados_version()
 
         # Max Objects
         max_objects_str = ''
