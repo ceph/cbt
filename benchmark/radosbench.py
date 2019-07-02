@@ -26,6 +26,7 @@ class Radosbench(Benchmark):
         self.concurrent_ops = config.get('concurrent_ops', 16)
         self.pool_per_proc = config.get('pool_per_proc', False)  # default behavior used to be True
         self.write_only = config.get('write_only', False)
+        self.read_only = config.get('read_only', False)
         self.op_size = config.get('op_size', 4194304)
         self.object_set_id = config.get('object_set_id', '')
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
@@ -66,18 +67,30 @@ class Radosbench(Benchmark):
 
     def run(self):
         super(Radosbench, self).run()
-        
+
+        do_prefill = self.prefill_time or self.prefill_objects
+        # sanity tests
+        if self.read_only and self.write_only:
+            logger.error('Both "read_only" and "write_only" are specified, '
+                         'but they are mutually exclusive.')
+            return
+        elif self.read_only and not do_prefill:
+            logger.error('Please prefill the testbench with "prefill_time" and/or '
+                         '"prefill_objects" option for a "read_only" test');
+            return
+
         # Remake the pools
         self.mkpools()
 
         # Run prefill
-        if self.prefill_time or self.prefill_objects:
+        if do_prefill:
             self._run('prefill', '%s/prefill' % self.run_dir, '%s/prefill' % self.out_dir)
         # Run write test
-        self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
+        if not self.read_only:
+            self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
         # Run read test unless write_only
-        if self.write_only: return
-        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
+        if not self.write_only:
+            self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
 
     def _run(self, mode, run_dir, out_dir):
         # We'll always drop caches for rados bench
