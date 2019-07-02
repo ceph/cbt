@@ -26,7 +26,9 @@ class Radosbench(Benchmark):
         self.concurrent_ops = config.get('concurrent_ops', 16)
         self.pool_per_proc = config.get('pool_per_proc', False)  # default behavior used to be True
         self.write_only = config.get('write_only', False)
+        self.write_time = config.get('write_time', self.time)
         self.read_only = config.get('read_only', False)
+        self.read_time = config.get('read_time', self.time)
         self.op_size = config.get('op_size', 4194304)
         self.object_set_id = config.get('object_set_id', '')
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
@@ -84,15 +86,18 @@ class Radosbench(Benchmark):
 
         # Run prefill
         if do_prefill:
-            self._run('prefill', '%s/prefill' % self.run_dir, '%s/prefill' % self.out_dir)
+            self._run('prefill', '%s/prefill' % self.run_dir, '%s/prefill' % self.out_dir,
+                      self.prefill_time or self.time)
         # Run write test
         if not self.read_only:
-            self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
+            self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir,
+                      self.read_time)
         # Run read test unless write_only
         if not self.write_only:
-            self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
+            self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode),
+                      self.write_time)
 
-    def _run(self, mode, run_dir, out_dir):
+    def _run(self, mode, run_dir, out_dir, runtime):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
@@ -107,13 +112,6 @@ class Radosbench(Benchmark):
            m = re.findall("version v(\d+)", rados_version_str)
 
         rados_version = int(m[0])
-
-        # Time to run
-        runtime = 0 
-        if mode is 'prefill' and self.prefill_time:
-            runtime = self.prefill_time
-        else:
-            runtime = self.time
 
         # Max Objects
         max_objects = None
