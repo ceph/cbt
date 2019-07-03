@@ -26,6 +26,9 @@ class Radosbench(Benchmark):
         self.concurrent_ops = config.get('concurrent_ops', 16)
         self.pool_per_proc = config.get('pool_per_proc', False)  # default behavior used to be True
         self.write_only = config.get('write_only', False)
+        self.write_time = config.get('write_time', self.time)
+        self.read_only = config.get('read_only', False)
+        self.read_time = config.get('read_time', self.time)
         self.op_size = config.get('op_size', 4194304)
         self.object_set_id = config.get('object_set_id', '')
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
@@ -60,54 +63,54 @@ class Radosbench(Benchmark):
         return True
 
     def get_rados_version(self):
-        output = ""
-        stdout,stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
-        return stdout
+        stdout, _ = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
+        m = (re.findall("version (\d+)", stdout) or
+             re.findall("version v(\d+)", stdout))
+        return int(m[0])
 
     def run(self):
         super(Radosbench, self).run()
-        
+
+        do_prefill = self.prefill_time or self.prefill_objects
+        # sanity tests
+        if self.read_only and self.write_only:
+            logger.error('Both "read_only" and "write_only" are specified, '
+                         'but they are mutually exclusive.')
+            return
+        elif self.read_only and not do_prefill:
+            logger.error('Please prefill the testbench with "prefill_time" and/or '
+                         '"prefill_objects" option for a "read_only" test');
+            return
+
         # Remake the pools
         self.mkpools()
 
         # Run prefill
-        if self.prefill_time or self.prefill_objects:
-            self._run('prefill', '%s/prefill' % self.run_dir, '%s/prefill' % self.out_dir)
+        if do_prefill:
+            self._run(mode='prefill', run_dir='prefill', out_dir='prefill',
+                      max_objects=self.prefill_objects,
+                      runtime=self.prefill_time or self.time)
         # Run write test
-        self._run('write', '%s/write' % self.run_dir, '%s/write' % self.out_dir)
+        if not self.read_only:
+            self._run(mode='write', run_dir='write', out_dir='write',
+                      max_objects=self.max_objects,
+                      runtime=self.read_time)
         # Run read test unless write_only
-        if self.write_only: return
-        self._run(self.readmode, '%s/%s' % (self.run_dir, self.readmode), '%s/%s' % (self.out_dir, self.readmode))
+        if not self.write_only:
+            self._run(mode=self.readmode, run_dir=self.readmode, out_dir=self.readmode,
+                      max_objects=None,
+                      runtime=self.write_time)
 
-    def _run(self, mode, run_dir, out_dir):
+    def _run(self, mode, run_dir, out_dir, max_objects, runtime):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
         if self.concurrent_ops:
             concurrent_ops_str = '--concurrent-ios %s' % self.concurrent_ops
 
-        #determine rados version
-        rados_version_str = self.get_rados_version()
-
-        m = re.findall("version (\d+)", rados_version_str)
-        if not m:
-           m = re.findall("version v(\d+)", rados_version_str)
-
-        rados_version = int(m[0])
-
-        # Time to run
-        runtime = 0 
-        if mode is 'prefill' and self.prefill_time:
-            runtime = self.prefill_time
-        else:
-            runtime = self.time
+        rados_version = self.get_rados_version()
 
         # Max Objects
-        max_objects = None
-        if mode is 'prefill':
-            max_objects = self.prefill_objects
-        else:
-            max_objects = self.max_objects
         max_objects_str = ''
         if max_objects:
             if rados_version < 10:
@@ -131,6 +134,7 @@ class Radosbench(Benchmark):
         if self.write_omap and rados_version > 9:
            write_omap_str = '--write-omap'
 
+        run_dir = os.path.join(self.run_dir, run_dir)
         common.make_remote_dir(run_dir)
 
         # dump the cluster config
@@ -169,6 +173,8 @@ class Radosbench(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(run_dir)
+
+        out_dir = os.path.join(self.out_dir, out_dir)
         common.sync_files('%s/*' % run_dir, out_dir)
         self.analyze(out_dir)
 
