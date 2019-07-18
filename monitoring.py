@@ -5,7 +5,7 @@ import settings
 def start(directory):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws')
     collectl_dir = '%s/collectl' % directory
-    # perf_dir = '%s/perf' % directory
+    perf_dir = '%s/perf' % directory
     # blktrace_dir = '%s/blktrace' % directory
 
     # collectl
@@ -14,8 +14,13 @@ def start(directory):
     common.pdsh(nodes, 'collectl -s+mYZ -i 1:10 --rawdskfilt "%s" -F0 -f %s' % (rawdskfilt, collectl_dir))
 
     # perf
-    # common.pdsh(nodes), 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
+    common.pdsh(nodes, 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
     # common.pdsh(nodes), 'cd %s;sudo perf_3.6 record -g -f -a -F 100 -o perf.data' % perf_dir)
+
+    osd_nodes = settings.getnodes('osds')
+    common.pdsh(osd_nodes, ['for pid in `cat %s/osd.*.pid`;' % settings.cluster.get('pid_dir'),
+                               'do', 'perf stat -p ${pid} -o %s/perf_stat.${pid} &' % perf_dir,
+                           'done'])
 
     # blktrace
     # common.pdsh(osds, 'mkdir -p -m0755 -- %s' % blktrace_dir).communicate()
@@ -29,10 +34,12 @@ def stop(directory=None):
 
     common.pdsh(nodes, 'killall -SIGINT -f collectl').communicate()
     common.pdsh(nodes, 'sudo pkill -SIGINT -f perf_3.6').communicate()
+    common.pdsh(nodes, 'sudo pkill -SIGINT -f perf\ stat').communicate()
     common.pdsh(settings.getnodes('osds'), 'sudo pkill -SIGINT -f blktrace').communicate()
     if directory:
         sc = settings.cluster
         common.pdsh(nodes, 'sudo chown %s.%s %s/perf/perf.data' % (sc.get('user'), sc.get('user'), directory))
+        common.pdsh(nodes, 'sudo chown %s.%s %s/perf/perf_stat.*' % (sc.get('user'), sc.get('user'), directory))
         make_movies(directory)
 
 
