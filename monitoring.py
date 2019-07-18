@@ -32,7 +32,7 @@ def stop(directory=None):
     common.pdsh(settings.getnodes('osds'), 'sudo pkill -SIGINT -f blktrace').communicate()
     if directory:
         sc = settings.cluster
-        common.pdsh(nodes, 'cd %s/perf;sudo chown %s.%s perf.data' % (directory, sc.get('user'), sc.get('user')))
+        common.pdsh(nodes, 'sudo chown %s.%s %s/perf/perf.data' % (sc.get('user'), sc.get('user'), directory))
         make_movies(directory)
 
 
