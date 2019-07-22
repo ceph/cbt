@@ -31,3 +31,8 @@ benchmarks:
     #     --nodaemon --redirect-output
     use_existing: True
     pool_profile: replicated
+monitoring_profiles:
+  perf:
+    nodes:
+      - osds
+    args: 'stat -p {pid} -o {perf_dir}/perf_stat.{pid}'
