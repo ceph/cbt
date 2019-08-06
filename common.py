@@ -1,27 +1,32 @@
 import errno
 import logging
 import os
+import socket
 import subprocess
 
 import settings
 
 logger = logging.getLogger("cbt")
 
+
+def join_nostr(command):
+    return command if isinstance(command, str) else ' '.join(command)
+
 # this class overrides the communicate() method to check the return code and
 # throw an exception if return code is not OK
-
 class CheckedPopen:
     UNINIT=-720
     OK=0
-    def __init__(self, args, continue_if_error=False):
+    def __init__(self, args, continue_if_error=False, shell=False):
+        logger.debug('CheckedPopen continue_if_error=%s, shell=%s args=%s'
+                     % (str(continue_if_error), str(shell), join_nostr(args)))
         self.args = args[:]
         self.myrtncode = self.UNINIT
         self.continue_if_error = continue_if_error
-        self.popen_obj = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
-        logger.debug('CheckedPopen continue_if_error=%s args=%s'%(str(continue_if_error), ' '.join(args)))
+        self.popen_obj = subprocess.Popen(args, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
 
     def __str__(self):
-       return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(str(self.args), str(self.continue_if_error), self.myrtncode)
+       return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(join_nostr(self.args), str(self.continue_if_error), self.myrtncode)
 
     # we transparently check return codes for this method now so callers don't have to
 
@@ -32,13 +37,14 @@ class CheckedPopen:
             if not self.continue_if_error:
                 raise Exception(str(self)+'\nstdout:\n'+stdoutdata+'\nstderr\n'+stderrdata)
             else:
-                logger.warning(' '.join(self.args))
+                logger.warning(join_nostr(self.args))
                 logger.warning('error %d seen, continuing anyway...'%self.myrtncode)
         return (stdoutdata, stderrdata)
 
     def wait(self):
         self.communicate(continue_if_error=True)
         return self.myrtncode
+
 
 # by default, do NOT abort if pdsh returns error status
 # this policy results in minimal code change to CBT while allowing
@@ -63,37 +69,74 @@ def expanded_node_list(nodes):
     #logger.info("full list of hosts: %s" % str(full_node_list))
     return node_list
 
+def is_localnode_only(nodes):
+    # Similarly to `expanded_node_list(nodes)` we assume the passed nodes
+    # param is always string. This is justified as the callers use `nodes`
+    # to supply the `-w ...` parameter of ssh during CheckedPopen() call.
+    local_fqdn = get_fqdn_local()
+    local_hostname = socket.gethostname()
+    local_short_hostname = local_hostname.split('.')[0]
+
+    for node in expanded_node_list(nodes):
+        remote_host = settings.host_info(node)['host']
+        if remote_host in (local_fqdn, local_hostname, local_short_hostname):
+            return True
+    return False
+
+def sh(command, continue_if_error=True):
+    return CheckedPopen(join_nostr(command),
+                        continue_if_error=continue_if_error, shell=True)
+
 def pdsh(nodes, command, continue_if_error=True):
-    args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
-    # -S means pdsh fails if any host fails 
-    if not continue_if_error: args.insert(1, '-S')
-    return CheckedPopen(args,continue_if_error=continue_if_error)
+    if is_localnode_only(nodes):
+        return sh(command, continue_if_error=continue_if_error)
+    else:
+        args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
+        # -S means pdsh fails if any host fails
+        if not continue_if_error: args.insert(1, '-S')
+        return CheckedPopen(args,continue_if_error=continue_if_error)
  
 
 def pdcp(nodes, flags, localfile, remotefile):
-    args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
-    if flags:
-        args += [flags]
-    return CheckedPopen(args + [localfile, remotefile], 
-                        continue_if_error=False)
+    if is_localnode_only(nodes):
+        return sh(['cp', flags, localfile, remotefile], continue_if_error=False)
+    else:
+        args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+        if flags:
+            args += [flags]
+        return CheckedPopen(args + [localfile, remotefile],
+                            continue_if_error=False)
 
 
-def rpdcp(nodes, flags, remotefile, localfile):
-    args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
-    if flags:
-        args += [flags]
-    return CheckedPopen(args + [remotefile, localfile], 
-                        continue_if_error=False)
+def rpdcp(nodes, flags, remotefile, localdir):
+    if is_localnode_only(nodes):
+      assert len(expanded_node_list(nodes)) == 1
+      return sh(['for', 'i', 'in', remotefile, ';',
+                    'do', 'cp', flags, '${i}', "%s/$(basename ${i}).%s" % (localdir, get_fqdn_local()), ';',
+                'done'],
+                continue_if_error=False)
+    else:
+        args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+        if flags:
+            args += [flags]
+        return CheckedPopen(args + [remotefile, localfile],
+                            continue_if_error=False)
 
 
 def scp(node, localfile, remotefile):
-    return CheckedPopen(['scp', localfile, '%s:%s' % (node, remotefile)], 
-                        continue_if_error=False)
+    if is_localnode_only(node):
+        return sh(['cp', localfile, remotefile], continue_if_error=False)
+    else:
+        return CheckedPopen(['scp', localfile, '%s:%s' % (node, remotefile)],
+                            continue_if_error=False)
 
 
 def rscp(node, remotefile, localfile):
-    return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
-                        continue_if_error=False)
+    if is_localnode_only(node):
+        return sh(['cp', remotefile, localfile], continue_if_error=False)
+    else:
+        return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
+                            continue_if_error=False)
 
 def get_fqdn_cmd():
     return 'hostname -f'
@@ -104,6 +147,11 @@ def get_fqdn_list(nodes):
     ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
     print ret
     return ret
+
+def get_fqdn_local():
+    local_fqdn = socket.getfqdn()
+    logger.debug('get_fqdn_local()=%s' % local_fqdn)
+    return local_fqdn
 
 def clean_remote_dir (remote_dir):
     print "cleaning remote dir %s" % remote_dir
