@@ -14,7 +14,7 @@ def join_nostr(command):
 
 # this class overrides the communicate() method to check the return code and
 # throw an exception if return code is not OK
-class CheckedPopen:
+class CheckedPopen(object):
     UNINIT=-720
     OK=0
     def __init__(self, args, continue_if_error=False, shell=False):
@@ -45,6 +45,16 @@ class CheckedPopen:
         self.communicate(continue_if_error=True)
         return self.myrtncode
 
+class CheckedPopenLocal(CheckedPopen):
+    def __init__(self, host, args, continue_if_error=False, shell=False):
+        super(CheckedPopenLocal, self).__init__(args, continue_if_error, shell)
+        self.host = host
+
+    def communicate(self, input=None, continue_if_error=True):
+        stdout, stderr = super(CheckedPopenLocal, self).communicate()
+        stdout = "%s: %s" % (self.host, stdout)
+        stderr = "%s: %s" % (self.host, stderr)
+        return (stdout, stderr)
 
 # by default, do NOT abort if pdsh returns error status
 # this policy results in minimal code change to CBT while allowing
@@ -69,7 +79,7 @@ def expanded_node_list(nodes):
     #logger.info("full list of hosts: %s" % str(full_node_list))
     return node_list
 
-def is_localnode_only(nodes):
+def get_localnode(nodes):
     # Similarly to `expanded_node_list(nodes)` we assume the passed nodes
     # param is always string. This is justified as the callers use `nodes`
     # to supply the `-w ...` parameter of ssh during CheckedPopen() call.
@@ -80,16 +90,17 @@ def is_localnode_only(nodes):
     for node in expanded_node_list(nodes):
         remote_host = settings.host_info(node)['host']
         if remote_host in (local_fqdn, local_hostname, local_short_hostname):
-            return True
-    return False
+            return remote_host
+    return None 
 
-def sh(command, continue_if_error=True):
-    return CheckedPopen(join_nostr(command),
-                        continue_if_error=continue_if_error, shell=True)
+def sh(local_node, command, continue_if_error=True):
+    return CheckedPopenLocal(local_node, join_nostr(command),
+                             continue_if_error=continue_if_error, shell=True)
 
 def pdsh(nodes, command, continue_if_error=True):
-    if is_localnode_only(nodes):
-        return sh(command, continue_if_error=continue_if_error)
+    local_node = get_localnode(nodes);
+    if local_node:
+        return sh(local_node, command, continue_if_error=continue_if_error)
     else:
         args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
         # -S means pdsh fails if any host fails
@@ -98,8 +109,9 @@ def pdsh(nodes, command, continue_if_error=True):
  
 
 def pdcp(nodes, flags, localfile, remotefile):
-    if is_localnode_only(nodes):
-        return sh(['cp', flags, localfile, remotefile], continue_if_error=False)
+    local_node = get_localnode(nodes);
+    if local_node:
+        return sh(local_node, ['cp', flags, localfile, remotefile], continue_if_error=False)
     else:
         args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
         if flags:
@@ -109,10 +121,11 @@ def pdcp(nodes, flags, localfile, remotefile):
 
 
 def rpdcp(nodes, flags, remotefile, localdir):
-    if is_localnode_only(nodes):
+    local_node = get_localnode(nodes);
+    if local_node:
       assert len(expanded_node_list(nodes)) == 1
-      return sh(['for', 'i', 'in', remotefile, ';',
-                    'do', 'cp', flags, '${i}', "%s/$(basename ${i}).%s" % (localdir, get_fqdn_local()), ';',
+      return sh(local_node, ['for', 'i', 'in', remotefile, ';',
+                    'do', 'cp', flags, '${i}', "%s/$(basename ${i}).%s" % (localdir, local_node), ';',
                 'done'],
                 continue_if_error=False)
     else:
@@ -124,16 +137,18 @@ def rpdcp(nodes, flags, remotefile, localdir):
 
 
 def scp(node, localfile, remotefile):
-    if is_localnode_only(node):
-        return sh(['cp', localfile, remotefile], continue_if_error=False)
+    local_node = get_localnode(node);
+    if local_node:
+        return sh(local_node, ['cp', localfile, remotefile], continue_if_error=False)
     else:
         return CheckedPopen(['scp', localfile, '%s:%s' % (node, remotefile)],
                             continue_if_error=False)
 
 
 def rscp(node, remotefile, localfile):
-    if is_localnode_only(node):
-        return sh(['cp', remotefile, localfile], continue_if_error=False)
+    local_node = get_localnode(node);
+    if local_node:
+        return sh(local_node, ['cp', remotefile, localfile], continue_if_error=False)
     else:
         return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
                             continue_if_error=False)
