@@ -698,7 +698,7 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
                         continue_if_error=False).communicate()
 
-        logger.info('Checking Healh after pool creation.')
+        logger.info('Checking Health after pool creation.')
         self.check_health()
 
         if prefill_objects > 0 or prefill_time > 0:
