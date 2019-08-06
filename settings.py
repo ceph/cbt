@@ -11,9 +11,19 @@ logger = logging.getLogger("cbt")
 cluster = {}
 client_endpoints = {}
 benchmarks = {}
+monitoring_profiles = {}
+
+def _handle_monitoring_legacy():
+    """
+    Inject collectl even if the config says nothing about it to preserve
+    compatibility with current CBT's configuration files.
+    """
+    global monitoring_profiles
+    if 'collectl' not in monitoring_profiles:
+        monitoring_profiles['collectl'] = {}
 
 def initialize(ctx):
-    global cluster, client_endpoints, benchmarks
+    global cluster, client_endpoints, benchmarks, monitoring_profiles
 
     config = {}
     try:
@@ -25,12 +35,15 @@ def initialize(ctx):
     cluster = config.get('cluster', {})
     client_endpoints = config.get('client_endpoints', {})
     benchmarks = config.get('benchmarks', {})
+    monitoring_profiles = config.get('monitoring_profiles', dict(collectl={}))
 
     if not cluster:
         shutdown('No cluster section found in config file, bailing.')
 
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
+
+    _handle_monitoring_legacy()
 
     # store cbt configuration in the archive directory
     cbt_results = os.path.join(ctx.archive, 'results')
