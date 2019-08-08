@@ -120,7 +120,7 @@ class Ceph(Cluster):
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         # If using an existing cluster, defualt to /etc/ceph/ceph.conf
         if self.use_existing:
-            self.tmp_conf = self.config.get('conf_file', '/etc/ceph/ceph.conf')
+            self.tmp_conf = self.config.get('conf_file')
 
         self.osd_valgrind = config.get('osd_valgrind', None)
         self.mon_valgrind = config.get('mon_valgrind', None)
