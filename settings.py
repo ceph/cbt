@@ -43,13 +43,19 @@ def initialize(ctx):
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
 
+    # set the archive_dir from the commandline if present
+    if ctx.archive:
+        cluster['archive_dir'] = ctx.archive
+    if 'archive_dir' not in cluster:
+        shutdown('No archive dir has been set.')
+
     _handle_monitoring_legacy()
 
     # store cbt configuration in the archive directory
-    cbt_results = os.path.join(ctx.archive, 'results')
+    cbt_results = os.path.join(cluster['archive_dir'], 'results')
     config_file = os.path.join(cbt_results, 'cbt_config.yaml')
-    if not os.path.exists(ctx.archive):
-        os.makedirs(ctx.archive)
+    if not os.path.exists(cluster['archive_dir']):
+        os.makedirs(cluster['archive_dir'])
     if not os.path.exists(cbt_results):
         os.makedirs(cbt_results)
     if not os.path.exists(config_file):
@@ -61,14 +67,19 @@ def initialize(ctx):
     if 'tmp_dir' not in cluster:
         cluster['tmp_dir'] = '/tmp/cbt.%s' % os.getpid()
 
-    # set the ceph.conf file from the commandline, yaml, or default
+    # set the ceph.conf file from the commandline if present
     if ctx.conf:
         cluster['conf_file'] = ctx.conf
-    elif 'conf_file' not in cluster:
-        cluster['conf_file'] = "%s/ceph.conf" % (cluster.get('conf_file'),)
-
-    if ctx.archive:
-        cluster['archive_dir'] = ctx.archive
+    # If no conf file is set, default to /etc/ceph/ceph.conf
+    # FIXME: We shouldn't have cluster specific defaults in settings.
+    # Eventually make a base class with specific cluster implementations.
+    if 'conf_file' not in cluster:
+        cluster['conf_file'] = '/etc/ceph/ceph.conf'
+    try:
+        f = open(cluster['conf_file'])
+        f.close()
+    except IOError, e:
+        shutdown('Was not able to access conf file: %s' % cluster['conf_file'])
 
 def host_info(host):
     ret = {}
