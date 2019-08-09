@@ -54,11 +54,21 @@ class LogData():
         for line in f:
 
             # We need to get the smallest timestamp in the log and set it 
-            ts = ' '.join(line.split(' ', 2)[0:2])
+#            ts = ' '.join(line.split(' ', 2)[0:1])
+            ts = line[0:23]
+            if not ts:
+                continue;
+
             try: 
-                dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
+                # Octopus and newer format
+                dt = datetime.datetime.strptime(ts[0:23], "%Y-%m-%dT%H:%M:%S.%f")
             except ValueError:
-                pass
+                try:
+                    # Nautilus and older format
+                    dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
+                except: 
+                    pass
+
             if self.start_dt is None or self.start_dt > dt:
                 self.start_dt = dt
             if self.end_dt is None or self.end_dt < dt:
