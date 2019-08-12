@@ -94,12 +94,12 @@ class Radosbench(Benchmark):
         if not self.read_only:
             self._run(mode='write', run_dir='write', out_dir='write',
                       max_objects=self.max_objects,
-                      runtime=self.read_time)
+                      runtime=self.write_time)
         # Run read test unless write_only
         if not self.write_only:
             self._run(mode=self.readmode, run_dir=self.readmode, out_dir=self.readmode,
                       max_objects=None,
-                      runtime=self.write_time)
+                      runtime=self.read_time)
 
     def _run(self, mode, run_dir, out_dir, max_objects, runtime):
         # We'll always drop caches for rados bench
