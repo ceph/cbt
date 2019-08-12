@@ -1,3 +1,6 @@
+from glob import glob
+import os.path
+
 import common
 import settings
 
@@ -47,18 +50,34 @@ class PerfMonitoring(Monitoring):
         self.pid_dir = settings.cluster.get('pid_dir')
         self.user = settings.cluster.get('user')
         self.args_template = mconfig.get('args')
+        self.perf_runners = []
 
     def start(self, directory):
         perf_dir = '%s/perf' % directory
         common.pdsh(self.nodes, 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
 
-        # ${pid} will be handled by remote's sh
-        perf_args = self.args_template.format(perf_dir=perf_dir, pid='${pid}')
-        common.pdsh(self.nodes, ['for pid in `cat %s/osd.*.pid`;' % self.pid_dir,
-                                    'do', 'perf %s &' % perf_args,
-                                'done'])
+        perf_template = 'perf {} &'.format(self.args_template)
+        local_node = common.get_localnode(self.nodes)
+        if local_node:
+            for pid_path in glob(os.path.join(self.pid_dir, 'osd.*.pid')):
+                with file(pid_path) as pidfile:
+                    pid = pidfile.read().strip()
+                    perf_cmd = perf_template.format(perf_dir=perf_dir, pid=pid)
+                    runner = common.sh(local_node, perf_cmd)
+                    self.perf_runners.append(runner)
+        else:
+            # ${pid} will be handled by remote's sh
+            perf_cmd = perf_template.format(perf_dir=perf_dir, pid='${pid}')
+            common.pdsh(self.nodes, ['for pid in `cat %s/osd.*.pid`;' % self.pid_dir,
+                                     'do', perf_cmd,
+                                     'done'])
+
     def stop(self, directory):
-        common.pdsh(self.nodes, 'sudo pkill -SIGINT -f perf\ ').communicate()
+        if self.perf_runners:
+            for runner in self.perf_runners:
+                runner.kill()
+        else:
+            common.pdsh(self.nodes, 'sudo pkill -SIGINT -f perf\ ').communicate()
         if directory:
             sc = settings.cluster
             common.pdsh(self.nodes, 'sudo chown {user}.{user} {dir}/perf/perf.data'.format(

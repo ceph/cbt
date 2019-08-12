@@ -1,6 +1,7 @@
 import errno
 import logging
 import os
+import signal
 import socket
 import subprocess
 
@@ -23,7 +24,12 @@ class CheckedPopen(object):
         self.args = args[:]
         self.myrtncode = self.UNINIT
         self.continue_if_error = continue_if_error
-        self.popen_obj = subprocess.Popen(args, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
+        self.shell = shell
+        self.popen_obj = subprocess.Popen(args, shell=shell,
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE,
+                                          preexec_fn=os.setsid,
+                                          close_fds=True)
 
     def __str__(self):
        return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(join_nostr(self.args), str(self.continue_if_error), self.myrtncode)
@@ -44,6 +50,13 @@ class CheckedPopen(object):
     def wait(self):
         self.communicate(continue_if_error=True)
         return self.myrtncode
+
+    def kill(self, sig=signal.SIGINT):
+        if self.shell:
+            os.killpg(os.getpgid(self.popen_obj.pid), sig)
+        else:
+            self.popen_obj.send_signal(sig)
+
 
 class CheckedPopenLocal(CheckedPopen):
     def __init__(self, host, args, continue_if_error=False, shell=False):
