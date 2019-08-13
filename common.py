@@ -132,7 +132,7 @@ def rpdcp(nodes, flags, remotefile, localdir):
         args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
         if flags:
             args += [flags]
-        return CheckedPopen(args + [remotefile, localfile],
+        return CheckedPopen(args + [remotefile, localdir],
                             continue_if_error=False)
 
 
