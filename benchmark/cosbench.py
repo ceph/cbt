@@ -27,7 +27,6 @@ class Cosbench(Benchmark):
         self.containers = config["containers_max"]
         self.objects = config["objects_max"]
         self.mode = config["mode"]
-        self.user = settings.cluster.get('user')
         self.rgw = settings.cluster.get('rgws').keys()[0]
         self.radosgw_admin_cmd = settings.cluster.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.use_existing = settings.cluster.get('use_existing')
@@ -52,13 +51,13 @@ class Cosbench(Benchmark):
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
             if not self.use_existing or self.is_teuthology:
                 user, subuser = cosconf["username"].split(':')
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user create --uid='%s' --display-name='%s'" % (user, user)).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser create --uid=%s --subuser=%s --access=full" % (user, cosconf["username"])).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin key create --uid=%s --subuser=%s --key-type=swift" % (user, cosconf["username"])).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user modify --uid=%s --max-buckets=100000" % (user)).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser modify --uid=%s --subuser=%s --secret=%s --key-type=swift" % (user, cosconf["username"], cosconf["password"])).communicate()
+                stdout, stderr = common.pdsh(self.rgw, "radosgw-admin user create --uid='%s' --display-name='%s'" % (user, user)).communicate()
+                stdout, stderr = common.pdsh(self.rgw, "radosgw-admin subuser create --uid=%s --subuser=%s --access=full" % (user, cosconf["username"])).communicate()
+                stdout, stderr = common.pdsh(self.rgw, "radosgw-admin key create --uid=%s --subuser=%s --key-type=swift" % (user, cosconf["username"])).communicate()
+                stdout, stderr = common.pdsh(self.rgw, "radosgw-admin user modify --uid=%s --max-buckets=100000" % (user)).communicate()
+                stdout, stderr = common.pdsh(self.rgw, "radosgw-admin subuser modify --uid=%s --subuser=%s --secret=%s --key-type=swift" % (user, cosconf["username"], cosconf["password"])).communicate()
 
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"curl -D - -H 'X-Auth-User: %s' -H 'X-Auth-Key: %s' %s" % (cosconf["username"], cosconf["password"], cosconf["url"])).communicate()
+            stdout, stderr = common.pdsh(self.config["controller"], "curl -D - -H 'X-Auth-User: %s' -H 'X-Auth-Key: %s' %s" % (cosconf["username"], cosconf["password"], cosconf["url"])).communicate()
 
         else:
             logger.error("Auth Configuration in Yaml file is not in correct format")
@@ -72,7 +71,7 @@ class Cosbench(Benchmark):
         #3. check if container and obj created
         target_name = "%s-%s-%s" % (self.config["obj_size"], self.config["mode"], self.config["objects_max"])
         container_count = 0
-        stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])).communicate()
+        stdout, stderr = common.pdsh(self.rgw, "swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])).communicate()
         if stderr != "":
             self.container_prepared = False
             return
@@ -231,7 +230,7 @@ class Cosbench(Benchmark):
         except KeyboardInterrupt:
             logger.warning("accept keyboard interrupt, cancel this run")
             conf = self.config
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
+            stdout, stderr = common.pdsh(conf["controller"],'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
             logger.info("%s", stdout)
 
         self.check_workload_status()
@@ -249,7 +248,7 @@ class Cosbench(Benchmark):
         except:
             wait = False
         while wait:
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info | grep %s | awk '{print $8}'" % (self.config["cosbench_dir"], self.runid)).communicate()
+            stdout, stderr = common.pdsh(self.config["controller"], "sh %s/cli.sh info | grep %s | awk '{print $8}'" % (self.config["cosbench_dir"], self.runid)).communicate()
             if stderr:
                 logger.info("Cosbench Deamon is not running on %s", self.config["controller"])
                 return False
@@ -260,7 +259,7 @@ class Cosbench(Benchmark):
             except:
                 wait = False
             time.sleep(1)
-        stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
+        stdout, stderr = common.pdsh(self.config["controller"], "sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
         logger.debug(stdout)
         time.sleep(15)
         return True
@@ -269,7 +268,7 @@ class Cosbench(Benchmark):
         #check res dir
         check_time = 0
         while True:
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]), "find %s/archive -maxdepth 1 -name '%s-*'" % (self.config["cosbench_dir"], self.runid)).communicate() 
+            stdout, stderr = common.pdsh(self.config["controller"], "find %s/archive -maxdepth 1 -name '%s-*'" % (self.config["cosbench_dir"], self.runid)).communicate() 
             if stdout:
                 return True
             if check_time == 3000:
@@ -279,7 +278,7 @@ class Cosbench(Benchmark):
 
     def _run(self):
         conf = self.config
-        stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh submit %s/%s.xml' % (conf["cosbench_dir"], conf["cosbench_xml_dir"], conf["xml_name"])).communicate()
+        stdout, stderr = common.pdsh(conf["controller"], 'sh %s/cli.sh submit %s/%s.xml' % (conf["cosbench_dir"], conf["cosbench_xml_dir"], conf["xml_name"])).communicate()
         m = re.findall('Accepted with ID:\s*(\w+)', stdout )
         if not m:
             logger.error("cosbench start failing with error: %s", stderr)

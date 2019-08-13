@@ -115,7 +115,7 @@ def pdsh(nodes, command, continue_if_error=True):
     if local_node:
         return sh(local_node, command, continue_if_error=continue_if_error)
     else:
-        args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
+        args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, join_nostr(command)]
         # -S means pdsh fails if any host fails
         if not continue_if_error: args.insert(1, '-S')
         return CheckedPopen(args,continue_if_error=continue_if_error)
@@ -145,7 +145,7 @@ def rpdcp(nodes, flags, remotefile, localdir):
         args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
         if flags:
             args += [flags]
-        return CheckedPopen(args + [remotefile, localfile],
+        return CheckedPopen(args + [remotefile, localdir],
                             continue_if_error=False)
 
 
