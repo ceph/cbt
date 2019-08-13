@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from glob import glob
 import os.path
 
@@ -126,4 +127,14 @@ def start(directory):
 
 def stop(directory=None):
     for m in Monitoring._get_all():
+        m.stop(directory)
+
+@contextmanager
+def monitor(directory):
+    monitors = []
+    for m in Monitoring._get_all():
+        m.start(directory)
+        monitors.append(m)
+    yield
+    for m in monitors:
         m.stop(directory)
