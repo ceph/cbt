@@ -36,7 +36,7 @@ class CheckedPopen(object):
 
     # we transparently check return codes for this method now so callers don't have to
 
-    def communicate(self, input=None, continue_if_error=True):
+    def communicate(self, input=None):
         (stdoutdata, stderrdata) = self.popen_obj.communicate(input=input)
         self.myrtncode = self.popen_obj.returncode  # THIS is the thing we couldn't do before
         if self.myrtncode != self.OK:
@@ -48,7 +48,7 @@ class CheckedPopen(object):
         return (stdoutdata, stderrdata)
 
     def wait(self):
-        self.communicate(continue_if_error=True)
+        self.communicate()
         return self.myrtncode
 
     def kill(self, sig=signal.SIGINT):
@@ -63,7 +63,7 @@ class CheckedPopenLocal(CheckedPopen):
         super(CheckedPopenLocal, self).__init__(args, continue_if_error, shell)
         self.host = host
 
-    def communicate(self, input=None, continue_if_error=True):
+    def communicate(self, input=None):
         stdout, stderr = super(CheckedPopenLocal, self).communicate()
         stdout = "%s: %s" % (self.host, stdout)
         stderr = "%s: %s" % (self.host, stderr)
