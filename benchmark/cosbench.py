@@ -81,9 +81,8 @@ class Cosbench(Benchmark):
                 fmt_args = dict(uid=uid, subuser=username, secret=cosconf["password"])
                 self._do_rgw("radosgw-admin user create --uid='{uid}' --display-name='{uid}'", **fmt_args)
                 self._do_rgw("radosgw-admin subuser create --uid={uid} --subuser={subuser} --access=full", **fmt_args)
-                self._do_rgw("radosgw-admin key create --uid={uid} --subuser={subuser} --key-type=swift", **fmt_args)
+                self._do_rgw("radosgw-admin key create --uid={uid} --subuser={subuser} --key-type=swift --secret-key={secret}", **fmt_args)
                 self._do_rgw("radosgw-admin user modify --uid={uid} --max-buckets=100000", **fmt_args)
-                self._do_rgw("radosgw-admin subuser modify --uid={uid} --subuser={subuser} --secret={secret} --key-type=swift", **fmt_args)
 
             stdout, stderr = self._do_ctrl("curl -D - -H 'X-Auth-User: {user}' -H 'X-Auth-Key: {key}' {url}",
                                            user=cosconf["username"],
