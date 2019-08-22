@@ -35,13 +35,31 @@ class Cosbench(Benchmark):
         self.run_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.run_dir, int(self.osd_ra), self.op_size, int(self.total_procs), int(self.containers),int(self.objects), self.mode)
         self.out_dir = self.archive_dir
 
+    def _filter_ssh_output(self, output):
+        if not output:
+            return output
+        lines = output.split('\n')
+        if re.search('Permanently added', lines[0]):
+            return '\n'.join(line for line in lines[1:] if line.strip())
+        else:
+            return output
+
     def _do_rgw(self, cmd_fmt, **kwargs):
         cmd = cmd_fmt.format(**kwargs)
         stdout, stderr = common.pdsh(self.rgw, cmd).communicate()
+        logger.info('[rgw]: %s\n%s', cmd, stdout)
+        stderr = self._filter_ssh_output(stderr)
+        if stderr:
+            logger.error(stderr)
 
     def _do_ctrl(self, cmd_fmt, **kwargs):
         cmd = cmd_fmt.format(**kwargs)
-        return common.pdsh(self.config["controller"], cmd).communicate()
+        stdout, stderr = common.pdsh(self.config["controller"], cmd).communicate()
+        logger.info('[controller]: %s\n%s', cmd, stdout)
+        stderr = self._filter_ssh_output(stderr)
+        if stderr:
+            logger.error(stderr)
+        return stdout, stderr
 
     def prerun_check(self):
         #1. check cosbench
@@ -275,7 +293,6 @@ class Cosbench(Benchmark):
             time.sleep(1)
         stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info",
                                        cosbench_dir=self.config["cosbench_dir"])
-        logger.debug(stdout)
         time.sleep(15)
         return True
 
