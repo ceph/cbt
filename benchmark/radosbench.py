@@ -31,7 +31,10 @@ class Radosbench(Benchmark):
         self.read_time = config.get('read_time', self.time)
         self.op_size = config.get('op_size', 4194304)
         self.object_set_id = config.get('object_set_id', '')
-        self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_ops-%08d' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.concurrent_ops))
+        self.run_dir = os.path.join(self.run_dir,
+                                    'osd_ra-{:0>8}'.format(self.osd_ra),
+                                    'op_size-{:0>8}'.format(self.op_size),
+                                    'concurrent_ops-{:0>8}'.format(self.concurrent_ops))
         self.out_dir = self.archive_dir
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', self.cluster.rados_cmd)
