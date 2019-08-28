@@ -5,7 +5,7 @@ import monitoring
 import os
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 class Nullbench(Benchmark):
 

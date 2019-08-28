@@ -1,6 +1,6 @@
 import common
 
-from ceph_client_endpoints import CephClientEndpoints
+from .ceph_client_endpoints import CephClientEndpoints
 
 class CephfsFuseClientEndpoints(CephClientEndpoints):
     def create(self):

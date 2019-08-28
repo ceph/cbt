@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger('cbt')
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 class CephTestRados(Benchmark):
 
