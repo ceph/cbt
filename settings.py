@@ -29,7 +29,7 @@ def initialize(ctx):
     try:
         with file(ctx.config_file) as f:
             map(config.update, yaml.safe_load_all(f))
-    except IOError, e:
+    except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 
     cluster = config.get('cluster', {})
@@ -78,7 +78,7 @@ def initialize(ctx):
     try:
         f = open(cluster['conf_file'])
         f.close()
-    except IOError, e:
+    except IOError as e:
         shutdown('Was not able to access conf file: %s' % cluster['conf_file'])
 
 def host_info(host):
