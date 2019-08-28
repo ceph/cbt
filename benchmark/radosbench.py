@@ -62,8 +62,6 @@ class Radosbench(Benchmark):
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-        return True
-
     def get_rados_version(self):
         stdout, _ = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
         m = (re.findall("version (\d+)", stdout) or

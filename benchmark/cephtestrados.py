@@ -66,7 +66,6 @@ class CephTestRados(Benchmark):
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
         super(CephTestRados, self).initialize()
-        return True
 
     def run(self):
         super(CephTestRados, self).run()

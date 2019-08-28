@@ -66,8 +66,6 @@ class Getput(Benchmark):
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-        return True
-
     def mkcredfiles(self):
         for i in xrange(0, len(self.auth_urls)):
             cred = "export ST_AUTH=%s\\nexport ST_USER=%s\\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)

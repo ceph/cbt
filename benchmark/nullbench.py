@@ -14,7 +14,6 @@ class Nullbench(Benchmark):
 
     def initialize(self): 
         super(Nullbench, self).initialize()
-        return True
 
     def run(self):
         super(Nullbench, self).run()

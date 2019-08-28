@@ -93,7 +93,6 @@ class LibrbdFio(Benchmark):
               ps.append(p)
           for p in ps:
               p.wait()
-        return True
 
     def run(self):
         super(LibrbdFio, self).run()

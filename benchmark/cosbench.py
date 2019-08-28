@@ -220,7 +220,6 @@ class Cosbench(Benchmark):
             self.config["workload"]["workflow"]["workstage"].insert(0, workstage_init)
 
         self.prepare_xml(self.config["workload"])
-        return True
 
     def container_prepare_check(self):
         return self.container_prepared
