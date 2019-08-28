@@ -45,23 +45,18 @@ def all_configs(config):
         yield current
 
 def get_object(cluster, benchmark, bconfig):
-    if benchmark == "nullbench":
-        return Nullbench(cluster, bconfig)
-    if benchmark == "radosbench":
-        return Radosbench(cluster, bconfig)
-    if benchmark == "fio":
-        return Fio(cluster, bconfig)
-    if benchmark == "rbdfio":
-        return RbdFio(cluster, bconfig)
-    if benchmark == "kvmrbdfio":
-        return KvmRbdFio(cluster, bconfig)
-    if benchmark == "rawfio":
-        return RawFio(cluster, bconfig)
-    if benchmark == 'librbdfio':
-        return LibrbdFio(cluster, bconfig)
-    if benchmark == 'cosbench':
-        return Cosbench(cluster, bconfig)
-    if benchmark == 'cephtestrados':
-        return CephTestRados(cluster, bconfig)
-    if benchmark == 'getput':
-        return Getput(cluster, bconfig)
+    benchmarks = {
+        'nullbench': Nullbench,
+        'radosbench': Radosbench,
+        'fio': Fio,
+        'rbdfio': RbdFio,
+        'kvmrbdfio': KvmRbdFio,
+        'rawfio': RawFio,
+        'librbdfio': LibrbdFio,
+        'cosbench': Cosbench,
+        'cephtestrados': CephTestRados,
+        'getput': Getput}
+    try:
+        return benchmarks[benchmark](cluster, bconfig)
+    except KeyError:
+        return None
