@@ -11,10 +11,11 @@ import yaml
 logger = logging.getLogger('cbt')
 
 class Benchmark(object):
-    def __init__(self, cluster, config):
+    def __init__(self, archive_dir, cluster, config):
+        self.acceptable = config.pop('acceptable', [])
         self.config = config
         self.cluster = cluster
-        self.archive_dir = os.path.join(settings.cluster.get('archive_dir'),
+        self.archive_dir = os.path.join(archive_dir,
                                         'results',
                                         '{:0>8}'.format(config.get('iteration')),
                                         'id{}'.format(hash(frozenset((self.config).items()))))
@@ -79,6 +80,9 @@ class Benchmark(object):
 
     def exists(self):
         return False
+
+    def compare(self, baseline):
+        logger.warn('%s does not support "compare" yet', self.getclass())
 
     def cleanup(self):
         pass

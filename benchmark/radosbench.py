@@ -11,14 +11,15 @@ import json
 
 from cluster.ceph import Ceph
 from .benchmark import Benchmark
+from .lis import Lispy, Env
 
 logger = logging.getLogger("cbt")
 
 
 class Radosbench(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(Radosbench, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(Radosbench, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
         self.time =  str(config.get('time', '300'))
@@ -44,7 +45,6 @@ class Radosbench(Benchmark):
         self.write_omap = config.get('write_omap', False)
         self.prefill_time = config.get('prefill_time', None)
         self.prefill_objects = config.get('prefill_objects', None)
-
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -238,6 +238,54 @@ class Radosbench(Benchmark):
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
         self.parse(out_dir)
+
+    def _compare_client_results(self, fnames):
+        # normalize the names
+        aliases = {'bandwidth': 'Bandwidth (MB/sec)',
+                   'iops_avg': 'Average IOPS',
+                   'iops_stddev': 'Stddev IOPS',
+                   'latency_avg': 'Average Latency(s)'}
+        json_outputs = []
+        rejected = 0
+        for fname in fnames:
+            with open(fname) as f:
+                json_outputs.append(json.load(f))
+            for alias, stmt in self.acceptable:
+                name = aliases[alias]
+                result, baseline = [float(j[name] for j in json_outputs)]
+                # safer than eval()
+                env = Env(result=result, baseline=baseline)
+                if not Lispy().eval(stmt, env):
+                    fmt = '{run}/{client}/{proc}: {alias}: ' \
+                        '{result}/{baseline}: rejected by "{stmt}"'
+                    logger.warn(fmt.format(
+                        run=run, client=client, proc=proc,
+                        alias=alias, result=result, baseline=baseline,
+                        stmt=stmt))
+                    rejected += 1
+        return rejected
+
+    def evaluate(self, baseline):
+        runs = []
+        if self.prefill_time or self.prefill_objects:
+            runs.append('prefill')
+        if not self.read_only:
+            runs.append('write')
+        if not self.write_only:
+            runs.append(self.readmode)
+        rejected = 0
+        for run in runs:
+            out_dirs = [os.path.join(self.out_dir, run),
+                        os.path.join(baseline.out_dir, run)]
+            for client in settings.getnodes('clients').split(','):
+                host = settings.host_info(client)["host"]
+                for proc in range(self.concurrent_procs):
+                    fname = 'json_output.{i}.{host}'.format(proc=proc,
+                                                            host=host)
+                    fpaths  = [os.path.join(d, fname) for d in out_dirs]
+                    rejected += self._compare_client_results(fpaths)
+            # TODO: check results from monitors
+        return rejected
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
