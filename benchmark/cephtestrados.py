@@ -59,7 +59,7 @@ class CephTestRados(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            print('Skipping existing test in %s.' % self.out_dir)
             return True
         return False
 
