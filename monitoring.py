@@ -61,7 +61,7 @@ class PerfMonitoring(Monitoring):
         local_node = common.get_localnode(self.nodes)
         if local_node:
             for pid_path in glob(os.path.join(self.pid_dir, 'osd.*.pid')):
-                with file(pid_path) as pidfile:
+                with open(pid_path) as pidfile:
                     pid = pidfile.read().strip()
                     perf_cmd = perf_template.format(perf_dir=perf_dir, pid=pid)
                     runner = common.sh(local_node, perf_cmd)
