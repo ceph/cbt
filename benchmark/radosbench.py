@@ -149,7 +149,7 @@ class Radosbench(Benchmark):
         with monitoring.monitor(run_dir) as monitor:
             logger.info('Running radosbench %s test.' % mode)
             ps = []
-            for i in xrange(self.concurrent_procs):
+            for i in range(self.concurrent_procs):
                 out_file = '%s/output.%s' % (run_dir, i)
                 objecter_log = '%s/objecter.%s.log' % (run_dir, i)
                 if self.pool_per_proc:
@@ -202,7 +202,7 @@ class Radosbench(Benchmark):
     def mkpools(self):
         with monitoring.monitor("%s/pool_monitoring" % self.run_dir):
             if self.pool_per_proc: # allow use of a separate storage pool per process
-                for i in xrange(self.concurrent_procs):
+                for i in range(self.concurrent_procs):
                     for node in settings.getnodes('clients').split(','):
                         node = node.rpartition("@")[2]
                         self.cluster.rmpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
@@ -217,7 +217,7 @@ class Radosbench(Benchmark):
     def parse(self, out_dir):
         for client in settings.getnodes('clients').split(','):
             host = settings.host_info(client)["host"]
-            for i in xrange(self.concurrent_procs):
+            for i in range(self.concurrent_procs):
                 result = {}
                 found = 0
                 out_file = '%s/output.%s.%s' % (out_dir, i, host)
