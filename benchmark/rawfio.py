@@ -13,8 +13,8 @@ logger = logging.getLogger("cbt")
 
 class RawFio(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(RawFio, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(RawFio, self).__init__(archive_dir, cluster, config)
         # comma-separated list of block devices to use inside the client host/VM/container
         self.block_device_list = config.get('block_devices', '/dev/vdb' )
         self.block_devices = [ d.strip() for d in self.block_device_list.split(',') ]

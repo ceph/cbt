@@ -14,8 +14,8 @@ from .benchmark import Benchmark
 
 class CephTestRados(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(CephTestRados, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(CephTestRados, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
 

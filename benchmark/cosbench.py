@@ -17,8 +17,8 @@ logger = logging.getLogger("cbt")
 
 class Cosbench(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(Cosbench, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(Cosbench, self).__init__(archive_dir, cluster, config)
 
         config = self.parse_conf(config)
 
