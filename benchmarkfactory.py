@@ -13,13 +13,13 @@ from benchmark.cosbench import Cosbench
 from benchmark.cephtestrados import CephTestRados
 from benchmark.getput import Getput
 
-def get_all(cluster, iteration):
-    for benchmark, config in sorted(settings.benchmarks.iteritems()):
+def get_all(archive, cluster, iteration):
+    for benchmark, config in sorted(settings.benchmarks.items()):
         default = {"benchmark": benchmark,
                    "iteration": iteration}
         for current in all_configs(config):
             current.update(default)
-            yield get_object(cluster, benchmark, current)
+            yield get_object(archive, cluster, benchmark, current)
 
 
 def all_configs(config):
@@ -32,8 +32,12 @@ def all_configs(config):
     cycle_over_names = []
     default = {}
 
-    for param, value in config.iteritems():
-        if isinstance(value, list):
+    for param, value in config.items():
+        # acceptable applies to benchmark as a whole, no need to it to
+        # the set for permutation
+        if param == 'acceptable':
+            default[param] = value
+        elif isinstance(value, list):
             cycle_over_lists.append(value)
             cycle_over_names.append(param)
         else:
@@ -44,24 +48,19 @@ def all_configs(config):
         current.update(zip(cycle_over_names, permutation))
         yield current
 
-def get_object(cluster, benchmark, bconfig):
-    if benchmark == "nullbench":
-        return Nullbench(cluster, bconfig)
-    if benchmark == "radosbench":
-        return Radosbench(cluster, bconfig)
-    if benchmark == "fio":
-        return Fio(cluster, bconfig)
-    if benchmark == "rbdfio":
-        return RbdFio(cluster, bconfig)
-    if benchmark == "kvmrbdfio":
-        return KvmRbdFio(cluster, bconfig)
-    if benchmark == "rawfio":
-        return RawFio(cluster, bconfig)
-    if benchmark == 'librbdfio':
-        return LibrbdFio(cluster, bconfig)
-    if benchmark == 'cosbench':
-        return Cosbench(cluster, bconfig)
-    if benchmark == 'cephtestrados':
-        return CephTestRados(cluster, bconfig)
-    if benchmark == 'getput':
-        return Getput(cluster, bconfig)
+def get_object(archive, cluster, benchmark, bconfig):
+    benchmarks = {
+        'nullbench': Nullbench,
+        'radosbench': Radosbench,
+        'fio': Fio,
+        'rbdfio': RbdFio,
+        'kvmrbdfio': KvmRbdFio,
+        'rawfio': RawFio,
+        'librbdfio': LibrbdFio,
+        'cosbench': Cosbench,
+        'cephtestrados': CephTestRados,
+        'getput': Getput}
+    try:
+        return benchmarks[benchmark](archive, cluster, bconfig)
+    except KeyError:
+        return None

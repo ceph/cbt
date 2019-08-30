@@ -11,7 +11,7 @@ import time
 import logging
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
@@ -220,7 +220,6 @@ class Cosbench(Benchmark):
             self.config["workload"]["workflow"]["workstage"].insert(0, workstage_init)
 
         self.prepare_xml(self.config["workload"])
-        return True
 
     def container_prepare_check(self):
         return self.container_prepared

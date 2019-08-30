@@ -3,7 +3,7 @@ import settings
 import logging
 import time
 
-from client_endpoints import ClientEndpoints
+from .client_endpoints import ClientEndpoints
 
 logger = logging.getLogger("cbt")
 

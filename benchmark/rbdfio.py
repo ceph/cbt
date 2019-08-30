@@ -6,7 +6,7 @@ import os
 import time
 import logging
 
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
@@ -75,9 +75,6 @@ class RbdFio(Benchmark):
         size = self.vol_size * 0.9 / self.concurrent_procs
         pre_cmd = 'sudo %s --ioengine=%s --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.ioengine, self.numjobs, size, self.names)
         common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
-
-        return True
-
 
     def run(self):
         super(RbdFio, self).run()

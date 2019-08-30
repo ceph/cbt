@@ -1,6 +1,6 @@
 import common
 
-from ceph_client_endpoints import CephClientEndpoints
+from .ceph_client_endpoints import CephClientEndpoints
 
 class LibrbdClientEndpoints(CephClientEndpoints):
     def __init__(self, cluster, config):

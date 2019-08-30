@@ -54,7 +54,8 @@ def main(argv):
 
     try:
         for iteration in range(settings.cluster.get("iterations", 0)):
-            benchmarks = benchmarkfactory.get_all(cluster, iteration)
+            archive_dir = settings.cluster.get('archive_dir')
+            benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             for b in benchmarks:
                 if b.exists():
                     continue

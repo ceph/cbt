@@ -9,7 +9,7 @@ import logging
 import json
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
@@ -49,7 +49,7 @@ class LibrbdFio(Benchmark):
         self.pool_name = config.get("poolname", "cbt-librbdfio")
         self.rbdname = config.get('rbdname', '')
 
-	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
+        self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = self.archive_dir
 
@@ -93,7 +93,6 @@ class LibrbdFio(Benchmark):
               ps.append(p)
           for p in ps:
               p.wait()
-        return True
 
     def run(self):
         super(LibrbdFio, self).run()

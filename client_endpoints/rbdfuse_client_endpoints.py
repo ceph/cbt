@@ -1,7 +1,7 @@
 import common
 import logging
 
-from ceph_client_endpoints import CephClientEndpoints
+from .ceph_client_endpoints import CephClientEndpoints
 
 logger = logging.getLogger("cbt")
 
