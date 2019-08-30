@@ -16,8 +16,8 @@ logger = logging.getLogger("cbt")
 
 class Getput(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(Getput, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(Getput, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
         self.runtime =  config.get('runtime', None)
