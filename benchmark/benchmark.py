@@ -98,3 +98,18 @@ class Benchmark(object):
 
     def __str__(self):
         return str(self.config)
+
+class Result:
+    def __init__(self, run, alias, result, baseline, stmt, accepted):
+        self.run = run
+        self.alias = alias
+        self.result = result
+        self.baseline = baseline
+        self.stmt = stmt
+        self.accepted = accepted
+
+    def __str__(self):
+        fmt = '{run}: {alias}: {stmt}:: {result}/{baseline}  => {status}'
+        return fmt.format(run=self.run, alias=self.alias, stmt=self.stmt,
+                          result=self.result, baseline=self.baseline,
+                          status="accepted" if self.accepted else "rejected")

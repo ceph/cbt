@@ -10,7 +10,7 @@ import re
 import json
 
 from cluster.ceph import Ceph
-from .benchmark import Benchmark
+from .benchmark import Benchmark, Result
 from .lis import Lispy, Env
 
 logger = logging.getLogger("cbt")
@@ -46,11 +46,15 @@ class Radosbench(Benchmark):
         self.prefill_time = config.get('prefill_time', None)
         self.prefill_objects = config.get('prefill_objects', None)
 
-    def exists(self):
+    def exists(self, expect_exists=False):
         if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
+            if not expect_exists:
+                logger.info('Skipping existing test in %s.', self.out_dir)
             return True
-        return False
+        else:
+            if expect_exists:
+                logger.info('test result does not exist in %s.', self.out_dir)
+            return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
@@ -239,31 +243,27 @@ class Radosbench(Benchmark):
         logger.info('Convert results to json format.')
         self.parse(out_dir)
 
-    def _compare_client_results(self, fnames):
+    def _compare_client_results(self, client_run, fnames):
         # normalize the names
         aliases = {'bandwidth': 'Bandwidth (MB/sec)',
                    'iops_avg': 'Average IOPS',
                    'iops_stddev': 'Stddev IOPS',
                    'latency_avg': 'Average Latency(s)'}
         json_outputs = []
-        rejected = 0
+        compare_results = []
         for fname in fnames:
             with open(fname) as f:
                 json_outputs.append(json.load(f))
-            for alias, stmt in self.acceptable:
-                name = aliases[alias]
-                result, baseline = [float(j[name] for j in json_outputs)]
-                # safer than eval()
-                env = Env(result=result, baseline=baseline)
-                if not Lispy().eval(stmt, env):
-                    fmt = '{run}/{client}/{proc}: {alias}: ' \
-                        '{result}/{baseline}: rejected by "{stmt}"'
-                    logger.warn(fmt.format(
-                        run=run, client=client, proc=proc,
-                        alias=alias, result=result, baseline=baseline,
-                        stmt=stmt))
-                    rejected += 1
-        return rejected
+        for alias, stmt in self.acceptable.items():
+            name = aliases[alias]
+            result, baseline = [float(j[name]) for j in json_outputs]
+            # safer than eval()
+            env = Env(None, result=result, baseline=baseline)
+            lispy = Lispy()
+            accepted = lispy.eval(lispy.parse(stmt), env)
+            result = Result(client_run, alias, result, baseline, stmt, accepted)
+            compare_results.append(result)
+        return compare_results
 
     def evaluate(self, baseline):
         runs = []
@@ -273,19 +273,22 @@ class Radosbench(Benchmark):
             runs.append('write')
         if not self.write_only:
             runs.append(self.readmode)
-        rejected = 0
+        results = []
         for run in runs:
             out_dirs = [os.path.join(self.out_dir, run),
                         os.path.join(baseline.out_dir, run)]
             for client in settings.getnodes('clients').split(','):
                 host = settings.host_info(client)["host"]
                 for proc in range(self.concurrent_procs):
-                    fname = 'json_output.{i}.{host}'.format(proc=proc,
-                                                            host=host)
+                    fname = 'json_output.{proc}.{host}'.format(proc=proc,
+                                                               host=host)
+                    client_run = '{run}/{client}/{proc}'.format(run=run, client=client, proc=proc)
                     fpaths  = [os.path.join(d, fname) for d in out_dirs]
-                    rejected += self._compare_client_results(fpaths)
+                    compare_results = self._compare_client_results(client_run, fpaths)
+                    rejected = sum(not result.accepted for result in compare_results)
+                    results.extend(compare_results)
             # TODO: check results from monitors
-        return rejected
+        return results
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())

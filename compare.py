@@ -24,32 +24,46 @@ def main():
         '-b', '--baseline',
         required=True,
         help='Directory where the baseline results are archived.')
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='be chatty')
     ctx = parser.parse_args(sys.argv[1:])
     # settings.initialize() expects ctx.config_file and ctx.conf
     ctx.config_file = os.path.join(ctx.archive, 'results', 'cbt_config.yaml')
     ctx.conf = None
     settings.initialize(ctx)
 
-    rejected = 0
+    results = []
     for iteration in range(settings.cluster.get('iterations', 0)):
         cluster = Ceph(settings.cluster)
         benchmarks = zip(benchmarkfactory.get_all(ctx.archive, cluster, iteration),
                          benchmarkfactory.get_all(ctx.baseline, cluster, iteration))
         for current, baseline in benchmarks:
-            if not current.exists():
+            if not current.exists(True):
                 logger.error("tested: %s result does not exist in %s",
                              current, ctx.archive)
                 break
-            if not baseline.exists():
+            if not baseline.exists(True):
                 logger.error("baseline: %s result does not exist in %s",
                              baseline, ctx.baseline)
                 break
-            rejected += current.evaluated(baseline)
+            results.extend(current.evaluate(baseline))
+
+    accepted = sum(result.accepted for result in results)
+    if ctx.verbose:
+        for result in results:
+            if result.accepted:
+                logger.info(result)
+            else:
+                logger.warning(result)
+
+    rejected = len(results) - accepted
     if rejected > 0:
-        logger.warn("%d metrics failed to pass the check", rejected)
-        sys.exit(1, "")
+        logger.warning("%d tests failed out of %d", rejected, len(results))
+        sys.exit(1)
     else:
-        logger.info("all tests passed.")
+        logger.info("All %d tests passed.", len(results))
 
 if __name__ == '__main__':
     main()

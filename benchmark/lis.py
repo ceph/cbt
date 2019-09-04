@@ -54,12 +54,17 @@ class Lispy:
 class Env(dict):
     @staticmethod
     def near(lhs, rhs, abs_error):
-        return (abs(lhs - rhs) / float(rhs)) <= abs_error
+        if rhs == 0:
+            return lhs == rhs
+        else:
+            return (abs(lhs - rhs) / float(rhs)) <= abs_error
 
-    def __init__(self, **locals):
+    def __init__(self, outer, **locals):
         if locals:
             self.update(locals)
+        self.outer = outer
         # pass 'result' and 'baseline' to some functions
+        # TODO: return "goodness" instead of a boolean
         self.update({
             'less': lambda: self.eval('result') < self.eval('baseline'),
             'greater': lambda: self.eval('result') > self.eval('baseline'),
