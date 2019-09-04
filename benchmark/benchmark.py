@@ -6,6 +6,7 @@ import common
 import monitoring
 import hashlib
 import os
+import json
 import yaml
 
 logger = logging.getLogger('cbt')
@@ -15,10 +16,12 @@ class Benchmark(object):
         self.acceptable = config.pop('acceptable', [])
         self.config = config
         self.cluster = cluster
+        hashable = json.dumps(sorted(self.config.items())).encode()
+        digest = hashlib.sha1(hashable).hexdigest()[:8]
         self.archive_dir = os.path.join(archive_dir,
                                         'results',
                                         '{:0>8}'.format(config.get('iteration')),
-                                        'id{}'.format(hash(frozenset((self.config).items()))))
+                                        'id-{}'.format(digest))
         self.run_dir = os.path.join(settings.cluster.get('tmp_dir'),
                                     '{:0>8}'.format(config.get('iteration')),
                                     self.getclass())
