@@ -6,6 +6,7 @@ import common
 import monitoring
 import hashlib
 import os
+import json
 import yaml
 
 logger = logging.getLogger('cbt')
@@ -15,10 +16,12 @@ class Benchmark(object):
         self.acceptable = config.pop('acceptable', [])
         self.config = config
         self.cluster = cluster
+        hashable = json.dumps(sorted(self.config.items())).encode()
+        digest = hashlib.sha1(hashable).hexdigest()[:8]
         self.archive_dir = os.path.join(archive_dir,
                                         'results',
                                         '{:0>8}'.format(config.get('iteration')),
-                                        'id{}'.format(hash(frozenset((self.config).items()))))
+                                        'id-{}'.format(digest))
         self.run_dir = os.path.join(settings.cluster.get('tmp_dir'),
                                     '{:0>8}'.format(config.get('iteration')),
                                     self.getclass())
@@ -95,3 +98,18 @@ class Benchmark(object):
 
     def __str__(self):
         return str(self.config)
+
+class Result:
+    def __init__(self, run, alias, result, baseline, stmt, accepted):
+        self.run = run
+        self.alias = alias
+        self.result = result
+        self.baseline = baseline
+        self.stmt = stmt
+        self.accepted = accepted
+
+    def __str__(self):
+        fmt = '{run}: {alias}: {stmt}:: {result}/{baseline}  => {status}'
+        return fmt.format(run=self.run, alias=self.alias, stmt=self.stmt,
+                          result=self.result, baseline=self.baseline,
+                          status="accepted" if self.accepted else "rejected")
