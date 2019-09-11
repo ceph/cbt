@@ -37,15 +37,19 @@ class CheckedPopen(object):
     # we transparently check return codes for this method now so callers don't have to
 
     def communicate(self, input=None):
-        (stdoutdata, stderrdata) = self.popen_obj.communicate(input=input)
+        stdoutdata, stderrdata = self.popen_obj.communicate(input=input)
+        stdoutdata = stdoutdata.decode()
+        stderrdata = stderrdata.decode()
         self.myrtncode = self.popen_obj.returncode  # THIS is the thing we couldn't do before
         if self.myrtncode != self.OK:
             if not self.continue_if_error:
-                raise Exception(str(self)+'\nstdout:\n'+stdoutdata+'\nstderr\n'+stderrdata)
+                raise Exception('\n'.join([str(self),
+                                           'stdout:', stdoutdata,
+                                           'stderr:', stderrdata]))
             else:
                 logger.warning(join_nostr(self.args))
                 logger.warning('error %d seen, continuing anyway...'%self.myrtncode)
-        return (stdoutdata, stderrdata)
+        return stdoutdata, stderrdata
 
     def wait(self):
         self.communicate()
