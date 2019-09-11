@@ -13,7 +13,7 @@ logger = logging.getLogger('cbt')
 
 class Benchmark(object):
     def __init__(self, archive_dir, cluster, config):
-        self.acceptable = config.pop('acceptable', [])
+        self.acceptable = config.pop('acceptable', {})
         self.config = config
         self.cluster = cluster
         hashable = json.dumps(sorted(self.config.items())).encode()
