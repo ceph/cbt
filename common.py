@@ -21,6 +21,8 @@ class CheckedPopen(object):
     def __init__(self, args, continue_if_error=False, shell=False):
         logger.debug('CheckedPopen continue_if_error=%s, shell=%s args=%s'
                      % (str(continue_if_error), str(shell), join_nostr(args)))
+        env = dict(os.environ)
+        env['LC_ALL'] = 'C'
         self.args = args[:]
         self.myrtncode = self.UNINIT
         self.continue_if_error = continue_if_error
@@ -29,7 +31,8 @@ class CheckedPopen(object):
                                           stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE,
                                           preexec_fn=os.setsid,
-                                          close_fds=True)
+                                          close_fds=True,
+                                          env=env)
 
     def __str__(self):
        return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(join_nostr(self.args), str(self.continue_if_error), self.myrtncode)
