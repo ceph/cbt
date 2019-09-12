@@ -41,8 +41,8 @@ class CheckedPopen(object):
 
     def communicate(self, input=None):
         stdoutdata, stderrdata = self.popen_obj.communicate(input=input)
-        stdoutdata = stdoutdata.decode()
-        stderrdata = stderrdata.decode()
+        stdoutdata = stdoutdata.decode(errors='ignore')
+        stderrdata = stderrdata.decode(errors='ignore')
         self.myrtncode = self.popen_obj.returncode  # THIS is the thing we couldn't do before
         if self.myrtncode != self.OK:
             if not self.continue_if_error:
