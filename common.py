@@ -21,6 +21,8 @@ class CheckedPopen(object):
     def __init__(self, args, continue_if_error=False, shell=False):
         logger.debug('CheckedPopen continue_if_error=%s, shell=%s args=%s'
                      % (str(continue_if_error), str(shell), join_nostr(args)))
+        env = dict(os.environ)
+        env['LC_ALL'] = 'C'
         self.args = args[:]
         self.myrtncode = self.UNINIT
         self.continue_if_error = continue_if_error
@@ -29,7 +31,8 @@ class CheckedPopen(object):
                                           stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE,
                                           preexec_fn=os.setsid,
-                                          close_fds=True)
+                                          close_fds=True,
+                                          env=env)
 
     def __str__(self):
        return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(join_nostr(self.args), str(self.continue_if_error), self.myrtncode)
@@ -38,8 +41,8 @@ class CheckedPopen(object):
 
     def communicate(self, input=None):
         stdoutdata, stderrdata = self.popen_obj.communicate(input=input)
-        stdoutdata = stdoutdata.decode()
-        stderrdata = stderrdata.decode()
+        stdoutdata = stdoutdata.decode(errors='ignore')
+        stderrdata = stderrdata.decode(errors='ignore')
         self.myrtncode = self.popen_obj.returncode  # THIS is the thing we couldn't do before
         if self.myrtncode != self.OK:
             if not self.continue_if_error:
