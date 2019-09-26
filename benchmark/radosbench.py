@@ -68,8 +68,8 @@ class Radosbench(Benchmark):
 
     def get_rados_version(self):
         stdout, _ = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
-        m = (re.findall("version (\d+)", stdout) or
-             re.findall("version v(\d+)", stdout) or
+        m = (re.findall("version (\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
+             re.findall("version v(\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
              (255, 0))
         return int(m[0])
 
@@ -124,20 +124,20 @@ class Radosbench(Benchmark):
 
         # Operation type 
         op_type = mode
-        if mode is 'prefill':
+        if mode == 'prefill':
             op_type = 'write'
 
-        if op_type in ['write'] or rados_version < 9:
+        if op_type == 'write':
             op_size_str = '-b %s' % self.op_size
         else:
             op_size_str = ''  
 
         # Write to OMAP
         write_omap_str = ''
-        if self.write_omap and rados_version < 9:
-           raise ValueError('write_omap not supported by rados_version < 9')
-        if self.write_omap and rados_version > 9:
-           write_omap_str = '--write-omap'
+        if self.write_omap:
+            if rados_version < 10:
+                raise ValueError('write_omap not supported by rados_version < 10')
+            write_omap_str = '--write-omap'
 
         run_dir = os.path.join(self.run_dir, run_dir)
         common.make_remote_dir(run_dir)
@@ -146,7 +146,7 @@ class Radosbench(Benchmark):
         self.cluster.dump_config(run_dir)
 
         # Run the backfill testing thread if requested (but not for prefill)
-        if mode is not 'prefill' and 'recovery_test' in self.cluster.config:
+        if mode != 'prefill' and 'recovery_test' in self.cluster.config:
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
@@ -194,7 +194,7 @@ class Radosbench(Benchmark):
                 p.wait()
 
         # If we were doing recovery, wait until it's done (but not for prefill).
-        if mode is not 'prefill' and 'recovery_test' in self.cluster.config:
+        if mode != 'prefill' and 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
         # Finally, get the historic ops
