@@ -134,10 +134,10 @@ class Radosbench(Benchmark):
 
         # Write to OMAP
         write_omap_str = ''
-        if self.write_omap and rados_version < 10:
-           raise ValueError('write_omap not supported by rados_version < 10')
-        if self.write_omap and rados_version > 9:
-           write_omap_str = '--write-omap'
+        if self.write_omap:
+            if rados_version < 10:
+                raise ValueError('write_omap not supported by rados_version < 10')
+            write_omap_str = '--write-omap'
 
         run_dir = os.path.join(self.run_dir, run_dir)
         common.make_remote_dir(run_dir)
