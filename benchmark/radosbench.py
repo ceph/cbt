@@ -127,15 +127,15 @@ class Radosbench(Benchmark):
         if mode is 'prefill':
             op_type = 'write'
 
-        if op_type in ['write']:
+        if op_type == 'write':
             op_size_str = '-b %s' % self.op_size
         else:
             op_size_str = ''  
 
         # Write to OMAP
         write_omap_str = ''
-        if self.write_omap and rados_version < 9:
-           raise ValueError('write_omap not supported by rados_version < 9')
+        if self.write_omap and rados_version < 10:
+           raise ValueError('write_omap not supported by rados_version < 10')
         if self.write_omap and rados_version > 9:
            write_omap_str = '--write-omap'
 
