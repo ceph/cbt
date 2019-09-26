@@ -127,7 +127,7 @@ class Radosbench(Benchmark):
         if mode is 'prefill':
             op_type = 'write'
 
-        if op_type in ['write'] or rados_version < 9:
+        if op_type in ['write']:
             op_size_str = '-b %s' % self.op_size
         else:
             op_size_str = ''  
