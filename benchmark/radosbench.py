@@ -124,7 +124,7 @@ class Radosbench(Benchmark):
 
         # Operation type 
         op_type = mode
-        if mode is 'prefill':
+        if mode == 'prefill':
             op_type = 'write'
 
         if op_type == 'write':
@@ -146,7 +146,7 @@ class Radosbench(Benchmark):
         self.cluster.dump_config(run_dir)
 
         # Run the backfill testing thread if requested (but not for prefill)
-        if mode is not 'prefill' and 'recovery_test' in self.cluster.config:
+        if mode != 'prefill' and 'recovery_test' in self.cluster.config:
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
@@ -194,7 +194,7 @@ class Radosbench(Benchmark):
                 p.wait()
 
         # If we were doing recovery, wait until it's done (but not for prefill).
-        if mode is not 'prefill' and 'recovery_test' in self.cluster.config:
+        if mode != 'prefill' and 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
         # Finally, get the historic ops
