@@ -68,8 +68,8 @@ class Radosbench(Benchmark):
 
     def get_rados_version(self):
         stdout, _ = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
-        m = (re.findall("version (\d+)", stdout) or
-             re.findall("version v(\d+)", stdout) or
+        m = (re.findall("version (\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
+             re.findall("version v(\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
              (255, 0))
         return int(m[0])
 
