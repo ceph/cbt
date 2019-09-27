@@ -757,7 +757,7 @@ class Ceph(Cluster):
         dp_option = ''
         if data_pool:
             dp_option = "--data-pool %s" % data_pool
-        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order)).communicate()
+        common.pdsh(settings.getnodes('head'), str('%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order))).communicate()
 
     def unmount_all(self):
         # Should take care of pretty much everything so long as wierd mnt_dirs aren't used.
