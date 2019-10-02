@@ -11,7 +11,9 @@ logger = logging.getLogger("cbt")
 
 
 def join_nostr(command):
-    return command if isinstance(command, str) else ' '.join(command)
+    if isinstance(command, list):
+        return ' '.join(command)
+    return command
 
 # this class overrides the communicate() method to check the return code and
 # throw an exception if return code is not OK
