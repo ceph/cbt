@@ -22,13 +22,13 @@ class ClientEndpoints(object):
     def get_endpoints(self):
         return self.endpoints
 
-    def get_endpoints_type(self):
-        return self.endpoints_type
+    def get_endpoint_type(self):
+        return self.endpoint_type
 
     def get_endpoints_per_client(self):
         return self.endpoints_per_client
 
-    def get_endpoints_size(self):
+    def get_endpoint_size(self):
         return self.endpoint_size
 
     def create(self):

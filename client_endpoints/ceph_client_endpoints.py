@@ -70,7 +70,7 @@ class CephClientEndpoints(ClientEndpoints):
                 time.sleep(1)
                 self.mount_fs_helper(node, dir_name)
             self.endpoints.append(dir_name)
-        self.endpoints_type = "directory"
+        self.endpoint_type = "directory"
         return self.get_endpoints()
 
     def mount_fs_helper(self, node, dir_name):
@@ -120,7 +120,7 @@ class CephClientEndpoints(ClientEndpoints):
                 common.pdsh(node, 'sudo mount -t xfs %s %s' % (rbd_device, dir_name),
                             continue_if_error=False).communicate()
             self.endpoints.append(dir_name)
-        self.endpoints_type = "directory"
+        self.endpoint_type = "directory"
         return self.get_endpoints()
 
     def map_rbd(self, node, rbd_name):

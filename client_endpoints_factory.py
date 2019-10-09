@@ -9,7 +9,7 @@ from client_endpoints.rbdfuse_client_endpoints import RbdFuseClientEndpoints
 from client_endpoints.rbdtcmu_client_endpoints import RbdTcmuClientEndpoints
 from client_endpoints.cephfskernel_client_endpoints import CephfsKernelClientEndpoints
 from client_endpoints.cephfsfuse_client_endpoints import CephfsFuseClientEndpoints
-
+from client_endpoints.rgws3_client_endpoints import RgwS3ClientEndpoints
 ce_objects = {}
 
 def get(cluster, name):
@@ -45,6 +45,8 @@ def get_ceph(cluster, name):
         ce_objects[key] = CephfsKernelClientEndpoints(cluster, ce_config)
     elif driver == "cephfs-fuse":
         ce_objects[key] = CephfsFuseClientEndpoints(cluster, ce_config)
+    elif driver == "s3":
+        ce_objects[key] = RgwS3ClientEndpoints(cluster, ce_config)
     else:
         raise ValueError('%s clusters do not support "%s" client_endpoints.' % (cclass, driver))
     return ce_objects[key]

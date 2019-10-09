@@ -4,6 +4,7 @@ import itertools
 import settings
 from benchmark.radosbench import Radosbench
 from benchmark.fio import Fio
+from benchmark.hsbench import Hsbench
 from benchmark.rbdfio import RbdFio
 from benchmark.rawfio import RawFio
 from benchmark.kvmrbdfio import KvmRbdFio
@@ -53,6 +54,7 @@ def get_object(archive, cluster, benchmark, bconfig):
         'nullbench': Nullbench,
         'radosbench': Radosbench,
         'fio': Fio,
+        'hsbench': Hsbench,
         'rbdfio': RbdFio,
         'kvmrbdfio': KvmRbdFio,
         'rawfio': RawFio,

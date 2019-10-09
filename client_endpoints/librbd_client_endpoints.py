@@ -14,5 +14,5 @@ class LibrbdClientEndpoints(CephClientEndpoints):
         for ep_num in xrange(0, self.endpoints_per_client):
             rbd_name = self.get_local_rbd_name(ep_num)
             self.endpoints.append("%s/%s" % (self.pool, rbd_name))
-        self.endpoints_type = "rbd"
+        self.endpoint_type = "rbd"
         return self.get_endpoints()

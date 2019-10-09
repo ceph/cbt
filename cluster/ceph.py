@@ -134,6 +134,7 @@ class Ceph(Cluster):
         self.stoprequest = threading.Event()
         self.haltrequest = threading.Event()
 
+        self.urls = []
         self.auth_urls = []
         self.osd_count = config.get('osds_per_node') * len(settings.getnodes('osds'))
 
@@ -475,11 +476,14 @@ class Ceph(Cluster):
                 port = rgwsettings.get('port', None)
                 ssl_certificate = rgwsettings.get('ssl_certificate', None)
 
-                # Build the auth_url
-                auth_url = "http://" if ssl_certificate is None else "https://"
-                auth_url += host
-                auth_url += ":7480" if port is None else ":%s" % port
-                auth_url += "/auth/v1.0"
+                # Build the urls (s3)
+                url = "http://" if ssl_certificate is None else "https://"
+                url += host
+                url += ":7480" if port is None else ":%s" % port
+                self.urls.append(url)
+
+                # Build the auth urls (swift)
+                auth_url = url + "/auth/v1.0"
                 self.auth_urls.append(auth_url)
 
                 # set the rgw_frontends
@@ -776,8 +780,19 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_nbd_cmd).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo targetcli clearconfig confirm=True', continue_if_error=False).communicate()
 
+    def get_urls(self):
+        return self.urls
+
     def get_auth_urls(self):
         return self.auth_urls
+
+    def add_s3_user(self, user, access_key, secret_key):
+        if self.urls:
+            cmd = "%s" % self.radosgw_admin_cmd
+            node = settings.getnodes('head')
+            common.pdsh(node, '%s -c %s user create --uid=%s --display-name=%s' % (cmd, self.tmp_conf, user, user)).communicate()
+            common.pdsh(node, '%s -c %s key create --uid=%s --key-type=s3 --access_key=%s --secret_key=%s' % (cmd, self.tmp_conf, user, access_key, secret_key)).communicate()
+            common.pdsh(node, '%s -c %s user modify --uid=%s --max-buckets=0' % (cmd, self.tmp_conf, user)).communicate()
 
     def add_swift_user(self, user, subuser, key):
         if self.auth_urls:
@@ -790,9 +805,13 @@ class Ceph(Cluster):
 
     def make_rgw_pools(self):
         rgw_pools = self.config.get('rgw_pools', {})
+        self.mkpool('.rgw.root', rgw_pools.get('root', 'default'), 'rgw')
+        self.mkpool('default.rgw.control', rgw_pools.get('control', 'default'), 'rgw')
+        self.mkpool('default.rgw.meta', rgw_pools.get('meta', 'default'), 'rgw')
+        self.mkpool('default.rgw.log', rgw_pools.get('log', 'default'), 'rgw')
         self.mkpool('default.rgw.buckets', rgw_pools.get('buckets', 'default'), 'rgw')
-        self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index'), 'default', 'rgw')
-        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data'), 'default', 'rgw')
+        self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'), 'rgw')
+        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default'), 'rgw')
 
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
