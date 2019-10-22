@@ -69,7 +69,7 @@ class Fio(Benchmark):
             self.client_endpoints_object.initialize()
             new_ep = True
         
-        self.endpoints_type = self.client_endpoints_object.get_endpoints_type()
+        self.endpoint_type = self.client_endpoints_object.get_endpoint_type()
         self.endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()
         self.endpoints = self.client_endpoints_object.get_endpoints()
 
@@ -79,10 +79,10 @@ class Fio(Benchmark):
         if aggregate_size > endpoint_size:
             raise ValueError("Aggregate fio data size (%dKB) exceeds end_point size (%dKB)! Please check numjobs, procs_per_endpoint, and size settings." % (aggregate_size, endpoint_size))
 
-        if self.endpoints_type == 'rbd' and self.ioengine != 'rbd':
+        if self.endpoint_type == 'rbd' and self.ioengine != 'rbd':
             logger.warn('rbd endpoints must use the librbd fio engine! Setting ioengine=rbd')
             self.ioengine = 'rbd'
-        if self.endpoints_type == 'rbd' and self.direct != '1':
+        if self.endpoint_type == 'rbd' and self.direct != '1':
             logger.warn('rbd endpoints must use O_DIRECT. Setting direct=1')
             self.direct = '1'
 
@@ -95,12 +95,12 @@ class Fio(Benchmark):
         cmd = ''
 
         # typical directory endpoints
-        if self.endpoints_type == 'directory':
+        if self.endpoint_type == 'directory':
             for proc_num in xrange(self.procs_per_endpoint):
                 cmd += ' --name=%s/`%s`-%s-%s' % (self.endpoints[ep_num], common.get_fqdn_cmd(), ep_num, proc_num)
 
         # handle rbd endpoints with the librbbd engine.
-        elif self.endpoints_type == 'rbd':
+        elif self.endpoint_type == 'rbd':
             pool_name, rbd_name = self.endpoints[ep_num].split("/")
             cmd += ' --clientname=admin'
             cmd += ' --pool=%s' % pool_name
