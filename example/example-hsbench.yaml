@@ -1,0 +1,64 @@
+cluster:
+  user: 'user'
+  head: "localhost"
+  clients: ["localhost"]
+  osds: ["localhost"]
+  mons:
+    localhost:
+      a: "127.0.0.1:6789"
+  mgrs:
+    localhost:
+      a: ~
+  rgws:
+    localhost:
+      client.radosgw.gateway:
+        host: "127.0.0.1"
+  osds_per_node: 1
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048'
+  mount_opts: '-o inode64,noatime,logbsize=256k'
+  conf_file: '/home/user/ceph_tests/ceph.conf'
+  iterations: 1 
+  use_existing: False
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  ceph-authtool_cmd: "/usr/local/bin/ceph-authtool"
+  ceph-osd_cmd: "env -i TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728 /usr/local/bin/ceph-osd"
+  ceph-rgw_cmd: "env -i TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728 /usr/local/bin/radosgw"
+  ceph-mon_cmd: "/usr/local/bin/ceph-mon"
+  ceph-run_cmd: "/usr/local/bin/ceph-run"
+  rados_cmd: "/usr/local/bin/rados"
+  ceph_cmd: "/usr/local/bin/ceph"
+  rbd_cmd: "/usr/local/bin/rbd"
+  ceph-mgr_cmd: "/usr/local/bin/ceph-mgr"
+  radosgw-admin_cmd: "/usr/local/bin/radosgw-admin"
+
+  osd_valgrind: "massif"
+  pool_profiles:
+    rgw:
+      pg_size: 128 
+      pgp_size: 128
+      replication: 1
+  rgw_pools:
+    control: rgw
+    meta: rgw
+    log: rgw
+    buckets: rgw
+    buckets_data: rgw
+    buckets_index: rgw
+
+client_endpoints:
+  hsbench:
+    driver: 's3'
+    endpoints_per_client: 1
+
+benchmarks:
+    hsbench:
+      cmd_path: '/home/<user>/go/src/github.com/markhpc/hsbench/hsbench'
+      client_endpoints: 'hsbench'
+      objects: 10000
+      duration: -1 
+      buckets: 1
+      threads: 16
+      size: '4K'
+      report_interval: 10
