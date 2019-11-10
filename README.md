@@ -41,7 +41,7 @@ Manager.
 
 ### rbdfio
 
-The rbdfio benchmark uses the flexible IO tester (fio) to excercise a RBD
+The rbdfio benchmark uses the flexible IO tester (fio) to exercise a RBD
 volume that has been mapped to a block device using the KRBD kernel driver.
 This module is most relevant for simulating the data path for applications
 that need a block device, but wont for whatever reason be ran inside a virtual
@@ -51,15 +51,15 @@ machine.
 
 CBT uses several libraries and tools to run:
 
- 1. python-yaml - A YAML library for python used for reading 
+ 1. python-yaml - A YAML library for python used for reading
     configuration files.
  2. python-lxml - Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API
- 3. ssh (and scp) - remote secure command executation and data 
+ 3. ssh (and scp) - remote secure command execution and data
     transfer
  4. pdsh (and pdcp) - a parallel ssh and scp implementation
  5. ceph - A scalable distributed storage system
 
-Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributations 
+Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributions
 at this time, though the rawhide pdsh packages install and are usable.  The
 RPMs for these packages are available here:
 
@@ -74,7 +74,7 @@ Optional tools and benchmarks can be used if desired:
  3. seekwatcher - create graphs and movies from blktrace data
  4. perf - system and process profiling
  5. valgrind - runtime memory and cpu profiling of specific processes
- 6. fio - benchmark suite with integrated posix, libaio, and librbd 
+ 6. fio - benchmark suite with integrated posix, libaio, and librbd
     support
  7. cosbench - object storage benchmark from Intel
 
@@ -105,14 +105,14 @@ file on all remote hosts.
 This user must also be able to run certain commands with sudo.  The easiest
 method to enable this is to simply enable blanket passwordless sudo access for
 this user, though this is only appropriate in laboratory environments.  This
-may be acommplished by running visudo and adding something like:
+may be accomplished by running visudo and adding something like:
 
 ```bash
 # passwordless sudo for cbt
 <user>    ALL=(ALL)       NOPASSWD:ALL
 ```
 
-Where `<user>` is the user that will have password sudo access.  
+Where `<user>` is the user that will have password sudo access.
 Please see your OS documentation for specific details.
 
 In addition to the above, it will be required to add all osds and mons into the
@@ -124,10 +124,10 @@ tty. If this is the case, commend out the `Defaults requiretty` line in visudo.
 
 ## DISK PARTITIONING
 
-Currently CBT looks for specific partition labels in 
-`/dev/disk/by-partlabel` for the Ceph OSD data and journal partitions.  
-At some point in the future this will be made more flexible, for now 
-this is the expected behavior.  Specifically on each OSD host 
+Currently CBT looks for specific partition labels in
+`/dev/disk/by-partlabel` for the Ceph OSD data and journal partitions.
+At some point in the future this will be made more flexible, for now
+this is the expected behavior.  Specifically on each OSD host
 partitions should be specified with the following gpt labels:
 
 ```
@@ -135,10 +135,10 @@ osd-device-<num>-data
 osd-device-<num>-journal
 ```
 
-where `<num>` is a device ordered starting at 0 and ending with the 
-last device on the system.  Currently cbt assumes that all nodes in 
-the system have the same number of devices.  A script is available 
-that shows an example of how we create partition labels in our test 
+where `<num>` is a device ordered starting at 0 and ending with the
+last device on the system.  Currently cbt assumes that all nodes in
+the system have the same number of devices.  A script is available
+that shows an example of how we create partition labels in our test
 lab here:
 
 <https://github.com/ceph/cbt/blob/master/tools/mkpartmagna.sh>
@@ -198,7 +198,7 @@ are to be used in this test:
         auth service required = none
         auth client required = none
         keyring = /tmp/cbt/ceph/keyring
-        osd pg bits = 8  
+        osd pg bits = 8
         osd pgp bits = 8
         log to syslog = false
         log file = /tmp/cbt/ceph/log/$name.log
@@ -219,9 +219,9 @@ are to be used in this test:
 
 [mon]
         mon data = /tmp/cbt/ceph/mon.$id
-        
+
 [mon.a]
-        host = burnupiX 
+        host = burnupiX
         mon addr = 127.0.0.1:6789
 
 [osd.0]
@@ -230,7 +230,7 @@ are to be used in this test:
         osd journal = /dev/disk/by-partlabel/osd-device-0-journal
 ```
 
-To run this benchmark suite, cbt is launched with an output archive 
+To run this benchmark suite, cbt is launched with an output archive
 directory to store the results and the yaml configuration file to use:
 
 ```bash
