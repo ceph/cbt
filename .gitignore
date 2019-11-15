@@ -1,2 +1,9 @@
 *.pyc
 *.pyo
+collectl*
+pdsh*
+iperf*
+iftop*
+fio
+FlameGraph
+pmu-tools
