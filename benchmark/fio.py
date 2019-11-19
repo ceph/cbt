@@ -75,7 +75,7 @@ class Fio(Benchmark):
 
         # Error out if the aggregate fio size is going to be larger than the endpoint size
         aggregate_size = self.numjobs * self.procs_per_endpoint * self.size
-        endpoint_size = self.client_endpoints_object.get_endpoints_size()
+        endpoint_size = self.client_endpoints_object.get_endpoint_size()
         if aggregate_size > endpoint_size:
             raise ValueError("Aggregate fio data size (%dKB) exceeds end_point size (%dKB)! Please check numjobs, procs_per_endpoint, and size settings." % (aggregate_size, endpoint_size))
 
