@@ -19,13 +19,13 @@ class Fio(Benchmark):
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
-        self.direct = str(config.get('direct', 1))
-        self.time =  str(config.get('time', None))
+        self.direct = config.get('direct', 1)
+        self.time =  config.get('time', None)
         self.time_based = bool(config.get('time_based', False))
-        self.ramp = str(config.get('ramp', None))
+        self.ramp = config.get('ramp', None)
         self.iodepth = config.get('iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
-        self.end_fsync = str(config.get('end_fsync', 0))
+        self.end_fsync = config.get('end_fsync', 0)
         self.mode = config.get('mode', 'write')
         self.rwmixread = config.get('rwmixread', 50)
         self.rwmixwrite = 100 - self.rwmixread
@@ -115,7 +115,7 @@ class Fio(Benchmark):
         cmd = 'sudo %s' % self.cmd_path
         cmd += ' --ioengine=%s' % self.ioengine
         cmd += ' --rw=write'
-        cmd += ' --numjobs=%s' % self.numjobs
+        cmd += ' --numjobs=%d' % self.numjobs
         cmd += ' --bs=4M'
         cmd += ' --size %dM' % self.size
         cmd += ' --output-format=%s' % self.fio_out_format
@@ -143,29 +143,29 @@ class Fio(Benchmark):
         cmd += ' --direct=%s' % self.direct
         cmd += ' --bs=%dB' % self.op_size
         cmd += ' --iodepth=%d' % self.iodepth
-        cmd += ' --end_fsync=%s' % self.end_fsync
+        cmd += ' --end_fsync=%d' % self.end_fsync
         cmd += ' --rw=%s' % self.mode
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
             cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
         if self.random_distribution is not None:
             cmd += ' --random_distribution=%s' % self.random_distribution
         if self.rate_iops is not None:
-            cmd += ' --rate_iops=%s' % self.rate_iops
+            cmd += ' --rate_iops=%d' % self.rate_iops
         if self.norandommap:
             cmd += ' --norandommap'
 
         # Set the output size
         if self.size:
             cmd += ' --size=%dM' % self.size 
-        cmd += ' --numjobs=%s' % self.numjobs
+        cmd += ' --numjobs=%d' % self.numjobs
 
         # Time options
         if self.time is not None:
-            cmd += ' --runtime=%s' % self.time
+            cmd += ' --runtime=%d' % self.time
         if self.time_based is True:
             cmd += ' --time_based'
         if self.ramp is not None:
-            cmd += ' --ramp_time=%s' % self.ramp
+            cmd += ' --ramp_time=%d' % self.ramp
 
         # Put extra options before logging and output for conveneince of debugging
         cmd += self.fio_command_extra(ep_num)
@@ -176,7 +176,7 @@ class Fio(Benchmark):
             cmd += ' --write_bw_log=%s' % out_file
             cmd += ' --write_lat_log=%s' % out_file
             if self.log_avg_msec is not None:
-                cmd += ' --log_avg_msec=%s' % self.log_avg_msec
+                cmd += ' --log_avg_msec=%d' % self.log_avg_msec
         cmd += ' --output-format=%s' % self.fio_out_format
 
         # End the fio_cmd
