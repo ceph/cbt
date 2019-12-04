@@ -100,6 +100,7 @@ class Ceph(Cluster):
         self.rbd_cmd = config.get('rbd_cmd', '/usr/bin/rbd')
         self.rbd_nbd_cmd = config.get('rbd-nbd_cmd', '/usr/bin/rbd-nbd')
         self.rbd_fuse_cmd = config.get('rbd-fuse_cmd', '/usr/bin/rbd-fuse')
+        self.mount_cmd = config.get('mount_cmd', '/usr/sbin/ceph.mount')
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
