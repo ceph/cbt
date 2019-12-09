@@ -244,7 +244,16 @@ class Radosbench(Benchmark):
         logger.info('Convert results to json format.')
         self.parse(out_dir)
 
-    def _compare_client_results(self, client_run, fnames):
+    def get_total_ops(self, json_output):
+        search_key = "made" # looking for either 'Total writes made' or 'Total reads made'
+        res = [val for key, val in json_output.items() if search_key in key]
+        return res[0]
+
+    # getting the number of cpu cycles calculated by Perf Stat
+    def get_cpu_cycles(self, perf_out_dir):
+        return monitoring.get_cpu_cycles(perf_out_dir)
+
+    def _compare_client_results(self, client_run, results_files_paths, out_dirs):
         # normalize the names
         aliases = {'bandwidth': 'Bandwidth (MB/sec)',
                    'iops_avg': 'Average IOPS',
@@ -252,9 +261,15 @@ class Radosbench(Benchmark):
                    'latency_avg': 'Average Latency(s)'}
         json_outputs = []
         compare_results = []
-        for fname in fnames:
+        for output_number, fname in enumerate(results_files_paths):
             with open(fname) as f:
                 json_outputs.append(json.load(f))
+                total_ops = self.get_total_ops(json_outputs[output_number])
+                num_cpu_cycles = self.get_cpu_cycles(out_dirs[output_number])
+                if num_cpu_cycles != None:
+                    json_outputs[output_number]['Cycles per operation'] = int(num_cpu_cycles) / int(total_ops)
+                    self.acceptable.update({'cpu_cycles_per_operation':'(or (less) (near 0.05))'})
+                    aliases.update({'cpu_cycles_per_operation': 'Cycles per operation'})
         for alias, stmt in list(self.acceptable.items()):
             name = aliases[alias]
             result, baseline = [float(j[name]) for j in json_outputs]
@@ -284,12 +299,13 @@ class Radosbench(Benchmark):
                     fname = 'json_output.{proc}.{host}'.format(proc=proc,
                                                                host=host)
                     client_run = '{run}/{client}/{proc}'.format(run=run, client=client, proc=proc)
-                    fpaths  = [os.path.join(d, fname) for d in out_dirs]
-                    compare_results = self._compare_client_results(client_run, fpaths)
+                    results_files_paths  = [os.path.join(d, fname) for d in out_dirs]
+                    compare_results = self._compare_client_results(client_run, results_files_paths, out_dirs)
                     rejected = sum(not result.accepted for result in compare_results)
                     results.extend(compare_results)
             # TODO: check results from monitors
         return results
+
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
