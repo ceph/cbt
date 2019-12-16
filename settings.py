@@ -59,7 +59,7 @@ def initialize(ctx):
     if not os.path.exists(cbt_results):
         os.makedirs(cbt_results)
     if not os.path.exists(config_file):
-        config_dict = dict(cluster=cluster, benchmarks=benchmarks)
+        config_dict = dict(cluster=cluster, benchmarks=benchmarks, monitoring_profiles=monitoring_profiles)
         with open(config_file, 'w') as fd:
             yaml.dump(config_dict, fd, default_flow_style=False)
 
