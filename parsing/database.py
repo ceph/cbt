@@ -12,7 +12,7 @@ def create_db():
     for key in FORMAT:
         values.append("%s %s" % (key,TYPES[key]))
     q += ', '.join(values)+')'
-    print q
+    print(q)
     c.execute(q)
     conn.commit()
 
@@ -61,7 +61,7 @@ def fetch_table(params):
         readrow.append([row[0],row[-2]])
         if len(writerow) == len(testnames):
              pre = []
-             for i in xrange(0, len(params)):
+             for i in range(0, len(params)):
                   pre.append([params[i],row[i+1]])
              table.append(pre + [['optype', 'write']] + writerow)
              table.append(pre + [['optype', 'read']] + readrow)

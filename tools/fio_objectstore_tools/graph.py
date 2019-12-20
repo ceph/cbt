@@ -279,11 +279,11 @@ def graph(events, name, path, graph_format, mask_params=None, masker=None):
 
     print("Generated arrays")
 
-    arrays = dict(((feat, t(cols)) for feat, t in feat_to_array.items()))
+    arrays = dict(((feat, t(cols)) for feat, t in list(feat_to_array.items())))
 
     if masker is not None:
         mask = masker(*[arrays[x] for x in mask_params])
-        arrays = dict(((feat, ar[mask]) for feat, ar in arrays.items()))
+        arrays = dict(((feat, ar[mask]) for feat, ar in list(arrays.items())))
 
     fig = matplotlib.figure.Figure()
     fig.suptitle(name)

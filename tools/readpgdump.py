@@ -55,18 +55,18 @@ def get_sum(data):
     return numpy.sum(data)
 
 def dev_from_max(data):
-    values = data.values()
+    values = list(data.values())
     maxval = get_max(values)
     total = get_sum(values)
     pct = total / (1.0*maxval*len(values))
     return "Avg Deviation from Most Subscribed OSD: %.1f%%" % (100 * (1 - pct))
 
 def efficiency_score(data, weights):
-    values = data.values()
+    values = list(data.values())
     avgval = get_mean(values)
     maxval = avgval
 
-    for osd,pgs in data.iteritems():
+    for osd,pgs in data.items():
         weight = 1.0
         if weights and osd in weights:
              weight = weights[osd]
@@ -76,14 +76,14 @@ def efficiency_score(data, weights):
     return 100.0*(avgval/maxval)
 
 def pgs_per_osd(data):
-    values = data.values()
+    values = list(data.values())
     if values:
        return "Actual PGs Per OSD: Min: %d, Max: %d, Mean: %.1f, Std Dev: %.1f" % (get_min(values), get_max(values), get_mean(values), get_std(values))
     else:
        return "No OSDs acting in this capacity."
 
 def expected_pgs_per_osd(data):
-    values = data.values()
+    values = list(data.values())
     if values:
         pgs = get_sum(values)
         osds = len(values)
@@ -111,17 +111,17 @@ def least_used_osds(data):
     return "%d Least Subscribed OSDs: %s" % (count, ", ".join(out_array))
 
 def print_report(pool_counts, total_counts, input_type):
-    print div()
-    print format_line("Detected input as %s" % input_type)
-    print div()
-    for pool,data in sorted(pool_counts.iteritems()):
+    print(div())
+    print(format_line("Detected input as %s" % input_type))
+    print(div())
+    for pool,data in sorted(pool_counts.items()):
         weights = pool_weights[pool]
         print_data(data, pool_weights, total_weights)
         print_weights(data, pool_weights[pool])
-        print div()
+        print(div())
     print_data(total_counts, pool_weights, total_weights)
     print_weights(total_counts, total_weights)
-    print div()
+    print(div())
 
 def div():
     return "+" + "-" * 76 + "+"
@@ -130,55 +130,55 @@ def format_line(line):
     return str("| %s" % line).ljust(77) + "|"
 
 def print_data(data, pool_weights, total_weights):
-    print ''
-    print div() 
-    print format_line("Pool ID: " + str(data['name']))
-    print div() 
+    print('')
+    print(div()) 
+    print(format_line("Pool ID: " + str(data['name'])))
+    print(div()) 
 
     osds = 0
-    for clist in COUNTS_DICT.keys():
-       cur = len(data[clist].keys())
+    for clist in list(COUNTS_DICT.keys()):
+       cur = len(list(data[clist].keys()))
        if cur > osds: osds = cur
 
-    print format_line("Participating OSDs: " + str(osds))
-    print format_line("Participating PGs: " + str(data['pgs']))
+    print(format_line("Participating OSDs: " + str(osds)))
+    print(format_line("Participating PGs: " + str(data['pgs'])))
 
     # Calculate the expected maximally loaded OSD:
     pgs = int(data['pgs'])
 
-    print div()
-    for name,desc in sorted(COUNTS_DICT.iteritems()):
-        print format_line(desc)
-        if data[name].values():
-            print format_line(expected_pgs_per_osd(data[name]))
-            print format_line(pgs_per_osd(data[name]))
-            print format_line(most_used_osds(data[name]))
-            print format_line(least_used_osds(data[name]))
-            print format_line(dev_from_max(data[name]))
-            print format_line("") 
-            print format_line("Efficiency score using equal weights: %.1f%%" % efficiency_score(data[name], {}))
-            for pool,weights in pool_weights.iteritems():
-                print format_line("Efficiency score using optimal weights for pool %s: %.1f%%" % (pool, efficiency_score(data[name], weights['acting_totals'])))
+    print(div())
+    for name,desc in sorted(COUNTS_DICT.items()):
+        print(format_line(desc))
+        if list(data[name].values()):
+            print(format_line(expected_pgs_per_osd(data[name])))
+            print(format_line(pgs_per_osd(data[name])))
+            print(format_line(most_used_osds(data[name])))
+            print(format_line(least_used_osds(data[name])))
+            print(format_line(dev_from_max(data[name])))
+            print(format_line("")) 
+            print(format_line("Efficiency score using equal weights: %.1f%%" % efficiency_score(data[name], {})))
+            for pool,weights in pool_weights.items():
+                print(format_line("Efficiency score using optimal weights for pool %s: %.1f%%" % (pool, efficiency_score(data[name], weights['acting_totals']))))
 #            print format_line(efficiency_score(data[name]))
-            print format_line("Efficiency score using optimal weights for all pools: %.1f%%" % efficiency_score(data[name], total_weights['acting_totals']))
+            print(format_line("Efficiency score using optimal weights for all pools: %.1f%%" % efficiency_score(data[name], total_weights['acting_totals'])))
         else:
-            print format_line("No OSDs found in this capacity")
-        print div()
+            print(format_line("No OSDs found in this capacity"))
+        print(div())
 
 def print_weights(data, weights):
-    if data['acting_totals'].values():
-        print format_line("Optimal OSD Weights for Pool ID: %s" % str(data['name']))
-        print format_line("")
+    if list(data['acting_totals'].values()):
+        print(format_line("Optimal OSD Weights for Pool ID: %s" % str(data['name'])))
+        print(format_line(""))
         section_weights = weights['acting_totals']
-        for osd,weight in section_weights.iteritems():
-            print format_line("OSD %s: %.2f" % (osd, weight))
+        for osd,weight in section_weights.items():
+            print(format_line("OSD %s: %.2f" % (osd, weight)))
     
 
 def get_top(count, data):
     keys=list(data.keys())
     values=list(data.values())
     top = [] 
-    for x in xrange(0, count):
+    for x in range(0, count):
         value = get_max(values)
         index = values.index(value)
         key = keys[index]
@@ -192,7 +192,7 @@ def get_bottom(count, data):
     keys=list(data.keys())
     values=list(data.values())
     top = []
-    for x in xrange(0, count):
+    for x in range(0, count):
         value = get_min(values)
         index = values.index(value)
         key = keys[index]
@@ -205,7 +205,7 @@ def get_bottom(count, data):
 def add_counts(pool, uplist, actinglist):
     if not pool in pool_counts:
        pool_counts[pool] = {'pgs':0,'name':pool}
-       for clist in COUNTS_DICT.keys():
+       for clist in list(COUNTS_DICT.keys()):
            pool_counts[pool][clist] = {}
            total_counts[clist] = {}
     pool_counts[pool]['pgs'] += 1
@@ -234,23 +234,23 @@ def add_counts(pool, uplist, actinglist):
         add_count(actinglist[x], total_counts['acting_totals'])
 
 def fill_weights():
-    for pool,data in sorted(pool_counts.iteritems()):
+    for pool,data in sorted(pool_counts.items()):
         pool_weights[pool] = {}
-        for name,desc in sorted(COUNTS_DICT.iteritems()):
+        for name,desc in sorted(COUNTS_DICT.items()):
             pool_weights[pool][name] = {}
-            mean = get_mean(data[name].values())
-            for osd,pgs in sorted(data[name].iteritems()):
+            mean = get_mean(list(data[name].values()))
+            for osd,pgs in sorted(data[name].items()):
                 pool_weights[pool][name][int(osd)] = 1.0*mean/pgs
-    for name,desc in sorted(COUNTS_DICT.iteritems()):
+    for name,desc in sorted(COUNTS_DICT.items()):
         total_weights[name] = {} 
-        mean = get_mean(total_counts[name].values())
-        for osd,pgs in sorted(total_counts[name].iteritems()):
+        mean = get_mean(list(total_counts[name].values()))
+        for osd,pgs in sorted(total_counts[name].items()):
             total_weights[name][int(osd)] = 1.0*mean/pgs
 
 def parse_json(data):
     try:
         json_data = json.loads(data)
-    except ValueError, e:
+    except ValueError as e:
         parse_text(data)
         return
     for pg in json_data['pg_stats']:
@@ -292,10 +292,10 @@ if __name__ == '__main__':
     data = ctx.pg_map.read()
     try:
         parse_json(data) 
-    except ValueError, e:
+    except ValueError as e:
         try:
             parse_text(data)
-        except ValueError, e:
-            print "Failed to read the input as either JSON or plain text."
+        except ValueError as e:
+            print("Failed to read the input as either JSON or plain text.")
             sys.exit(1)
        

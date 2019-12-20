@@ -255,7 +255,7 @@ class Radosbench(Benchmark):
         for fname in fnames:
             with open(fname) as f:
                 json_outputs.append(json.load(f))
-        for alias, stmt in self.acceptable.items():
+        for alias, stmt in list(self.acceptable.items()):
             name = aliases[alias]
             result, baseline = [float(j[name]) for j in json_outputs]
             # safer than eval()

@@ -83,7 +83,7 @@ class CephTestRados(Benchmark):
 
         logger.info('Running ceph_test_rados.')
         ps = []
-        for i in xrange(1):
+        for i in range(1):
             p = common.pdsh(settings.getnodes('clients'), self.mkcmd())
             ps.append(p)
         for p in ps:
@@ -109,7 +109,7 @@ class CephTestRados(Benchmark):
             value = self.variables[variable]
             if value:
                 cmd.extend(['--%s' % variable.replace('_', '-'), str(value)])
-        for op, weight in self.weights.iteritems():
+        for op, weight in self.weights.items():
             cmd.extend(['--op', op, str(weight)])
         cmd.extend(['--pool', 'ceph_test_rados'])
         cmd.extend(['|', 'awk \'{ print strftime("%Y-%m-%d %H:%M:%S"), $0; fflush(); }\'' '>', out_file])

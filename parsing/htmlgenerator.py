@@ -1,6 +1,6 @@
 import base64
 import zlib
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 class HTMLGenerator(object):
     def __init__(self):
@@ -9,7 +9,7 @@ class HTMLGenerator(object):
         self.scripts = []
 
     def encode(self, text):
-        return base64.b64encode(zlib.compress(urllib.quote(text), 9))
+        return base64.b64encode(zlib.compress(urllib.parse.quote(text), 9))
 
     def read_file(self, filename):
         f = open(filename, "r")
@@ -41,7 +41,7 @@ class HTMLGenerator(object):
                 second = '' 
                 if isinstance(pair[1], float):
                     second = "%.2f" % pair[1]
-                elif isinstance(pair[1], str) or isinstance(pair[1], unicode):
+                elif isinstance(pair[1], str) or isinstance(pair[1], str):
                     second = '"' + pair[1] + '"'
                 else:
                     second = pair[1]

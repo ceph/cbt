@@ -37,7 +37,7 @@ def print_summary(logs):
         for ele_a, ele_b in zip(data, log.get_summary_data()):
             ele_a.append(ele_b)
     for row in data:
-        print "\t".join(map(str, row))
+        print("\t".join(map(str, row)))
 
 class LogData():
     def __init__(self, ctx, fn):
@@ -170,7 +170,7 @@ class LogData():
 
     def print_rows(self):
         ph = ['start_offset', 'compaction_time_seconds', 'output_level', 'num_output_files', 'total_output_size', 'num_input_records', 'num_output_records', 'output (MB/s)', 'input (r/s)', 'output (r/s)', 'output/input ratio']
-        print '\t'.join(ph)
+        print('\t'.join(ph))
         for event in self.events:
             event.print_row()
 
@@ -182,7 +182,7 @@ class CompactionEvent():
         self.data = json.loads(json_str)
 
     def print_data(self):
-        print json.dumps(self.data, sort_keys=True, indent=4, separators=(',', ': '))
+        print(json.dumps(self.data, sort_keys=True, indent=4, separators=(',', ': ')))
 
     def get_compaction_time_micros(self):
         return self.data.get('compaction_time_micros', -1)
@@ -236,7 +236,7 @@ class CompactionEvent():
         pl.append(self.get_input_rs())
         pl.append(self.get_output_rs())
         pl.append(self.get_oi_ratio())
-        print '\t'.join(map(str, pl))
+        print('\t'.join(map(str, pl)))
 
 if __name__ == '__main__':
     ctx = parse_args()
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     if ctx.summary:
         print_summary(logs)
     for log in logs:
-        print ''
-        print log.fn
-        print ''
+        print('')
+        print(log.fn)
+        print('')
         log.print_rows() 

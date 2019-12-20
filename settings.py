@@ -102,7 +102,7 @@ def getnodes(*nodelists):
         if isinstance(cur, str):
             nodes.append(cur)
         elif isinstance(cur, dict):
-            nodes.extend(cur.keys())
+            nodes.extend(list(cur.keys()))
         elif isinstance(cur, list):
             nodes.extend(cur)
         else:

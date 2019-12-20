@@ -15,7 +15,7 @@ def read_config(config_file):
             g = yaml.safe_load_all(f)
             for new in g:
                 config.update(new)
-    except IOError, e:
+    except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
     return config
 
@@ -40,7 +40,7 @@ def populate(l, name, value):
 def mkosds(lists, yaml):
     i = 0
     for server in yaml.get('osd_servers', []):
-        for j in xrange(0, yaml.get('osds_per_server', 0)):
+        for j in range(0, yaml.get('osds_per_server', 0)):
             name = "osd.%d" % i
             lists[name] = []
             lists[name].append("        host = %s" % server)
@@ -50,7 +50,7 @@ def mkosds(lists, yaml):
             i += 1
 
 def writescript(f, param, value, conf):
-    for fs,rtconf in sorted(runtests_conf.iteritems()):
+    for fs,rtconf in sorted(runtests_conf.items()):
         pdir = param
         if value:
             pdir = "%s_%s"  % (param, value)
@@ -68,10 +68,10 @@ def parametric(lists, yaml):
     writefile(lists, filename)
     writescript(f, "default", "", filename)
 
-    for param,value in sorted(yaml.iteritems()):
+    for param,value in sorted(yaml.items()):
         if (isinstance(value, dict)):
             lc = copy.deepcopy(lists)
-            for k,v in sorted(value.iteritems()):
+            for k,v in sorted(value.items()):
                 populate(lc.get("global"), k, v)
             filename = "%s/%s.ceph.conf" % (target, param)
             writefile(lc, filename)
@@ -90,12 +90,12 @@ def parametric(lists, yaml):
             writefile(lc, filename)
             writescript(f, param, value, filename)
     f.close()
-    os.chmod(scriptname, 0755)
+    os.chmod(scriptname, 0o755)
     
 def writefile(lists, out):
     f = open(out,'w')
 #    print out
-    for k,v in sorted(lists.iteritems()):
+    for k,v in sorted(lists.items()):
         f.write("[%s]\n" % k)
         for line in v: f.write("%s\n" % line)
         f.write("\n")
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     lists = {}
     for section in default:
         lists[section] = []
-        for k,v in default.get(section).iteritems():
+        for k,v in default.get(section).items():
             populate(lists.get(section), k, v) 
     mkosds(lists, config.get("settings", {}))
     parametric(lists, config.get("parametric", {}))

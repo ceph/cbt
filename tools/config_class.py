@@ -29,17 +29,17 @@ class Config:
             try:
                 pgs = int(pgs)
             except ValueError:
-                print "PGs can only be integer values greater than 0."
+                print("PGs can only be integer values greater than 0.")
                 continue
             if pgs <= 0:
-                print "PGs must be greater than 0."
+                print("PGs must be greater than 0.")
                 continue
             return pgs
 
     def get_mode(self):
         modes = ""
         while True:
-            print "Which of the following modes do you wish to run?"
+            print("Which of the following modes do you wish to run?")
             modes = get_input("randwrite, randread, write, read: ")
             modes = modes.replace(" ", "").split(",")
             valid = True
@@ -54,7 +54,7 @@ class Config:
     def get_integer_list(self, prompt, example):
         int_list = ""
         while True:
-            print prompt
+            print(prompt)
             int_list = get_input("e.g. %s " % (example)).replace(" ", "")
             int_list = int_list.replace("[", "").replace("]", "").split(",")
             valid = True
@@ -62,11 +62,11 @@ class Config:
                 try:
                     num = int(num)
                 except ValueError:
-                    print "Only integer values greater than 0 are allowed."
+                    print("Only integer values greater than 0 are allowed.")
                     valid = False
                     break
                 if num <= 0:
-                    print "Value must be greater than 0."
+                    print("Value must be greater than 0.")
                     valid = False
                     break
             if valid:
@@ -76,16 +76,16 @@ class Config:
     def get_integer(self, prompt, example):
         int_out = ""
         while True:
-            print prompt
+            print(prompt)
             int_out = get_input("e.g. %s: " % (example))
             valid = True
             if "," in int_out:
-                print "Only single integer value allowed."
+                print("Only single integer value allowed.")
                 valid = False
             try:
                 int_out = int(int_out)
             except ValueError:
-                print "Only valid integer values greater than 0 are allowed."
+                print("Only valid integer values greater than 0 are allowed.")
                 valid = False
             if valid:
                 break
@@ -98,10 +98,10 @@ class Config:
             try:
                 time = int(time)
             except ValueError:
-                print "Time must be a valid integer number greater than 0."
+                print("Time must be a valid integer number greater than 0.")
                 continue
             if time <= 0:
-                print "Time must be greater than 0."
+                print("Time must be greater than 0.")
                 continue
             return time
 
@@ -113,10 +113,10 @@ class Config:
             try:
                 volume = int(volume)
             except ValueError:
-                print "Volume must be a valid integer number greater than 0."
+                print("Volume must be a valid integer number greater than 0.")
                 continue
             if volume <= 0:
-                print "Volume must be greater than 0."
+                print("Volume must be greater than 0.")
                 continue
             return volume
 
@@ -127,11 +127,11 @@ class Config:
             try:
                 pgs = int(pgs)
             except ValueError:
-                print "Placement groups must be a valid integer number "\
-                      "greater than 0."
+                print("Placement groups must be a valid integer number "\
+                      "greater than 0.")
                 continue
             if pgs <= 0:
-                print "Placement groups must be greater than 0."
+                print("Placement groups must be greater than 0.")
                 continue
             return pgs
 
@@ -316,11 +316,11 @@ def keyboard_input(func):
         try:
             return func(prompt)
         except KeyboardInterrupt:
-            print "Aborting script. No data will be saved."
+            print("Aborting script. No data will be saved.")
             sys.exit(1)
     return wrapper
 
 
 @keyboard_input
 def get_input(prompt):
-    return raw_input(prompt)
+    return input(prompt)

@@ -24,7 +24,7 @@ def color_me(color):
 
 
 class ColoredFormatter(logging.Formatter):
-    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
+    BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = list(range(8))
 
     colors = {
         'WARNING': color_me(YELLOW),

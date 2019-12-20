@@ -37,8 +37,8 @@ def main():
     results = []
     for iteration in range(settings.cluster.get('iterations', 0)):
         cluster = Ceph(settings.cluster)
-        benchmarks = zip(benchmarkfactory.get_all(ctx.archive, cluster, iteration),
-                         benchmarkfactory.get_all(ctx.baseline, cluster, iteration))
+        benchmarks = list(zip(benchmarkfactory.get_all(ctx.archive, cluster, iteration),
+                         benchmarkfactory.get_all(ctx.baseline, cluster, iteration)))
         for current, baseline in benchmarks:
             if not current.exists(True):
                 logger.error("tested: %s result does not exist in %s",

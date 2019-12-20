@@ -67,7 +67,7 @@ class Getput(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def mkcredfiles(self):
-        for i in xrange(0, len(self.auth_urls)):
+        for i in range(0, len(self.auth_urls)):
             cred = "export ST_AUTH=%s\\nexport ST_USER=%s\\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
             common.pdsh(settings.getnodes('clients'), 'echo -e "%s" > %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
 
@@ -131,7 +131,7 @@ class Getput(Benchmark):
         logger.info('Running getput %s test.' % self.test)
 
         ps = []
-        for i in xrange(0, len(self.auth_urls)):
+        for i in range(0, len(self.auth_urls)):
             cmd = self.mkgetputcmd("%s/gw%02d.cred" % (self.run_dir, i), i)
             p = common.pdsh(settings.getnodes('clients'), cmd)
             ps.append(p)
