@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # NOTE: Be sure to run script on the main ceph monitor as the desired
 # CBT user if running the script automatically (-a).
 

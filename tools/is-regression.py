@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # is_regression.py - statistical test for performance throughput regression
 # based on python scipy.stats.ttest_ind() function

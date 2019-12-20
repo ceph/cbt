@@ -51,9 +51,9 @@ machine.
 
 CBT uses several libraries and tools to run:
 
- 1. python-yaml - A YAML library for python used for reading 
+ 1. python3-yaml - A YAML library for python used for reading
     configuration files.
- 2. python-lxml - Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API
+ 2. python3-lxml - Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API
  3. ssh (and scp) - remote secure command executation and data 
     transfer
  4. pdsh (and pdcp) - a parallel ssh and scp implementation

@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/python3
 import argparse
 import json
 import datetime
