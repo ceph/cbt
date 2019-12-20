@@ -105,14 +105,19 @@ def get_localnode(nodes):
     # Similarly to `expanded_node_list(nodes)` we assume the passed nodes
     # param is always string. This is justified as the callers use `nodes`
     # to supply the `-w ...` parameter of ssh during CheckedPopen() call.
+
+    # if more than one node is listed, fallback to pdsh
+    nodes_list = expanded_node_list(nodes);
+    if len(nodes) > 1:
+        return None
+
     local_fqdn = get_fqdn_local()
     local_hostname = socket.gethostname()
     local_short_hostname = local_hostname.split('.')[0]
 
-    for node in expanded_node_list(nodes):
-        remote_host = settings.host_info(node)['host']
-        if remote_host in (local_fqdn, local_hostname, local_short_hostname):
-            return remote_host
+    remote_host = settings.host_info(nodes_list[0])['host']
+    if remote_host in (local_fqdn, local_hostname, local_short_hostname):
+        return remote_host
     return None 
 
 def sh(local_node, command, continue_if_error=True):
