@@ -8,19 +8,15 @@ import os
 import time
 import logging
 
-# custom module imports
-import common   # pdsh stuff
-import settings # YAML processing stuff
-import monitoring   # collectl, blktrace, perf setup
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
 class RbdFio(Benchmark):
     """This class runs the RBDFIO benchmark, gets the config options from\n
     the given YAML and updates the 'object'. Then setups up the required directories and file names."""
-    def __init__(self, cluster, config):
-        super(RbdFio, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(RbdFio, self).__init__(archive_dir, cluster, config)=======
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         # path of the FIO binary
@@ -135,7 +131,6 @@ class RbdFio(Benchmark):
         pre_cmd = 'sudo %s --ioengine=%s --rw=write --numjobs=%s --bs=4M --size %dM %s > /dev/null' % (self.cmd_path, self.ioengine, self.numjobs, size, self.names)
         common.pdsh(settings.getnodes('clients'), pre_cmd).communicate()
 
-        return True
 
     # Since this is an 'overloaded' method, the run method being called from cbt.py
     # has functionality of 'Benchmark.run()' as well as this specific run
@@ -199,11 +194,14 @@ class RbdFio(Benchmark):
         # set the volume size using 90% volume specified, probably a safety measure
         if self.vol_size:
             fio_cmd += ' --size=%dM' % (int(self.vol_size) * 0.9)
+            
         # log iops, bandwidth and latency in file with basename given
-        fio_cmd += ' --write_iops_log=%s' % out_file
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
-
+        if self.log_iops:
+            fio_cmd += ' --write_iops_log=%s' % out_file
+        if self.log_bw:
+            fio_cmd += ' --write_bw_log=%s' % out_file
+        if self.log_lat:
+            fio_cmd += ' --write_lat_log=%s' % out_file
         # fio needs to be time based in case of a recovery test, not sure why though
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'

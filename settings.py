@@ -6,6 +6,7 @@ import argparse
 import yaml
 import sys
 import os
+import socket
 import logging
 
 # using the same-old same-old logger we've been using from the very beginning
@@ -13,8 +14,18 @@ logger = logging.getLogger("cbt")
 
 # dictionaries to hold the 'cluster' and 'benchmarks' entries from the YAML file given in config
 cluster = {}
+client_endpoints = {}
 benchmarks = {}
+monitoring_profiles = {}
 
+def _handle_monitoring_legacy():
+    """
+    Inject collectl even if the config says nothing about it to preserve
+    compatibility with current CBT's configuration files.
+    """
+    global monitoring_profiles
+    if 'collectl' not in monitoring_profiles:
+        monitoring_profiles['collectl'] = {}
 
 def initialize(ctx):
     """Operate on the YAML file(s) to determine the 'cluster' and 'benchmark' parts.
@@ -22,25 +33,25 @@ def initialize(ctx):
     Basically, initializing the benchmarking process from the CBT end. """
 
     # referencing the global dictionaries
-    global cluster, benchmarks
+    global cluster, client_endpoints, benchmarks, monitoring_profiles
 
     # array to hold the YAML file objects given after parsing, each YAML tag is converted to a python object
     # for easier manipulation
     config = {}
     try:
         # going to open the given 'config-file' argument to CBT as a file
-        with file(ctx.config_file) as f:
-            # update the config dictionary with all the objects returned by the safe_load_all function operating on the file
-            map(config.update, yaml.safe_load_all(f))
-
-    except IOError, e:
-        # if not able to open the config file, throw an exception!
+        with open(ctx.config_file) as f:
+        # get all the parameters from the file
+            config = yaml.safe_load(f)
+    except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 
     # retrieve the object named 'cluster' from the dictionary, otherwise return an empty dictionary!
     cluster = config.get('cluster', {})
+    client_endpoints = config.get('client_endpoints', {})
     # retrieve the object named 'benchmarks' from the dictionary, otherwise return an empty dictionary!
     benchmarks = config.get('benchmarks', {})
+    monitoring_profiles = config.get('monitoring_profiles', dict(collectl={}))
 
     # if no cluster tag in YAML config file, exit with error message!
     if not cluster:
@@ -50,14 +61,22 @@ def initialize(ctx):
     if not benchmarks:
         shutdown('No benchmarks section found in config file, bailing.')
 
+    # set the archive_dir from the commandline if present
+    if ctx.archive:
+        cluster['archive_dir'] = ctx.archive
+    if 'archive_dir' not in cluster:
+        shutdown('No archive dir has been set.')
+
+    _handle_monitoring_legacy()
+
     # store cbt configuration in the archive directory
     # create corresponding path objects with desired dir/file names
-    cbt_results = os.path.join(ctx.archive, 'results')
+    cbt_results = os.path.join(cluster['archive_dir'], 'results')
     config_file = os.path.join(cbt_results, 'cbt_config.yaml')
 
     # create directories if they don't exist already, inside the archive directory provided as the CLI argument
-    if not os.path.exists(ctx.archive):
-        os.makedirs(ctx.archive)
+    if not os.path.exists(cluster['archive_dir']):
+        os.makedirs(cluster['archive_dir'])
     if not os.path.exists(cbt_results):
         os.makedirs(cbt_results)
     # dump the python object of the config file into archive dir through serialization
@@ -78,15 +97,32 @@ def initialize(ctx):
         # create a temp directory with PID name for temporal uniqueness
         cluster['tmp_dir'] = '/tmp/cbt.%s' % os.getpid()
 
-    # set the ceph.conf file from the commandline, yaml, or default
+    # set the ceph.conf file from the commandline if present
     if ctx.conf:
         cluster['conf_file'] = ctx.conf
-    elif 'conf_file' not in cluster:
-        cluster['conf_file'] = "%s/ceph.conf" % (cluster.get('conf_file'),)
+    # If no conf file is set, default to /etc/ceph/ceph.conf
+    # FIXME: We shouldn't have cluster specific defaults in settings.
+    # Eventually make a base class with specific cluster implementations.
+    if 'conf_file' not in cluster:
+        cluster['conf_file'] = '/etc/ceph/ceph.conf'
+    try:
+        f = open(cluster['conf_file'])
+        f.close()
+    except IOError as e:
+        shutdown('Was not able to access conf file: %s' % cluster['conf_file'])
 
-    if ctx.archive:
-        cluster['archive_dir'] = ctx.archive
+def host_info(host):
+    ret = {}
+    user = cluster.get('user')
 
+    if '@' in host:
+        user, host = host.split('@')
+        ret['user'] = user
+    if user:
+        ret['user'] = user
+    ret['host'] = host
+    ret['addr'] = socket.gethostbyname(host)
+    return ret
 
 def getnodes(*nodelists):
     """Convert the given node list (probably in YAML) to a string with names appended"""
@@ -119,17 +155,17 @@ def uniquenodes(nodes):
     """Filter out for empty strings in nodes, also use list comprehension to perform uniqueness check.
     Give output as a set of user@node strings."""
     # rule out empty strings
-    ret = [node for node in nodes if node]
+    unique = [node for node in nodes if node]
+    ret = []
 
-    # determine the Ceph user created during installation
-    user = cluster.get('user')
-    if user is not None:
-        # return a string of format user@node for each node
-        ret = ['%s@%s' % (user, node) for node in ret]
-
-    # return this set of strings
+    for host in unique:
+        info = host_info(host)
+        host_str = info['host']
+        if 'user' in info:
+            # return a string of format user@node for each node
+            host_str = "%s@%s" % (info['user'], host_str)
+        ret.append(host_str)
     return set(ret)
-
 
 def shutdown(message):
     """exit the program with a custom message"""

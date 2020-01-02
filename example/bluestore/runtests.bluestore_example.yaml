@@ -42,3 +42,12 @@ benchmarks:
     cmd_path: '/home/ubuntu/src/fio/fio'
     pool_profile: 'rbd'
     log_avg_msec: 100
+    # Optionally disable fine-grained logging by fio
+    log_iops: False
+    log_bw: False
+    log_lat: False
+    # Optionally, set the rbd and pool names
+    poolname: 'rbd'
+    rbdname: 'img01'
+    # use_existing_volumes needs to be true to set the pool and rbd names
+    use_existing_volumes: True

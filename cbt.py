@@ -76,7 +76,8 @@ def main(argv):
         # perform all the iterations of the benchmarking
         for iteration in range(settings.cluster.get("iterations", 0)):
             # get all the benchmarks objects from the 'factory' given the YAML config
-            benchmarks = benchmarkfactory.get_all(cluster, iteration)
+            archive_dir = settings.cluster.get('archive_dir')
+            benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             # iterate over the generator to get each benchmkar object
             for b in benchmarks:
                 # a benchmark 'run_dir' already exists, with the exact test profile, skip it!
@@ -90,6 +91,10 @@ def main(argv):
                     # Skip future initializations unless rebuild requested.
                     if not settings.cluster.get('rebuild_every_test', False):
                         global_init[b.getclass()] = b
+
+                # always try to initialize endpoints.
+                b.initialize_endpoints()
+
 
                 try:
                     b.run()

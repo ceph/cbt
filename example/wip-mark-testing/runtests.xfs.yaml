@@ -58,3 +58,7 @@ benchmarks:
     cmd_path: '/home/nhm/src/fio/fio'
     pool_profile: 'rbd'
     log_avg_msec: 100
+    # Optionally disable fine-grained logging by fio
+    log_iops: False
+    log_bw: False
+    log_lat: False

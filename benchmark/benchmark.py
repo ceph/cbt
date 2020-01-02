@@ -10,6 +10,7 @@ import common
 import monitoring
 import hashlib
 import os
+import json
 import yaml
 
 logger = logging.getLogger('cbt')
@@ -20,19 +21,23 @@ class Benchmark(object):
     This includes basic init, and cleanup setup, run method, pre/post stuff."""
     
     # good ol' constructor
-    def __init__(self, cluster, config):
+    def __init__(self, archive_dir, cluster, config):
         # the YAML given
+        self.acceptable = config.pop('acceptable', {})
         self.config = config
         # the cluster to use, can be the newly constructed or the existing cluster
         self.cluster = cluster
-
-        # self.cluster = Ceph(settings.cluster)
+        hashable = json.dumps(sorted(self.config.items())).encode()
+        digest = hashlib.sha1(hashable).hexdigest()[:8]
         # setup the dir structure to store the results of each component of the benchmark
-        self.archive_dir = "%s/%s/%08d/%s%s" % (settings.cluster.get('archive_dir'),
-                                                "results", config.get('iteration'), "id",
-                                                hash(frozenset((self.config).items())))
-        # setup the temp_dir to store all the temp data like ceph.conf, keyrings etc etc                                                
-        self.run_dir = "%s/%08d/%s" % (settings.cluster.get('tmp_dir'), config.get('iteration'), self.getclass())
+        self.archive_dir = os.path.join(archive_dir,
+                                        'results',
+                                        '{:0>8}'.format(config.get('iteration')),
+                                        'id-{}'.format(digest))
+        # setup the temp_dir to store all the temp data like ceph.conf, keyrings etc etc 
+        self.run_dir = os.path.join(settings.cluster.get('tmp_dir'),
+                                    '{:0>8}'.format(config.get('iteration')),
+                                    self.getclass())
         # get OSD readahead, if any
         self.osd_ra = config.get('osd_ra', None)
         # this will hold the executable which is to be run
@@ -41,6 +46,9 @@ class Benchmark(object):
         self.valgrind = config.get('valgrind', None)
         # to accomodate the valgrind thing, need to append to the path
         self.cmd_path_full = '' 
+        self.log_iops = config.get('log_iops', True)
+        self.log_bw = config.get('log_bw', True)
+        self.log_lat = config.get('log_lat', True)
         # change the path if it's valgrind
         if self.valgrind is not None:
             self.cmd_path_full = common.setup_valgrind(self.valgrind, self.getclass(), self.run_dir)
@@ -69,8 +77,8 @@ class Benchmark(object):
         if not use_existing:
             self.cluster.initialize()
         self.cleanup()
-
-    # run the benchmark!
+    def initialize_endpoints(self):
+        pass
     def run(self):
         """Start the benchmark. \nSetup OSD RA from YAML if given.\n
         Clean remote run_dirs, setup valgrind if necessary.\n
@@ -110,6 +118,9 @@ class Benchmark(object):
     def exists(self):
         return False
 
+    def compare(self, baseline):
+        logger.warn('%s does not support "compare" yet', self.getclass())
+
     def cleanup(self):
         pass
 
@@ -133,3 +144,18 @@ class Benchmark(object):
     # 'stringifying' the object
     def __str__(self):
         return str(self.config)
+
+class Result:
+    def __init__(self, run, alias, result, baseline, stmt, accepted):
+        self.run = run
+        self.alias = alias
+        self.result = result
+        self.baseline = baseline
+        self.stmt = stmt
+        self.accepted = accepted
+
+    def __str__(self):
+        fmt = '{run}: {alias}: {stmt}:: {result}/{baseline}  => {status}'
+        return fmt.format(run=self.run, alias=self.alias, stmt=self.stmt,
+                          result=self.result, baseline=self.baseline,
+                          status="accepted" if self.accepted else "rejected")

@@ -1,0 +1,43 @@
+cluster:
+  head: "ceph@ubulap"
+  clients: ["ceph@ubulap"]
+  osds: ["ceph@ubulap"]
+  mons: ["ceph@ubulap"]
+  osds_per_node: 1
+  conf_file: /home/rzarzynski/ceph-1/build/ceph.conf
+  # PID file is important for perf stat. crimson-osd should use defaults
+  # its location.
+  pid_dir: /home/rzarzynski/ceph-1/build/out
+  iterations: 3
+  rebuild_every_test: False
+  tmp_dir: "/tmp/cbt"
+  ceph_cmd: /home/rzarzynski/ceph-1/build/bin/ceph
+  rados_cmd: /home/rzarzynski/ceph-1/build/bin/rados
+  pool_profiles:
+    replicated:
+      pg_size: 128
+      pgp_size: 128
+      replication: 'replicated'
+benchmarks:
+  radosbench:
+    op_size: [ 4096, 8192 ]
+    write_only: True
+    time: 3
+    concurrent_ops: [ 16 ]
+    concurrent_procs: 1
+    # crimson must be already deployed. It can be done with vstart.sh:
+    #   MDS=0 MGR=1 OSD=1 MON=1 ../src/vstart.sh -n --without-dashboard \
+    #     --memstore -X -o "memstore_device_bytes=34359738368" --crimson \
+    #     --nodaemon --redirect-output
+    use_existing: True
+    pool_profile: replicated
+    acceptable:
+      bandwidth: '(or (greater) (near 0.05))'
+      iops_avg: '(or (greater) (near 0.05))'
+      iops_stddev: '(or (less) (near 0.05))'
+      latency_avg: '(or (less) (near 0.05))'
+monitoring_profiles:
+  perf:
+    nodes:
+      - osds
+    args: 'stat -p {pid} -o {perf_dir}/perf_stat.{pid}'

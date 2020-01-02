@@ -1,0 +1,65 @@
+{
+  "base": {
+    "runtime": 3600,
+    "devices": {
+      "nvme": {
+        "device_type": "ssd",
+        "block_wal_path": "/dev/nvme0n1p2",
+        "block_db_path": "/dev/nvme0n1p3",
+        "block_path": "/dev/nvme0n1p4",
+        "target_dir": "/mnt/sjust/bluestore-nvme"
+      },
+      "nvme_plain": {
+        "device_type": "ssd",
+        "block_path": "/dev/nvme3n1p4",
+        "target_dir": "/mnt/sjust/bluestore-nvme-plain"
+      },
+      "hdd": {
+        "device_type": "hdd",
+        "block_path": "/dev/sdh2",
+        "target_dir": "/mnt/sjust/bluestore-hdd"
+      },
+      "hdd_nvme_db": {
+        "device_type": "hdd",
+        "block_wal_path": "/dev/nvme2n1p2",
+        "block_db_path": "/dev/nvme2n1p3",
+        "block_path": "/dev/sdg2",
+        "target_dir": "/mnt/sjust/bluestore-hdd-nvme-db"
+      }
+    },
+    "size": 512,
+    "filesize": 4,
+    "preextend": "true",
+    "qd": 1024,
+    "numjobs": 32,
+    "tcio_hdd": 1048576,
+    "bluestore_deferred_throttle": [
+      2,
+      4,
+      8,
+      12
+    ],
+    "bluestore_throttle": [
+      8,
+      12,
+      16,
+      20,
+      24
+    ],
+    "vary_bluestore_throttle_period": 30
+  },
+  "runs": {
+    "bs": [
+      4,
+      512
+    ],
+    "target_device": [
+      "nvme",
+      "nvme_plain"
+    ],
+    "run": [
+      0,
+      1
+    ]
+  }
+}

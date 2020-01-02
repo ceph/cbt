@@ -10,12 +10,12 @@ import logging
 logger = logging.getLogger('cbt')
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 class CephTestRados(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(CephTestRados, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(CephTestRados, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
 
@@ -59,14 +59,13 @@ class CephTestRados(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            print 'Skipping existing test in %s.' % self.out_dir
+            print('Skipping existing test in %s.' % self.out_dir)
             return True
         return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
     def initialize(self): 
         super(CephTestRados, self).initialize()
-        return True
 
     def run(self):
         super(CephTestRados, self).run()

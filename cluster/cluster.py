@@ -21,6 +21,9 @@ class Cluster(object):
         self.tmp_dir = "%s/%s" % (base_tmp, config.get('clusterid'))
         self.archive_dir = "%s/%s" % (config.get('archive_dir'), config.get('clusterid'))
 
+    def get_mnt_dir(self):
+        return self.mnt_dir
+
     def getclass(self):
         return self.__class__.__name__
 

@@ -9,15 +9,15 @@ import logging
 import json
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
 
 class LibrbdFio(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(LibrbdFio, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(LibrbdFio, self).__init__(archive_dir, cluster, config)
 
         # FIXME there are too many permutations, need to put results in SQLITE3 
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
@@ -42,12 +42,14 @@ class LibrbdFio(Benchmark):
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
-        self.pool_name = "cbt-librbdfio"
         self.fio_out_format = "json,normal"
         self.data_pool = None 
+        # use_existing_volumes needs to be true to set the pool and rbd names
         self.use_existing_volumes = config.get('use_existing_volumes', False)
+        self.pool_name = config.get("poolname", "cbt-librbdfio")
+        self.rbdname = config.get('rbdname', '')
 
-	self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
+        self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
         self.run_dir = '%s/osd_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = self.archive_dir
 
@@ -91,7 +93,6 @@ class LibrbdFio(Benchmark):
               ps.append(p)
           for p in ps:
               p.wait()
-        return True
 
     def run(self):
         super(LibrbdFio, self).run()
@@ -131,7 +132,12 @@ class LibrbdFio(Benchmark):
         self.analyze(self.out_dir)
 
     def mkfiocmd(self, volnum):
-        rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
+        if self.use_existing_volumes and len(self.rbdname):
+            rbdname = self.rbdname
+        else:
+            rbdname = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
+
+        logger.debug('Using rbdname %s', rbdname)
         out_file = '%s/output.%d' % (self.run_dir, volnum)
         fio_cmd = 'sudo echo $(($(date +%s%N)/1000000)) >> ' + out_file + '_st_end; '
         fio_cmd += 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path_full, self.pool_name, rbdname)
@@ -154,10 +160,13 @@ class LibrbdFio(Benchmark):
 #        if self.vol_size:
 #            fio_cmd += ' -- size=%dM' % self.vol_size
         if self.norandommap:
-            fio_cmd += ' --norandommap' 
-        fio_cmd += ' --write_iops_log=%s' % out_file
-        fio_cmd += ' --write_bw_log=%s' % out_file
-        fio_cmd += ' --write_lat_log=%s' % out_file
+            fio_cmd += ' --norandommap'
+        if self.log_iops:
+            fio_cmd += ' --write_iops_log=%s' % out_file
+        if self.log_bw:
+            fio_cmd += ' --write_bw_log=%s' % out_file
+        if self.log_lat:
+            fio_cmd += ' --write_lat_log=%s' % out_file
         if 'recovery_test' in self.cluster.config:
             fio_cmd += ' --time_based'
         if self.random_distribution is not None:
@@ -192,11 +201,12 @@ class LibrbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
 
     def parse(self, out_dir):
-        for client in settings.cluster.get('clients'):
+        for client in settings.getnodes('clients').split(','):
+            host = settings.host_info(client)["host"]
             for i in xrange(self.volumes_per_client):
                 found = 0
-                out_file = '%s/output.%d.%s' % (out_dir, i, client)
-                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, client)
+                out_file = '%s/output.%d.%s' % (out_dir, i, host)
+                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)
 #                command = 'touch ' + out_file + ' ' + json_out_file
 #                os.system(command)
                 #print 'out_file' + out_file + ' json_file' + json_out_file

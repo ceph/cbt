@@ -12,7 +12,7 @@ import uuid
 import threading
 import logging
 
-from cluster import Cluster
+from .cluster import Cluster
 
 # acquire the pointer to the logger for logging
 logger = logging.getLogger("cbt")
@@ -36,7 +36,7 @@ class OsdThread(threading.Thread):
     Hence, the option for multithreading."""
 
     # initialize the OSD thread with given data from the caller
-    def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir):
+    def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir, tmp_dir):
         # initialize and give thread name using parent constructor
         threading.Thread.__init__(self, name='OsdThread-%d'%osdnum)
 
@@ -61,7 +61,7 @@ class OsdThread(threading.Thread):
         self.osduuid = osduuid
         # directory on which the OSD data partition is going to be mounted
         self.osddir = osddir
-
+        self.tmp_dir = tmp_dir
         # the executable program to be run by this thread, initially NULL
         self.exc = None
 
@@ -72,30 +72,23 @@ class OsdThread(threading.Thread):
         keyring for this OSD Process as well.
         In addition, going to setup 'STDERR loggin' in a file in the given temp_dir to the program."""
         try:
-            # get the keyring
-            key_fn = '%s/keyring'%self.osddir
             # get the ceph.conf file from the cluster object (which is going to hold the location as provided in YAML)
             ceph_conf = self.cl_obj.tmp_conf
             # determine the SSH target string
             phost = sshtarget(settings.cluster.get('user'), self.host)
-            # run the ceph command with pdsh and given parameters as:
-            #   command string (probably 'ceph')
-            #   config file (-c /ceph.conf)
-            #   osd number (osd.%d)
-            #   host (host=)
-            #   along with some default crush values, ensuring failure domains
+            # Setup the keyring directory
+            data_dir = '%s/osd.%s' % (self.tmp_dir, self.osdnum)
+            common.pdsh(phost, 'sudo rm -rf %s' % data_dir).communicate()
+            common.pdsh(phost, 'mkdir -p %s' % data_dir).communicate()
+            key_fn = '%s/keyring' % data_dir
+
+            # Setup crush and the keyring
+            common.pdsh(phost, 'sudo %s auth get-or-create osd.%s mon \'allow rwx\' osd \'allow *\' -o %s' % (self.cl_obj.ceph_cmd, self.osdnum, key_fn)).communicate()
+
             common.pdsh(phost, 'sudo %s -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.cl_obj.ceph_cmd, ceph_conf, self.osdnum, self.host)).communicate()
-            # setting the shell upper limits to increase shell resources
-            # n -> number of concurrent open file descriptors
-            # c -> maximum size of core files created
-            # exec -> replaces this shell process with the program given with the 'command' as the arguments of the program
-            # in our case, we're creating a new OSD process, and replacing the shell by it           
-            cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --mkkey --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
-            # execute the made command through pdsh
+            cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
             common.pdsh(phost, 'sudo sh -c "%s"' % cmd).communicate()
-            # create a new keyring for this OSD
-            common.pdsh(phost, 'sudo %s -c %s -i %s auth add osd.%d osd "allow *" mon "allow profile osd" mgr "allow"' % (self.cl_obj.ceph_cmd, ceph_conf, key_fn, self.osdnum)).communicate()
- 
+
             # Start the OSD
             pidfile="%s/ceph-osd.%d.pid" % (self.cl_obj.pid_dir, self.osdnum)
             cmd = '%s -c %s -i %d --pid-file=%s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, pidfile)
@@ -158,19 +151,21 @@ class Ceph(Cluster):
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
         self.ceph_rgw_cmd = config.get('ceph-rgw_cmd', '/usr/bin/radosgw')
         self.ceph_mgr_cmd = config.get('ceph-mgr_cmd', '/usr/bin/ceph-mgr')
+        self.ceph_mds_cmd = config.get('ceph-mds_cmd', '/usr/bin/ceph-mds')
+        self.ceph_authtool_cmd = config.get('ceph-authtool_cmd', '/usr/bin/ceph-authtool')
         self.radosgw_admin_cmd = config.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
+        self.ceph_fuse_cmd = config.get('ceph-fuse_cmd', '/usr/bin/ceph-fuse')
         self.rados_cmd = config.get('rados_cmd', '/usr/bin/rados')
         self.rbd_cmd = config.get('rbd_cmd', '/usr/bin/rbd')
-
+        self.rbd_nbd_cmd = config.get('rbd-nbd_cmd', '/usr/bin/rbd-nbd')
+        self.rbd_fuse_cmd = config.get('rbd-fuse_cmd', '/usr/bin/rbd-fuse')
+        self.mount_cmd = config.get('mount_cmd', '/usr/sbin/ceph.mount')
         # create required directories in the given temp directory
         self.log_dir = config.get('log_dir', "%s/log" % self.tmp_dir)
         self.pid_dir = config.get('pid_dir', "%s/pid" % self.tmp_dir)
         self.core_dir = config.get('core_dir', "%s/core" % self.tmp_dir)
         self.monitoring_dir = "%s/monitoring" % self.tmp_dir
-        
-        # create required filenames needed for the cluster
-        self.keyring_fn = "%s/keyring" % self.tmp_dir
         self.osdmap_fn = "%s/osdmap" % self.tmp_dir
         self.monmap_fn = "%s/monmap" % self.tmp_dir
 
@@ -188,11 +183,13 @@ class Ceph(Cluster):
         self.ceph_osd_online_tmo = config.get('osd_online_timeout', 120)
         self.ceph_osd_parallel_creates = config.get('osd_parallel_creates')
 
+        self.client_keyring = '/etc/ceph/ceph.keyring'
+        self.client_secret = '/etc/ceph/ceph.secret'
         # If making the cluster, use the ceph.conf file distributed by initialize to the tmp_dir
         self.tmp_conf = '%s/ceph.conf' % self.tmp_dir
         # If using an existing cluster, defualt to /etc/ceph/ceph.conf
         if self.use_existing:
-            self.tmp_conf = '/etc/ceph/ceph.conf'
+            self.tmp_conf = self.config.get('conf_file')
 
         # other control parameters
         self.osd_valgrind = config.get('osd_valgrind', None)
@@ -208,7 +205,7 @@ class Ceph(Cluster):
         # thread controllers
         self.stoprequest = threading.Event()
         self.haltrequest = threading.Event()
-
+        self.urls = []
         # list of all the auth URLs to be used by RGW
         self.auth_urls = []
         self.osd_count = config.get('osds_per_node') * len(settings.getnodes('osds'))
@@ -228,8 +225,8 @@ class Ceph(Cluster):
 
         super(Ceph, self).initialize()
 
-        # unmount any kernel rbd volumes
-        self.rbd_unmount()
+        # unmount any rbd volumes
+        self.unmount_all()
 
         # shutdown any old processes
         self.shutdown()
@@ -238,18 +235,17 @@ class Ceph(Cluster):
         self.cleanup()
         
         common.mkdir_p(self.tmp_dir)
-        # create new directories for handling stuff on each node listed
-        common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.tmp_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.pid_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.log_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.monitoring_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'mkdir -p -m0755 -- %s' % self.core_dir).communicate()
         # distribute the ceph.conf file to each node on /etc/ceph/
         self.distribute_conf()
 
         # Set the core directory, this will store the coredump for each node in case there's a crash
         # the given format string is the format of the coredump which is to be used when 'dumping the core' to the disk
-        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mds', 'mgrs'), 'echo "%s/core.%%e.%%p.%%h.%%t" | sudo tee /proc/sys/kernel/core_pattern' % self.tmp_dir).communicate()
+        common.pdsh(settings.getnodes('clients', 'mons', 'osds', 'rgws', 'mdss', 'mgrs'), 'echo "%s/core.%%e.%%p.%%h.%%t" | sudo tee /proc/sys/kernel/core_pattern' % self.tmp_dir).communicate()
 
         # Create the filesystems
         self.setup_fs()
@@ -278,7 +274,7 @@ class Ceph(Cluster):
 
         # Start any higher level daemons
         self.start_rgw()
-
+        self.start_mds()
         # Peform Idle Monitoring
         if self.idle_duration > 0:
             monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
@@ -296,7 +292,7 @@ class Ceph(Cluster):
         In addition, stop all the monitoring stack(collectl, perf, blktrace) as well."""
 
         # get all the node names in a list
-        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds', 'mgrs')
+        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mdss', 'mgrs')
 
         # send signal 9 (kill) to all the processes which need to be terminated
         common.pdsh(nodes, 'sudo killall -9 massif-amd64-li').communicate()
@@ -317,7 +313,7 @@ class Ceph(Cluster):
     def cleanup(self):
         """Get rid of all the data in the tmp_dir on all nodes"""
         # retrieve node names
-        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds', 'mgrs')
+        nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mdss', 'mgrs')
         # log before destruction
         logger.info('Deleting %s', self.tmp_dir)
 
@@ -423,7 +419,7 @@ class Ceph(Cluster):
         If the file already exists, make a backup of existing conf, and make a symlink of tmp/conf into /etc/ceph.
         If the file deosn't exist, copy over a version from the head node onto the clients."""
         # get all the node hostnames
-        nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws')
+        nodes = settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs')
         # get the conf_file location
         conf_file = self.config.get("conf_file")
         # do the basic logging
@@ -440,28 +436,65 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo mv /etc/ceph/ceph.conf /etc/ceph/ceph.conf.cbt.bak').communicate()
         # create a symlink of the actual conf file into the temp directory
         common.pdsh(nodes, 'sudo ln -s %s /etc/ceph/ceph.conf' % self.tmp_conf).communicate()
+        
+    def get_mon_hosts(self):
+        # get the list of mons
+        mon_hosts  = {}
+        mons_config = settings.cluster.get('mons')
 
-    # create the MON daemons on all the given 'MON' nodes
+        # For mons specified using the string/list representation, we'll
+        # assume mon ids range from a-z in order and default ports are used.
+        if isinstance(mons_config, str):
+            host = mons_config
+            info = settings.host_info(host)
+            mon_str = '%s:6789' % info['addr']
+            mon_hosts[host] = {'a': mon_str}
+        elif isinstance(mons_config, list):
+            mon_id = 'a'
+            for host in mons_config:
+                info = settings.host_info(host)
+                mon_str = '%s:6789' % info['addr']
+                mon_hosts[host] = {mon_id: mon_str}
+                if ord(mon_id) < ord('z'):
+                    mon_id = chr(ord(mon_id) + 1)
+                else:
+                    raise ValueError("CBT does not support 27+ monitors")
+        # dict representation contains hostnames with mon_id / ip:port pair:
+        #
+        # localhost:
+        #   a: "127.0.0.1:6789"
+        elif isinstance(mon_hosts, dict):
+            for host, mon_config in mons_config.iteritems():
+                mon_hosts[host] = {}
+                for mon_id, addr in mon_config.iteritems():
+                     mon_hosts[host][mon_id] = addr
+        else:
+            raise ValueError("Failed to parse monitor syntax: %r" % mon_hosts)
+        return mon_hosts
+
+
     def make_mons(self):
-        """Create a new MON daemon on each MON node mentioned in the YAML file.\n
-        Create necessary keyrings, copy config files as well as the monmap. Finally, spawn the daemons."""
-        # Build and distribute the keyring
-        # Create a monitor keyring with the given filename and allow * on MONs
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % self.keyring_fn).communicate()
-        # Create an admin keyring with the given filename and allow * on all daemons
-        common.pdsh(settings.getnodes('head'), 'ceph-authtool --gen-key --name=client.admin --set-uid=0 --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % self.keyring_fn).communicate()
-        # Copy the new keyring from the ceph nodes back to the admin node as tmp file
-        common.rscp(settings.getnodes('head'), self.keyring_fn, '%s.tmp' % self.keyring_fn).communicate()
-        # Copy the new keyring from admin node to all the nodes as tmp file
-        common.pdcp(settings.getnodes('mons', 'osds', 'rgws', 'mds', 'mgrs'), '', '%s.tmp' % self.keyring_fn, self.keyring_fn).communicate()
+        # Build and distribute the client keyring
+        client_admin_dir = "%s/client.admin" % self.tmp_dir
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'rm -rf %s' % client_admin_dir).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'mkdir -p %s' % client_admin_dir).communicate()
 
-
+        keyring_fn = os.path.join(client_admin_dir, "keyring")
+        common.pdsh(settings.getnodes('head'), '%s --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
+        common.pdsh(settings.getnodes('head'), '%s --gen-key --name=client.admin --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
+        common.rscp(settings.getnodes('head'), keyring_fn, '%s.tmp' % keyring_fn).communicate()
+        common.pdcp(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), '', '%s.tmp' % keyring_fn, keyring_fn).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo mv %s %s.cbt.bak' % (self.client_keyring, self.client_keyring)).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo ln -s %s %s' % (keyring_fn, self.client_keyring)).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo mv %s %s.cbt.bak' % (self.client_secret, self.client_secret)).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo sh -c \'%s --print-key %s > %s\'' % (self.ceph_authtool_cmd, self.client_keyring, self.client_secret)).communicate()
         # Build the monmap, retrieve it, and distribute it
         mons = settings.getnodes('mons').split(',')
         # create new mon map
         cmd = 'monmaptool --create --clobber'
+        
         # get list of all mons hostnames from the YAML file
-        monhosts = settings.cluster.get('mons')
+        monhosts = self.get_mon_hosts()
         # log the list of all mon hosts
         logger.info(monhosts)
         # update the command to add a mon entry for each mon(daemon) on each node(monhost) along with an address.
@@ -491,10 +524,11 @@ class Ceph(Cluster):
                 common.pdsh(monhost, 'sudo rm -rf %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 # create a new temp dir
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
+               
                 # run the monitor command on all nodes, same old sh resource escalation followed by 'exec' to run the MON daemon on each node
-                common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, self.keyring_fn)).communicate()
+                common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, keyring_fn)).communicate()
                 # copy the mon keyring to the remote MON nodes
-                common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (self.keyring_fn, self.tmp_dir, mon)).communicate()
+                common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (keyring_fn, self.tmp_dir, mon)).communicate()
             
         # Start the mons
         # Similar process as setting up mons, this time, need a pidfile to keep track of the mon PIDs for log analysis later on
@@ -503,7 +537,7 @@ class Ceph(Cluster):
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.iteritems():
                 pidfile="%s/%s.pid" % (self.pid_dir, monhost)
-                cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.keyring_fn, pidfile)
+                cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, keyring_fn, pidfile)
                 if self.mon_valgrind:
                     cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
                 else:
@@ -551,7 +585,7 @@ class Ceph(Cluster):
                 # create the OSD first, so we know what number it has been assigned.
                 common.pdsh(pdshhost, 'sudo %s -c %s osd create %s' % (self.ceph_cmd, self.tmp_conf, osduuid)).communicate()
                 # bring the OSD online in background while continuing to create OSDs in foreground
-                thrd = OsdThread(self, devnumstr, osdnum, clusterid, host, osduuid, osddir)
+                thrd = OsdThread(self, devnumstr, osdnum, clusterid, host, osduuid, osddir, self.tmp_dir)
                 logger.info('starting creation of OSD %d ' % osdnum)
                 thrd.start()
                 thread_list.append(thrd)
@@ -598,6 +632,30 @@ class Ceph(Cluster):
                     pdshhost = '%s@%s' % (user, mgrhost)
                 # bombs away!
                 # setup shell limits, exec to run the given command and acquire the shell process
+                data_dir = "%s/mgr.%s" % (self.tmp_dir, mgrname)
+                common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
+                common.pdsh(pdshhost, 'sudo %s auth get-or-create mgr.%s mon \'allow profile mgr\' mds \'allow *\' osd \'allow *\' -o %s/keyring' % (self.ceph_cmd, mgrname, data_dir)).communicate()
+                common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
+
+    def start_mds(self):
+        user = settings.cluster.get('user')
+        mdshosts = settings.cluster.get('mdss')
+
+        if not mdshosts:
+            return
+
+        for mdshost, mds in mdshosts.iteritems():
+            for mdsname, mdssettings in mds.iteritems():
+                cmd = '%s -i %s' % (self.ceph_mds_cmd, mdsname)
+                if self.mgr_valgrind:
+                    cmd = "%s %s" % (common.setup_valgrind(self.mds_valgrind, mdsname, self.tmp_dir), cmd)
+                else:
+                    cmd = "%s %s" % (self.ceph_run_cmd, cmd)
+                if user:
+                    pdshhost = '%s@%s' % (user, mdshost)
+                data_dir = "%s/mds.%s" % (self.tmp_dir, mdsname)
+                common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
+                common.pdsh(pdshhost, 'sudo %s auth get-or-create mds.%s mon \'allow profile mds\' osd \'allow rw tag cephfs *=*\' mds \'allow\' mgr \'allow profile mds\' -o %s/keyring' % (self.ceph_cmd, mdsname, data_dir)).communicate()
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
     # create RGWS on all the given nodes
@@ -624,11 +682,14 @@ class Ceph(Cluster):
                 # get ssl certificate if using TLS/SSL
                 ssl_certificate = rgwsettings.get('ssl_certificate', None)
 
-                # Build the auth_url
-                auth_url = "http://" if ssl_certificate is None else "https://"
-                auth_url += host
-                auth_url += ":7480" if port is None else ":%s" % port
-                auth_url += "/auth/v1.0"
+                # Build the urls (s3)
+                url = "http://" if ssl_certificate is None else "https://"
+                url += host
+                url += ":7480" if port is None else ":%s" % port
+                self.urls.append(url)
+
+                # Build the auth urls (swift)
+                auth_url = url + "/auth/v1.0"
                 self.auth_urls.append(auth_url)
 
                 # set the rgw_frontends
@@ -714,6 +775,28 @@ class Ceph(Cluster):
         return ret
 
     # probe node to determine if they're scrubbing, wait until they finish
+    def check_backfill(self, check_list=None, logfile=None):
+        # Wait for a defined amount of time in case ceph health is delayed
+        time.sleep(self.health_wait)
+        logline = ""
+        if logfile:
+            logline = "| tee -a %s" % logfile
+        ret = 0
+
+        # Match any of these things to continue checking backfill 
+        check_list = ["backfill", "misplaced"]
+        while True:
+            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
+            if check_list and not any(x in stdout for x in check_list):
+                break
+            else:
+                ret = ret + 1
+            for line in stdout.splitlines():
+                if 'misplaced' in line:
+                    logger.info("%s", line)
+            time.sleep(1)
+        return ret
+
     def check_scrub(self):
         """Probe the nodes every second to determine if any scrubbing is going on, don't stop until they're all finished."""
         logger.info('Waiting until Scrubbing completes...')
@@ -887,7 +970,7 @@ class Ceph(Cluster):
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
                         continue_if_error=False).communicate()
 
-        logger.info('Checking Healh after pool creation.')
+        logger.info('Checking Health after pool creation.')
         self.check_health()
 
         if prefill_objects > 0 or prefill_time > 0:
@@ -948,26 +1031,47 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name),
                     continue_if_error=False).communicate()
 
-    # unmount rbd mounted volumes from the loadgenerators
-    def rbd_unmount(self):
-        """Unmount all the rbd mounted drives in the all the clients (load generators)"""
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-        # common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec rbd -c %s unmap \'{}\' \;' % self.tmp_conf).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo service rbdmap stop').communicate()
-
     # make a new image in RBD pool with the given params
-    def mkimage(self, name, size, pool, data_pool, object_size):
+    def mkimage(self, name, size, pool, data_pool, order):
         """Simply create a new image in the RBD pool"""
         dp_option = ''
         if data_pool:
             dp_option = "--data-pool %s" % data_pool
-        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --object-size %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, object_size)).communicate()
+        common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order)).communicate()
+
+    def unmount_all(self):
+        # Should take care of pretty much everything so long as wierd mnt_dirs aren't used.
+        common.pdsh(settings.getnodes('clients'), 'sudo umount $(grep %s /proc/mounts | cut -f2 -d" " | sort -r)' % self.mnt_dir).communicate()
+        
+        # Kill the fuse processes for good measure
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -SIGKILL %s' % self.rbd_fuse_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -SIGKILL %s' % self.ceph_fuse_cmd).communicate()
+
+        # Unmount RBD and NBD for good measure
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+
+        # Unmap rbd, nbd, and clear the targetcli config
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_nbd_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo targetcli clearconfig confirm=True', continue_if_error=False).communicate()
+
+    def get_urls(self):
+        return self.urls
 
     # auth_urls needed for RADOSGW related stuff
     def get_auth_urls(self):
         return self.auth_urls
 
     # create a new swift use particular to the benchmark 
+    def add_s3_user(self, user, access_key, secret_key):
+        if self.urls:
+            cmd = "%s" % self.radosgw_admin_cmd
+            node = settings.getnodes('head')
+            common.pdsh(node, '%s -c %s user create --uid=%s --display-name=%s' % (cmd, self.tmp_conf, user, user)).communicate()
+            common.pdsh(node, '%s -c %s key create --uid=%s --key-type=s3 --access_key=%s --secret_key=%s' % (cmd, self.tmp_conf, user, access_key, secret_key)).communicate()
+            common.pdsh(node, '%s -c %s user modify --uid=%s --max-buckets=0' % (cmd, self.tmp_conf, user)).communicate()
+
     def add_swift_user(self, user, subuser, key):
         """Add a swift user with given credentials into the 'current' cluster."""
         # only if the auth_urls have been defined
@@ -994,9 +1098,13 @@ class Ceph(Cluster):
         # RGW needs 3 pools, one to store the buckets, as a default pool
         # another to store the index data of all the bucket metadata
         # and third to store the actual bucket data
+        self.mkpool('.rgw.root', rgw_pools.get('root', 'default'), 'rgw')
+        self.mkpool('default.rgw.control', rgw_pools.get('control', 'default'), 'rgw')
+        self.mkpool('default.rgw.meta', rgw_pools.get('meta', 'default'), 'rgw')
+        self.mkpool('default.rgw.log', rgw_pools.get('log', 'default'), 'rgw')
         self.mkpool('default.rgw.buckets', rgw_pools.get('buckets', 'default'), 'rgw')
-        self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index'), 'default', 'rgw')
-        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data'), 'default', 'rgw')
+        self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'), 'rgw')
+        self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default'), 'rgw')
 
 # thread to bring up a screwed cluster
 class RecoveryTestThread(threading.Thread):
@@ -1028,6 +1136,7 @@ class RecoveryTestThread(threading.Thread):
         self.maxhealthtries = 60
         self.health_checklist = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
         self.ceph_cmd = self.cluster.ceph_cmd
+        self.lasttime = time.time()
 
     def logcmd(self, message):
         return 'echo "[`date`] %s" >> %s/recovery.log' % (message, self.config.get('run_dir'))
@@ -1047,7 +1156,7 @@ class RecoveryTestThread(threading.Thread):
             lcmd = self.logcmd("Marking OSD %s out." % osdnum)
             common.pdsh(settings.getnodes('head'), '%s -c %s osd out %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
         common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
-
+        self.lasttime = time.time()
         self.state = 'osdout'
 
     def osdout(self):
@@ -1062,7 +1171,7 @@ class RecoveryTestThread(threading.Thread):
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
         else:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
-
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % str(time.time() - self.lasttime))).communicate()
         lcmd = self.logcmd("Unsetting the ceph osd noup flag")
         common.pdsh(settings.getnodes('head'), '%s -c %s osd unset noup;%s' % (self.ceph_cmd, self.cluster.tmp_conf, lcmd)).communicate()
         for osdnum in self.config.get('osds'):
@@ -1070,20 +1179,23 @@ class RecoveryTestThread(threading.Thread):
             common.pdsh(settings.getnodes('head'), '%s -c %s osd up %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
             lcmd = self.logcmd("Marking OSD %s in." % osdnum)
             common.pdsh(settings.getnodes('head'), '%s -c %s osd in %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
-
+        self.lasttime = time.time()
         self.state = "osdin"
 
     def osdin(self):
-        # Wait until the cluster is healthy.
-        ret = self.cluster.check_health(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
+        # Wait until the cluster is done backfilling.
+        ret = self.cluster.check_backfill(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
+        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+
         if self.inhealthtries < self.maxhealthtries and ret == 0:
             self.inhealthtries = self.inhealthtries + 1
             return # Cluster hasn't become unhealthy yet.
 
         if ret == 0:
-            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went into backfill.')).communicate()
         else:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % str(time.time() - self.lasttime))).communicate()
         self.state = "post"
 
     def post(self):

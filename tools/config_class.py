@@ -155,7 +155,7 @@ class Config:
                        "  user: %s\n"
                        "  osds_per_node: %s\n"
                        "  fs: xfs\n"
-                       "  mkfs_opts %s\n"
+                       "  mkfs_opts: %s\n"
                        "  mount_opts: %s\n"
                        "  ceph.conf: %s\n"
                        "  iterations: %s\n"

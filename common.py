@@ -7,6 +7,8 @@ to the actual subprocess.Popen with all the nice error handling embedded.
 import errno
 import logging
 import os
+import signal
+import socket
 import subprocess
 
 import settings
@@ -14,22 +16,31 @@ import settings
 # acquire the pointer to the logging object for logging
 logger = logging.getLogger("cbt")
 
+
+def join_nostr(command):
+    if isinstance(command, list):
+        return ' '.join(command)
+    return command
+
 # this class overrides the communicate() method to check the return code and
 # throw an exception if return code is not OK
 
 # The idea is to create this class with all the error checking done on the return code of subprocess.Popen
 #  and then create functions that can take inputs as arguments of Popen, and return a CheckedPopen object
 #  which can then be operated on to use all the error checking performed.
-class CheckedPopen:
+class CheckedPopen(object):
     """A wrapper around subprocess.Popen() for return code processing and resiliency."""
     # uninitialized return value integer
     UNINIT=-720
     # a correct return value interger
     OK=0
-
-    def __init__(self, args, continue_if_error=False):
+    def __init__(self, args, continue_if_error=False, shell=False):
         """Initialize the popen object with given data, and log the stuff."""
-        # arguments to pass to popen
+        # arguments to pass to popen  
+        logger.debug('CheckedPopen continue_if_error=%s, shell=%s args=%s'
+                     % (str(continue_if_error), str(shell), join_nostr(args)))
+        env = dict(os.environ)
+        env['LC_ALL'] = 'C'
         self.args = args[:]
         # the return value from popen
         self.myrtncode = self.UNINIT
@@ -39,23 +50,23 @@ class CheckedPopen:
         # therefore, there's a need to initialize the stdout= and stderr= parameters with a PIPE which will 
         # allow communication with the process
         # also, close fd's upon process termination, for safekeeping
-        self.popen_obj = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
-        # log some debugging stuff in CBT debugger
-        logger.debug('CheckedPopen continue_if_error=%s args=%s'%(str(continue_if_error), ' '.join(args)))
+        self.shell = shell
+        self.popen_obj = subprocess.Popen(args, shell=shell,
+                                          stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE,
+                                          preexec_fn=os.setsid,
+                                          close_fds=True,
+                                          env=env)
 
     def __str__(self):
-       """Good old __str___ for object printing"""
-       return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(str(self.args), str(self.continue_if_error), self.myrtncode)
+       return 'checked_Popen args=%s continue_if_error=%s rtncode=%d'%(join_nostr(self.args), str(self.continue_if_error), self.myrtncode)
 
     # we transparently check return codes for this method now so callers don't have to
 
-    # input is the data to send to the STDIN of the process
-    def communicate(self, input=None, continue_if_error=True):
-        """Wrapper of the subprocess.Popen.communicate() for fancier error handling"""
-
-        # let the process run, give 'input' data to STDIN, read data from STDOUT STDERR and place it in a tuple, wait till finish
-        (stdoutdata, stderrdata) = self.popen_obj.communicate(input=input)
-
+    def communicate(self, input=None):
+        stdoutdata, stderrdata = self.popen_obj.communicate(input=input)
+        stdoutdata = stdoutdata.decode(errors='ignore')
+        stderrdata = stderrdata.decode(errors='ignore')
         self.myrtncode = self.popen_obj.returncode  # THIS is the thing we couldn't do before
 
         # if something went wrong when creating the process
@@ -63,18 +74,38 @@ class CheckedPopen:
             # if we weren't supposed to continue in case of an error
             if not self.continue_if_error:
                 # throw and exception and bail out!
-                raise Exception(str(self)+'\nstdout:\n'+stdoutdata+'\nstderr\n'+stderrdata)
+                raise Exception('\n'.join([str(self),
+                                           'stdout:', stdoutdata,
+                                           'stderr:', stderrdata]))
             else:
                 # otherwise, log a warning and continue with the program
-                logger.warning(' '.join(self.args))
+                logger.warning(join_nostr(self.args))
                 logger.warning('error %d seen, continuing anyway...'%self.myrtncode)
         # return the STDstream data of the process taken from the subprocess.PIPEs given to it
-        return (stdoutdata, stderrdata)
+        return stdoutdata, stderrdata
 
     def wait(self):
         """Simply wait till the process ends, and give it's return code upon return."""
-        self.communicate(continue_if_error=True)
+        self.communicate()
         return self.myrtncode
+
+    def kill(self, sig=signal.SIGINT):
+        if self.shell:
+            os.killpg(os.getpgid(self.popen_obj.pid), sig)
+        else:
+            self.popen_obj.send_signal(sig)
+
+
+class CheckedPopenLocal(CheckedPopen):
+    def __init__(self, host, args, continue_if_error=False, shell=False):
+        super(CheckedPopenLocal, self).__init__(args, continue_if_error, shell)
+        self.host = host
+
+    def communicate(self, input=None):
+        stdout, stderr = super(CheckedPopenLocal, self).communicate()
+        stdout = "%s: %s" % (self.host, stdout)
+        stderr = "%s: %s" % (self.host, stderr)
+        return (stdout, stderr)
 
 # by default, do NOT abort if pdsh returns error status
 # this policy results in minimal code change to CBT while allowing
@@ -101,43 +132,83 @@ def expanded_node_list(nodes):
     #logger.info("full list of hosts: %s" % str(full_node_list))
     return node_list
 
-# return the PDSH object with error checking
+def get_localnode(nodes):
+    # Similarly to `expanded_node_list(nodes)` we assume the passed nodes
+    # param is always string. This is justified as the callers use `nodes`
+    # to supply the `-w ...` parameter of ssh during CheckedPopen() call.
+
+    # if more than one node is listed, fallback to pdsh
+    nodes_list = expanded_node_list(nodes);
+    if len(nodes) > 1:
+        return None
+
+    local_fqdn = get_fqdn_local()
+    local_hostname = socket.gethostname()
+    local_short_hostname = local_hostname.split('.')[0]
+
+    remote_host = settings.host_info(nodes_list[0])['host']
+    if remote_host in (local_fqdn, local_hostname, local_short_hostname):
+        return remote_host
+    return None 
+
+def sh(local_node, command, continue_if_error=True):
+    return CheckedPopenLocal(local_node, join_nostr(command),
+                             continue_if_error=continue_if_error, shell=True)
+
 def pdsh(nodes, command, continue_if_error=True):
-    """PDSH using the error handled popen implemented as CheckedPopen"""
-    args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, command]
-    # -S means pdsh fails if any host fails 
-    if not continue_if_error: args.insert(1, '-S')
-    return CheckedPopen(args,continue_if_error=continue_if_error)
+    local_node = get_localnode(nodes);
+    if local_node:
+        return sh(local_node, command, continue_if_error=continue_if_error)
+    else:
+        args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, join_nostr(command)]
+        # -S means pdsh fails if any host fails
+        if not continue_if_error: args.insert(1, '-S')
+        return CheckedPopen(args,continue_if_error=continue_if_error)
  
 # return the PDCP object with error checking
 def pdcp(nodes, flags, localfile, remotefile):
-    """PDCP using the error handled popen implemented as CheckedPopen"""
-    args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
-    if flags:
-        args += [flags]
-    return CheckedPopen(args + [localfile, remotefile], 
-                        continue_if_error=False)
+    local_node = get_localnode(nodes);
+    if local_node:
+        return sh(local_node, ['cp', flags, localfile, remotefile], continue_if_error=False)
+    else:
+        args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+        if flags:
+            args += [flags]
+        return CheckedPopen(args + [localfile, remotefile],
+                            continue_if_error=False)
 
-# return the reverse PDCP object with error checking
-def rpdcp(nodes, flags, remotefile, localfile):
-    """RPDCP using the error handled popen implemented as CheckedPopen"""
-    args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
-    if flags:
-        args += [flags]
-    return CheckedPopen(args + [remotefile, localfile], 
-                        continue_if_error=False)
+
+def rpdcp(nodes, flags, remotefile, localdir):
+    local_node = get_localnode(nodes);
+    if local_node:
+      assert len(expanded_node_list(nodes)) == 1
+      return sh(local_node, ['for', 'i', 'in', remotefile, ';',
+                    'do', 'cp', flags, '${i}', "%s/$(basename ${i}).%s" % (localdir, local_node), ';',
+                'done'],
+                continue_if_error=False)
+    else:
+        args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+        if flags:
+            args += [flags]
+        return CheckedPopen(args + [remotefile, localdir],
+                            continue_if_error=False)
 
 # return the SCP object with error checking
 def scp(node, localfile, remotefile):
-    """SCP using the error handled popen implemented as CheckedPopen"""
-    return CheckedPopen(['scp', localfile, '%s:%s' % (node, remotefile)], 
-                        continue_if_error=False)
-
+    local_node = get_localnode(node);
+    if local_node:
+        return sh(local_node, ['cp', localfile, remotefile], continue_if_error=False)
+    else:
+        return CheckedPopen(['scp', localfile, '%s:%s' % (node, remotefile)],
+                            continue_if_error=False)
 # return the reverse SCP object with error checking
 def rscp(node, remotefile, localfile):
-    """RSCP using the error handled popen implemented as CheckedPopen"""
-    return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
-                        continue_if_error=False)
+    local_node = get_localnode(node);
+    if local_node:
+        return sh(local_node, ['cp', remotefile, localfile], continue_if_error=False)
+    else:
+        return CheckedPopen(['scp', '%s:%s' % (node, remotefile), localfile],
+                            continue_if_error=False)
 
 # simple enough to understand
 def get_fqdn_cmd():
@@ -150,18 +221,19 @@ def get_fqdn_list(nodes):
 
     # run the checkedpopen process and get the data
     stdout, stderr = pdsh(settings.getnodes(nodes), '%s' % get_fqdn_cmd()).communicate()
-    print stdout
-    # only do one split, and return the second element from the split 
+    print(stdout)
     ret = [i.split(' ', 1)[1] for i in stdout.splitlines()]
-    print ret
-    # return the fqdn list
+    print(ret)
     return ret
 
-# clean up a given directory on each cluster node
+def get_fqdn_local():
+    local_fqdn = socket.getfqdn()
+    logger.debug('get_fqdn_local()=%s' % local_fqdn)
+    return local_fqdn
+
 def clean_remote_dir (remote_dir):
     """Do a simple rm -rf on a given remote_directory for all cluster nodes."""
-    # printing debug message
-    print "cleaning remote dir %s" % remote_dir
+    print("cleaning remote dir %s".format(remote_dir))
 
     # if it's / or absolute directory, don't delete it!
     if remote_dir == "/" or not os.path.isabs(remote_dir):

@@ -21,6 +21,8 @@ import settings
 
 # get all the benchmark profiles needed
 from benchmark.radosbench import Radosbench
+from benchmark.fio import Fio
+from benchmark.hsbench import Hsbench
 from benchmark.rbdfio import RbdFio
 from benchmark.rawfio import RawFio
 from benchmark.kvmrbdfio import KvmRbdFio
@@ -31,12 +33,12 @@ from benchmark.cephtestrados import CephTestRados
 from benchmark.getput import Getput
 
 # return a 'generator' for each benchmarking object, to handle given benchmarks
-def get_all(cluster, iteration):
+def get_all(archive, cluster, iteration):
     """Returns a 'generator' for getting the 'benchmark object' depending\n
     on the type of benchmark listed in the YAML file."""
 
     # sort out all the benchmarks listed in the YAML
-    for benchmark, config in sorted(settings.benchmarks.iteritems()):
+    for benchmark, config in sorted(settings.benchmarks.items()):
         # each benchmark needs to be performed iteration number of times
         default = {"benchmark": benchmark,
                    "iteration": iteration}
@@ -44,7 +46,7 @@ def get_all(cluster, iteration):
         for current in all_configs(config):
             current.update(default)
             # give a generator to the caller
-            yield get_object(cluster, benchmark, current)
+            yield get_object(archive, cluster, benchmark, current)
 
 # return permutations of the config parameters as 'generators' for faster processing
 def all_configs(config):
@@ -56,10 +58,13 @@ def all_configs(config):
     cycle_over_lists = []
     cycle_over_names = []
     default = {}
-
     # get the config parameters from the YAML 'object' to iterate on
-    for param, value in config.iteritems():
-        if isinstance(value, list):
+    for param, value in config.items():
+        # acceptable applies to benchmark as a whole, no need to it to
+        # the set for permutation
+        if param == 'acceptable':
+            default[param] = value
+        elif isinstance(value, list):
             cycle_over_lists.append(value)
             cycle_over_names.append(param)
         else:
@@ -72,23 +77,21 @@ def all_configs(config):
         yield current
 
 # return the benchmark object given the input string
-def get_object(cluster, benchmark, bconfig):
+def get_object(archive, cluster, benchmark, bconfig):
     """Return a benchmark object, formed by the cluster object and benchmark config from YAML"""
-    if benchmark == "nullbench":
-        return Nullbench(cluster, bconfig)
-    if benchmark == "radosbench":
-        return Radosbench(cluster, bconfig)
-    if benchmark == "rbdfio":
-        return RbdFio(cluster, bconfig)
-    if benchmark == "kvmrbdfio":
-        return KvmRbdFio(cluster, bconfig)
-    if benchmark == "rawfio":
-        return RawFio(cluster, bconfig)
-    if benchmark == 'librbdfio':
-        return LibrbdFio(cluster, bconfig)
-    if benchmark == 'cosbench':
-        return Cosbench(cluster, bconfig)
-    if benchmark == 'cephtestrados':
-        return CephTestRados(cluster, bconfig)
-    if benchmark == 'getput':
-        return Getput(cluster, bconfig)
+    benchmarks = {
+        'nullbench': Nullbench,
+        'radosbench': Radosbench,
+        'fio': Fio,
+        'hsbench': Hsbench,
+        'rbdfio': RbdFio,
+        'kvmrbdfio': KvmRbdFio,
+        'rawfio': RawFio,
+        'librbdfio': LibrbdFio,
+        'cosbench': Cosbench,
+        'cephtestrados': CephTestRados,
+        'getput': Getput}
+    try:
+        return benchmarks[benchmark](archive, cluster, bconfig)
+    except KeyError:
+        return None

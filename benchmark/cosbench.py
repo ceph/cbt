@@ -16,17 +16,16 @@ import settings
 import monitoring
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 # get the logger handle to log to for this module
 logger = logging.getLogger("cbt")
 
 # the cosbench benchmark class
 class Cosbench(Benchmark):
-    """"""
-    def __init__(self, cluster, config):
+    def __init__(self, archive_dir, cluster, config):
         # setup the stuff common to all benchmarks, dirs etc
-        super(Cosbench, self).__init__(cluster, config)
+        super(Cosbench, self).__init__(archive_dir, cluster, config)
 
         # parse the options in the workload-profile XML file of cosbench to get info out of it
         config = self.parse_conf(config)
@@ -60,8 +59,33 @@ class Cosbench(Benchmark):
         # output directory is the archive directory given in YAML
         self.out_dir = self.archive_dir
 
-
     # ensure some prereqs for the COSBench running
+    def _filter_ssh_output(self, output):
+        if not output:
+            return output
+        lines = output.split('\n')
+        if re.search('Permanently added', lines[0]):
+            return '\n'.join(line for line in lines[1:] if line.strip())
+        else:
+            return output
+
+    def _do_rgw(self, cmd_fmt, **kwargs):
+        cmd = cmd_fmt.format(**kwargs)
+        stdout, stderr = common.pdsh(self.rgw, cmd).communicate()
+        logger.info('[rgw]: %s\n%s', cmd, stdout)
+        stderr = self._filter_ssh_output(stderr)
+        if stderr:
+            logger.error(stderr)
+
+    def _do_ctrl(self, cmd_fmt, **kwargs):
+        cmd = cmd_fmt.format(**kwargs)
+        stdout, stderr = common.pdsh(self.config["controller"], cmd).communicate()
+        logger.info('[controller]: %s\n%s', cmd, stdout)
+        stderr = self._filter_ssh_output(stderr)
+        if stderr:
+            logger.error(stderr)
+        return stdout, stderr
+
     def prerun_check(self):
         """Checking for a stable COSBench environment before starting:
         Parse the XML to get auth info
@@ -89,21 +113,24 @@ class Cosbench(Benchmark):
             # if not using an existing cluster, need to create users for the benchmarking
             # also true if using the teuthology framework, need users for testing
             if not self.use_existing or self.is_teuthology:
+                username = cosconf["username"]
                 # test:test format is being split
-                user, subuser = cosconf["username"].split(':')
+                uid, _ = username.split(':')
                 # setup user, subuser, create key, add quota etc and apply key to the user, basic setup, just like before
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user create --uid='%s' --display-name='%s'" % (user, user)).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser create --uid=%s --subuser=%s --access=full" % (user, cosconf["username"])).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin key create --uid=%s --subuser=%s --key-type=swift" % (user, cosconf["username"])).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin user modify --uid=%s --max-buckets=100000" % (user)).communicate()
-                stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"radosgw-admin subuser modify --uid=%s --subuser=%s --secret=%s --key-type=swift" % (user, cosconf["username"], cosconf["password"])).communicate()
+                fmt_args = dict(uid=uid, subuser=username, secret=cosconf["password"])
+                self._do_rgw("radosgw-admin user create --uid='{uid}' --display-name='{uid}'", **fmt_args)
+                self._do_rgw("radosgw-admin subuser create --uid={uid} --subuser={subuser} --access=full", **fmt_args)
+                self._do_rgw("radosgw-admin key create --uid={uid} --subuser={subuser} --key-type=swift --secret-key={secret}", **fmt_args)
+                self._do_rgw("radosgw-admin user modify --uid={uid} --max-buckets=100000", **fmt_args)
 
+            
             # curl is called just to test out the RADOSGW using the parameters:
             # -D - -> dump header information on STDOUT
             # -H -> mention header entries to add, we're adding Auth User/Key entries for the swift authentication
-            # 
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"curl -D - -H 'X-Auth-User: %s' -H 'X-Auth-Key: %s' %s" % (cosconf["username"], cosconf["password"], cosconf["url"])).communicate()
-
+            stdout, stderr = self._do_ctrl("curl -D - -H 'X-Auth-User: {user}' -H 'X-Auth-Key: {key}' {url}",
+                                           user=cosconf["username"],
+                                           key=cosconf["password"],
+                                           url=cosconf["url"])
         else:
             # log about error
             logger.error("Auth Configuration in Yaml file is not in correct format")
@@ -125,12 +152,13 @@ class Cosbench(Benchmark):
         
         # track number of containers existing/just created
         container_count = 0
+        
         # perform an API operation, this is the python-swiftclient which has the following arguments:
         # -A -> authentication URL
         # -U -> username
         # -K -> api_key
         # list -> list the containers or the objects for the container for that user
-        stdout, stderr = common.pdsh("%s@%s" % (self.user, self.rgw),"swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])).communicate()
+        stdout, stderr = common.pdsh(self.rgw, "swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])).communicate()
         # if an error was returned
         if stderr != "":
             # containers aren't prepared
@@ -295,7 +323,6 @@ class Cosbench(Benchmark):
             self.config["workload"]["workflow"]["workstage"].insert(0, workstage_init)
 
         self.prepare_xml(self.config["workload"])
-        return True
 
     def container_prepare_check(self):
         return self.container_prepared
@@ -334,7 +361,7 @@ class Cosbench(Benchmark):
         except KeyboardInterrupt:
             logger.warning("accept keyboard interrupt, cancel this run")
             conf = self.config
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
+            stdout, stderr = common.pdsh(conf["controller"],'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
             logger.info("%s", stdout)
 
         self.check_workload_status()
@@ -362,7 +389,11 @@ class Cosbench(Benchmark):
         while wait:
             # run the cli.sh script of COSBench with 'info' 
             # to ensure that a runid has already been setup which refers to an existing instance of COSBench
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info | grep %s | awk '{print $8}'" % (self.config["cosbench_dir"], self.runid)).communicate()
+            
+            stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info | grep {runid} | awk '{{print $8}}'",
+                                           cosbench_dir=self.config["cosbench_dir"],
+                                           runid=self.runid)
+
             # if anything was put in the stderr PIPE, daemon wasn't running, since the command returned an error
             if stderr:
                 # log that it's so
@@ -382,9 +413,10 @@ class Cosbench(Benchmark):
             
             # try again after a second
             time.sleep(1)
-
+            
         # log the COSBench status to the log, and end
-        stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]),"sh %s/cli.sh info " % (self.config["cosbench_dir"])).communicate()
+        stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info",
+                                       cosbench_dir=self.config["cosbench_dir"])
         # log the output for reference
         logger.debug(stdout)
         # wait for some time to let things settle
@@ -396,7 +428,9 @@ class Cosbench(Benchmark):
         #check res dir
         check_time = 0
         while True:
-            stdout, stderr = common.pdsh("%s@%s" % (self.user, self.config["controller"]), "find %s/archive -maxdepth 1 -name '%s-*'" % (self.config["cosbench_dir"], self.runid)).communicate() 
+            stdout, stderr = self._do_ctrl("find {cosbench_dir}/archive -maxdepth 1 -name '{runid}-*'",
+                                           cosbench_dir=self.config["cosbench_dir"],
+                                           runid=self.runid)
             if stdout:
                 return True
             if check_time == 3000:
@@ -406,8 +440,11 @@ class Cosbench(Benchmark):
 
     def _run(self):
         conf = self.config
-        stdout, stderr = common.pdsh("%s@%s" % (self.user, conf["controller"]),'sh %s/cli.sh submit %s/%s.xml' % (conf["cosbench_dir"], conf["cosbench_xml_dir"], conf["xml_name"])).communicate()
-        m = re.findall('Accepted with ID:\s*(\w+)', stdout )
+        stdout, stderr = self._do_ctrl('sh {cosbench_dir}/cli.sh submit {cosbench_xml_dir}/{xml_name}.xml',
+                                       cosbench_dir=conf["cosbench_dir"],
+                                       cosbench_xml_dir=conf["cosbench_xml_dir"],
+                                       xml_name=conf["xml_name"])
+        m = re.findall('Accepted with ID:\s*(\w+)', stdout)
         if not m:
             logger.error("cosbench start failing with error: %s", stderr)
             sys.exit()

@@ -9,15 +9,15 @@ import logging
 import re
 
 from cluster.ceph import Ceph
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
 
 class Getput(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(Getput, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(Getput, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
         self.runtime =  config.get('runtime', None)
@@ -65,8 +65,6 @@ class Getput(Benchmark):
         monitoring.stop()
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
-
-        return True
 
     def mkcredfiles(self):
         for i in xrange(0, len(self.auth_urls)):

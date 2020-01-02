@@ -7,14 +7,14 @@ import time
 import string
 import logging
 
-from benchmark import Benchmark
+from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
 class KvmRbdFio(Benchmark):
 
-    def __init__(self, cluster, config):
-        super(KvmRbdFio, self).__init__(cluster, config)
+    def __init__(self, archive_dir, cluster, config):
+        super(KvmRbdFio, self).__init__(archive_dir, cluster, config)
         # comma-separated list of block devices to use inside the client host/VM/container
         self.block_device_list = config.get('block_devices', '/dev/vdb' )
         self.block_devices = [ d.strip() for d in self.block_device_list.split(',') ]
@@ -128,9 +128,12 @@ class KvmRbdFio(Benchmark):
             fio_cmd += ' --bs=%dB' % self.op_size
             fio_cmd += ' --iodepth=%d' % self.iodepth
             fio_cmd += ' --size=%dM' % self.vol_size 
-            fio_cmd += ' --write_iops_log=%s' % out_file
-            fio_cmd += ' --write_bw_log=%s' % out_file
-            fio_cmd += ' --write_lat_log=%s' % out_file
+            if self.log_iops:
+                fio_cmd += ' --write_iops_log=%s' % out_file
+            if self.log_bw:
+                fio_cmd += ' --write_bw_log=%s' % out_file
+            if self.log_lat:
+                fio_cmd += ' --write_lat_log=%s' % out_file
             if 'recovery_test' in self.cluster.config:
                 fio_cmd += ' --time_based'
             fio_cmd += ' --name=%s > %s' % (fiopath, out_file)
