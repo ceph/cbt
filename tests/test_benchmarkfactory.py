@@ -13,7 +13,7 @@ class TestBenchmarkFactory(unittest.TestCase):
         )
         cfgs = list(benchmarkfactory.all_configs(config))
         self.assertEqual(len(cfgs), 3)
-        self.assertEqual([dict] * 3, map(type, cfgs))
+        self.assertEqual([dict] * 3, list(map(type, cfgs)))
         tvals = []
 
         for cfg in cfgs:
@@ -34,7 +34,7 @@ class TestBenchmarkFactory(unittest.TestCase):
 
         cfgs = list(benchmarkfactory.all_configs(config))
         self.assertEqual(len(cfgs), 9)
-        self.assertEqual([dict] * 9, map(type, cfgs))
+        self.assertEqual([dict] * 9, list(map(type, cfgs)))
 
         tjvals = []
 

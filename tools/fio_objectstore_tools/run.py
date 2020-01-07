@@ -255,13 +255,13 @@ def generate_name_full_config(base, run):
     full_config.update(DEFAULT)
     full_config.update(base)
     full_config.update(run)
-    if ('devices' in full_config.keys() or
-        'target_device' in full_config.keys()):
+    if ('devices' in list(full_config.keys()) or
+        'target_device' in list(full_config.keys())):
         full_config['target_dir'] = \
             full_config['devices'][full_config['target_device']]['target_dir']
     name = "-".join(
         "{name}({val})".format(name=name, val=val)
-        for name, val in run.items())
+        for name, val in list(run.items()))
     return name, run, full_config
 
 def get_base_config(base):
@@ -278,9 +278,7 @@ def do_run(base, runs):
     ret = {}
     orig_output_dir = None
 
-    for name, base_config, full_config in map(
-            lambda x: generate_name_full_config(base, x),
-            get_all_config_combos(runs)):
+    for name, base_config, full_config in [generate_name_full_config(base, x) for x in get_all_config_combos(runs)]:
         if orig_output_dir is None:
             orig_output_dir = full_config['output_dir']
         full_config['output_dir'] = os.path.join(full_config['output_dir'], name)

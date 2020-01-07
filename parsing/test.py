@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import argparse
 import os, fnmatch
@@ -84,11 +84,11 @@ if __name__ == '__main__':
     html.add_script(html.format_data(database.fetch_table(['opsize', 'testtype'])))
     html.add_script(html.read_file('/home/nhm/src/cbt/include/js/table.js'))
 
-    print '<meta charset="utf-8">'
-    print '<title>D3 Table Test </title>'
-    print '<html>'
-    print html.to_string()
-    print '</html>'
+    print('<meta charset="utf-8">')
+    print('<title>D3 Table Test </title>')
+    print('<html>')
+    print(html.to_string())
+    print('</html>')
 #    print database.fetch_table(['opsize', 'testtype'])
 
 #    get_section(['opsize', 'testtype'])

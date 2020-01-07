@@ -27,7 +27,7 @@ class Cosbench(Benchmark):
         self.containers = config["containers_max"]
         self.objects = config["objects_max"]
         self.mode = config["mode"]
-        self.rgw = settings.cluster.get('rgws').keys()[0]
+        self.rgw = list(settings.cluster.get('rgws').keys())[0]
         self.radosgw_admin_cmd = settings.cluster.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.use_existing = settings.cluster.get('use_existing')
         self.is_teuthology = settings.cluster.get('is_teuthology', False)
@@ -236,7 +236,7 @@ class Cosbench(Benchmark):
         logger.info("Write xml conf to %s/%s.xml", conf["cosbench_xml_dir"], leaves["name"])
 
     def add_leaf_to_tree(self, leaves, parent):
-        for leaf, leaf_content in leaves.iteritems():
+        for leaf, leaf_content in leaves.items():
             if isinstance(leaf_content, str) or isinstance(leaf_content, int):
                 parent.set(leaf, str(leaf_content))
             elif isinstance(leaf_content, list):

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # NOTE: Be sure to run script on the main ceph monitor as the desired
 # CBT user if running the script automatically (-a).
 
@@ -41,11 +41,11 @@ def get_hosts(auto):
         return (monitor, clients)
 
     try:
-        monitor = raw_input("Enter the hostname of the monitor: ")
-        clients = raw_input("Enter the hostname(s) of the OSD(s) seperated by"
+        monitor = input("Enter the hostname of the monitor: ")
+        clients = input("Enter the hostname(s) of the OSD(s) seperated by"
                             " comma: ").replace(" ", "").split(",")
     except KeyboardInterrupt:
-        print "Aborting script. No data will be saved."
+        print("Aborting script. No data will be saved.")
         sys.exit(1)
     return (monitor, clients)
 
@@ -55,9 +55,9 @@ def get_user(auto):
         return os.getlogin()
 
     try:
-        user = raw_input("Enter the username for CBT: ")
+        user = input("Enter the username for CBT: ")
     except KeyboardInterrupt:
-        print "Aborting script. No data will be saved."
+        print("Aborting script. No data will be saved.")
         sys.exit(1)
     return user
 
@@ -67,9 +67,9 @@ def get_tmp_dir(auto):
         return TMP_DIR
 
     try:
-        directory = raw_input("Enter the temporary directory for CBT results: ")
+        directory = input("Enter the temporary directory for CBT results: ")
     except KeyboardInterrupt:
-        print "Aborting script. No data will be saved."
+        print("Aborting script. No data will be saved.")
         sys.exit(1)
     return directory
 
@@ -77,18 +77,18 @@ def get_tmp_dir(auto):
 def select_tests():
     while True:
         valid = True
-        print "Which of the following tests would you like to run?\nradosbench"\
-              ", kvmrbdfio, rbdfio"
+        print("Which of the following tests would you like to run?\nradosbench"\
+              ", kvmrbdfio, rbdfio")
         try:
-            tests = raw_input("Enter the test names seperated by comma: ")
+            tests = input("Enter the test names seperated by comma: ")
             tests = tests.replace(" ", "").split(",")
         except KeyboardInterrupt:
-            print "Aborting script. No data will be saved."
+            print("Aborting script. No data will be saved.")
             sys.exit(1)
         for test in tests:
             if test.lower() not in BENCHMARKS:
-                print "Unknown test: %s" % (test)
-                print "Please specify only valid tests from the list above\n"
+                print("Unknown test: %s" % (test))
+                print("Please specify only valid tests from the list above\n")
                 valid = False
                 break
         if valid:
@@ -124,16 +124,16 @@ def main():
         tests = select_tests()
         for test in tests:
             use_default = False
-            print "\nEntering settings for %s:" % (test)
+            print("\nEntering settings for %s:" % (test))
             while True:
                 try:
-                    default = raw_input("Would you like to use default"
+                    default = input("Would you like to use default"
                                         " settings for %s [y/n]? " % (test))
                 except KeyboardInterrupt:
-                    print "Aborting script. No data will be saved."
+                    print("Aborting script. No data will be saved.")
                     sys.exit(1)
                 if default.lower() == "y":
-                    print "Using default values for %s" % (test)
+                    print("Using default values for %s" % (test))
                     use_default = True
                     break
                 elif default.lower() == "n":
@@ -141,7 +141,7 @@ def main():
                     break
             generate_test_values(test, use_default, conf)
     conf.save_file()
-    print "Output saved to: %s" % (conf.out_file)
+    print("Output saved to: %s" % (conf.out_file))
 
 if __name__ == "__main__":
     main()

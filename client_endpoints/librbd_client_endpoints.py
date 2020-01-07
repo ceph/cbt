@@ -11,7 +11,7 @@ class LibrbdClientEndpoints(CephClientEndpoints):
 
     def mount(self):
         # Don't mount anything, just set the endpoints to the pool/rbd names
-        for ep_num in xrange(0, self.endpoints_per_client):
+        for ep_num in range(0, self.endpoints_per_client):
             rbd_name = self.get_local_rbd_name(ep_num)
             self.endpoints.append("%s/%s" % (self.pool, rbd_name))
         self.endpoint_type = "rbd"

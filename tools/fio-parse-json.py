@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # fio-json-prs.py - example script to parse distributed workload generation result 
 # produced by fio in JSON format
@@ -13,7 +13,7 @@
 #              name is a dictionary key of sequence elements, and
 #              value is the desired value to select a sequence element
 # example:
-# python fio-parse-json.py r.fiojob.json.log 'jobs/jobname=randread/read/iops'
+# python3 fio-parse-json.py r.fiojob.json.log 'jobs/jobname=randread/read/iops'
 # 
 
 import os, sys

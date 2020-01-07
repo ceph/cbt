@@ -33,7 +33,7 @@ def all_configs(config):
     cycle_over_names = []
     default = {}
 
-    for param, value in config.items():
+    for param, value in list(config.items()):
         # acceptable applies to benchmark as a whole, no need to it to
         # the set for permutation
         if param == 'acceptable':
@@ -46,7 +46,7 @@ def all_configs(config):
 
     for permutation in itertools.product(*cycle_over_lists):
         current = copy.deepcopy(default)
-        current.update(zip(cycle_over_names, permutation))
+        current.update(list(zip(cycle_over_names, permutation)))
         yield current
 
 def get_object(archive, cluster, benchmark, bconfig):

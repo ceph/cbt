@@ -7,7 +7,7 @@ sudo yum check-update
 sudo yum -y update
 sudo yum install -y psmisc util-linux coreutils xfsprogs e2fsprogs findutils \
   git wget bzip2 make automake gcc gcc-c++ kernel-devel perf blktrace lsof \
-  redhat-lsb sysstat screen python-yaml ipmitool dstat zlib-devel ntp
+  redhat-lsb sysstat screen python3-yaml ipmitool dstat zlib-devel ntp
 
 MIRROR="http://mirror.hmc.edu/fedora/linux/releases/22/Everything/x86_64/os/Packages"
 

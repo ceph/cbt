@@ -46,7 +46,7 @@ class RbdFio(Benchmark):
 
         # Make the file names string
         self.names = ''
-        for i in xrange(self.concurrent_procs):
+        for i in range(self.concurrent_procs):
             self.names += '--name=%s/cbt-kernelrbdfio-`hostname -s`/cbt-kernelrbdfio-%d ' % (self.cluster.mnt_dir, i)
 
     def exists(self):

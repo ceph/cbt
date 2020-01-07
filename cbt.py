@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import argparse
 import collections
 import logging
@@ -81,7 +81,7 @@ def main(argv):
         return_code = 1  # FAIL
         logger.exception("During tests")
     finally:
-        for k, b in global_init.items():
+        for k, b in list(global_init.items()):
             try:
                 b.cleanup()
             except:

@@ -61,7 +61,7 @@ class TEvent(Event):
 
     def filter_properties(self, properties):
         ret = dict(((v[0], v[1](properties[k])) for k, v
-                    in self.get_param_map().items()))
+                    in list(self.get_param_map().items())))
         ret.update({
             'sequencer_id': int(properties['sequencer_id']),
             'tid': int(properties['tid'])
@@ -71,8 +71,8 @@ class TEvent(Event):
     @staticmethod
     def get_param_types():
         param_list = itertools.chain(
-            *((t for _, t in v.get_param_map().items())
-              for _, v in TEvent.get_subtypes().items()))
+            *((t for _, t in list(v.get_param_map().items()))
+              for _, v in list(TEvent.get_subtypes().items())))
         return dict(((v[0], tuple(v[1:])) for v in param_list))
 
     @staticmethod
@@ -110,7 +110,7 @@ class TStateDuration(TEvent):
     @staticmethod
     def get_param_map():
         return dict((v, ('state_' + v + '_duration', float, 's')) for _, v
-                    in TStateDuration.STATE_MAP.items())
+                    in list(TStateDuration.STATE_MAP.items()))
 
     def filter_properties(self, properties):
         state_name = TStateDuration.STATE_MAP[int(properties['state'])]
@@ -232,7 +232,7 @@ class Write(object):
         }
         ret.update(dict(
             ((k, ((lambda k1: lambda e: e.get_param(k1))(k), v[0], v[1]))
-             for k, v in TEvent.get_param_types().items())
+             for k, v in list(TEvent.get_param_types().items()))
         ))
         return ret
 

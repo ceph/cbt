@@ -87,7 +87,7 @@ def approximate_line(x, y, xnew, relative_dist=False):
                                  args=(ox, oy))
 
     # if error
-    if success not in range(1, 5):
+    if success not in list(range(1, 5)):
         raise ValueError("No line for this dots")
 
     # return new dots
@@ -118,7 +118,7 @@ def difference(y, ynew):
     da_avg = sum(abs_dlist) / len(abs_dlist)
     dr_avg = sum(rel_dlist) / len(rel_dlist)
 
-    return (zip(abs_dlist, rel_dlist),
+    return (list(zip(abs_dlist, rel_dlist)),
             (da_avg, max(abs_dlist)), (dr_avg, max(rel_dlist))
             )
 

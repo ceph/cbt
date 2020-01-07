@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import argparse
 import math
@@ -122,7 +122,7 @@ class TimeSeries():
                 continue
 
             names = ('time', 'curops', 'started', 'finished', 'avgmb', 'curmb', 'lastlat', 'avglat')
-            valuesdict = dict(zip(names, line.split()))
+            valuesdict = dict(list(zip(names, line.split())))
 
             value = valuesdict[ctx.type] 
             time = valuesdict['time']
@@ -172,21 +172,21 @@ class Printer():
     def print_full(self):
         for i in Interval.get_intervals(self.series, ctx.interval):
             value = ', '.join(self.format(j) for j in i.get_wa_list())
-            print "%s, %s" % (self.ffmt % i.end, value)
+            print("%s, %s" % (self.ffmt % i.end, value))
 
     def print_sums(self):
         for i in Interval.get_intervals(self.series, ctx.interval):
-            print "%s, %s" % (self.ffmt % i.end, self.format(i.get_wa_sum()))
+            print("%s, %s" % (self.ffmt % i.end, self.format(i.get_wa_sum())))
 
 
     def print_averages(self):
         for i in Interval.get_intervals(self.series, ctx.interval):
-            print "%s, %s" % (self.ffmt % i.end, self.format(i.get_wa_avg()))
+            print("%s, %s" % (self.ffmt % i.end, self.format(i.get_wa_avg())))
 
     def print_all_stats(self):
         print('end-time, samples, min, avg, median, 90%, 95%, 99%, max')
         for i in Interval.get_intervals(self.series, ctx.interval):
-            print(', '.join([
+            print((', '.join([
                 self.ffmt % i.end,
                 "%d" % len(i.get_samples()),
                 self.format(i.get_min()),
@@ -196,11 +196,11 @@ class Printer():
                 self.format(i.get_wp(0.95)),
                 self.format(i.get_wp(0.99)),
                 self.format(i.get_max())
-            ]))
+            ])))
 
     def print_default(self):
         interval = Interval.get_intervals(self.series, Interval.get_ftime(series))[0]
-        print self.format(interval.get_wa_sum())
+        print(self.format(interval.get_wa_sum()))
 
 if __name__ == '__main__':
     ctx = parse_args()

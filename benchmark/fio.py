@@ -96,7 +96,7 @@ class Fio(Benchmark):
 
         # typical directory endpoints
         if self.endpoint_type == 'directory':
-            for proc_num in xrange(self.procs_per_endpoint):
+            for proc_num in range(self.procs_per_endpoint):
                 cmd += ' --name=%s/`%s`-%s-%s' % (self.endpoints[ep_num], common.get_fqdn_cmd(), ep_num, proc_num)
 
         # handle rbd endpoints with the librbbd engine.
@@ -106,7 +106,7 @@ class Fio(Benchmark):
             cmd += ' --pool=%s' % pool_name
             cmd += ' --rbdname=%s' % rbd_name
             cmd += ' --invalidate=0'
-            for proc_num in xrange(self.procs_per_endpoint):
+            for proc_num in range(self.procs_per_endpoint):
                 rbd_name = '%s-%d' % (self.endpoints[ep_num], proc_num)
                 cmd += ' --name=%s' % rbd_name
         return cmd
@@ -126,7 +126,7 @@ class Fio(Benchmark):
         # populate the fio files
         ps = []
         logger.info('Attempting to populating fio files...')
-        for ep_num in xrange(self.endpoints_per_client):
+        for ep_num in range(self.endpoints_per_client):
             p = common.pdsh(settings.getnodes('clients'), self.prefill_command(ep_num))
             ps.append(p)
         for p in ps:
@@ -203,7 +203,7 @@ class Fio(Benchmark):
 
         logger.info('Running fio %s test.', self.mode)
         ps = []
-        for i in xrange(self.endpoints_per_client):
+        for i in range(self.endpoints_per_client):
             p = common.pdsh(settings.getnodes('clients'), self.run_command(i))
             ps.append(p)
         for p in ps:
@@ -226,7 +226,7 @@ class Fio(Benchmark):
         logger.info('Convert results to json format.')
         for client in settings.getnodes('clients').split(','):
             host = settings.host_info(client)["host"]
-            for i in xrange(self.endpoints_per_client):
+            for i in range(self.endpoints_per_client):
                 found = 0
                 out_file = '%s/output.%d.%s' % (out_dir, i, host)
                 json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)

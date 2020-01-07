@@ -56,7 +56,7 @@ class LibrbdFio(Benchmark):
         self.norandommap = config.get("norandommap", False)
         # Make the file names string (repeated across volumes)
         self.names = ''
-        for proc_num in xrange(self.procs_per_volume):
+        for proc_num in range(self.procs_per_volume):
             rbd_name = 'cbt-librbdfio-`%s`-file-%d' % (common.get_fqdn_cmd(), proc_num)
             self.names += '--name=%s ' % rbd_name
 
@@ -86,7 +86,7 @@ class LibrbdFio(Benchmark):
         ps = []
         logger.info('Attempting to populating fio files...')
         if (self.use_existing_volumes == False):
-          for volnum in xrange(self.volumes_per_client):
+          for volnum in range(self.volumes_per_client):
               rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
               pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
               p = common.pdsh(settings.getnodes('clients'), pre_cmd)
@@ -114,7 +114,7 @@ class LibrbdFio(Benchmark):
 
         logger.info('Running rbd fio %s test.', self.mode)
         ps = []
-        for i in xrange(self.volumes_per_client):
+        for i in range(self.volumes_per_client):
             fio_cmd = self.mkfiocmd(i)
             p = common.pdsh(settings.getnodes('clients'), fio_cmd)
             ps.append(p)
@@ -190,7 +190,7 @@ class LibrbdFio(Benchmark):
               self.cluster.rmpool(self.data_pool, self.data_pool_profile)
               self.cluster.mkpool(self.data_pool, self.data_pool_profile, 'rbd')
           for node in common.get_fqdn_list('clients'):
-              for volnum in xrange(0, self.volumes_per_client):
+              for volnum in range(0, self.volumes_per_client):
                   node = node.rpartition("@")[2]
                   self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
         monitoring.stop()
@@ -201,7 +201,7 @@ class LibrbdFio(Benchmark):
     def parse(self, out_dir):
         for client in settings.getnodes('clients').split(','):
             host = settings.host_info(client)["host"]
-            for i in xrange(self.volumes_per_client):
+            for i in range(self.volumes_per_client):
                 found = 0
                 out_file = '%s/output.%d.%s' % (out_dir, i, host)
                 json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)

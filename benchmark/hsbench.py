@@ -63,7 +63,7 @@ class Hsbench(Benchmark):
         self.endpoints = self.client_endpoints_object.get_endpoints()
 
     def mkcredfiles(self):
-        for i in xrange(0, len(self.auth_urls)):
+        for i in range(0, len(self.auth_urls)):
             cred = "export ST_AUTH=%s\\nexport ST_USER=%s\\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
             common.pdsh(settings.getnodes('clients'), 'echo -e "%s" > %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
 
@@ -121,7 +121,7 @@ class Hsbench(Benchmark):
         monitoring.start(self.run_dir)
         logger.info('Running hsbench %s test.' % self.modes)
         ps = []
-        for i in xrange(self.endpoints_per_client):
+        for i in range(self.endpoints_per_client):
             p = common.pdsh(settings.getnodes('clients'), self.run_command(i))
             ps.append(p)
         for p in ps:

@@ -15,7 +15,7 @@ class RgwS3ClientEndpoints(CephClientEndpoints):
     def mount(self):
         # Don't actually mount anything, just set the endpoints
         urls = self.config.get('urls', self.cluster.get_urls())
-        for ep_num in xrange(0, self.endpoints_per_client):
+        for ep_num in range(0, self.endpoints_per_client):
            url = urls[ep_num % len(urls)]
            self.endpoints.append({"url": url, "access_key": self.access_key, "secret_key": self.secret_key})
         self.endpoint_type = "s3"

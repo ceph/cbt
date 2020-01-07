@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import argparse
 
@@ -11,20 +11,20 @@ def parse_args():
 
 def compare_items(foo, files):
    # Write the header
-   print '"Attribute",',
+   print('"Attribute",', end=' ')
    for fn in files:
-       print('"%s",' % fn),
-   print
+       print(('"%s",' % fn), end=' ')
+   print()
 
-   for attribute,items in sorted(foo.iteritems()):
-       if len(items) < len(files) or not all_same(items.values()):
-           print '"%s",' % attribute,
+   for attribute,items in sorted(foo.items()):
+       if len(items) < len(files) or not all_same(list(items.values())):
+           print('"%s",' % attribute, end=' ')
            for fn in files:
                if fn in items:
-                   print('"%s",' % items[fn]),
+                   print(('"%s",' % items[fn]), end=' ')
                else:
-                   print '"",',
-           print
+                   print('"",', end=' ')
+           print()
            
 def all_same(items):
     return all(x == items[0] for x in items)

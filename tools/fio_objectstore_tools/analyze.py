@@ -55,10 +55,10 @@ projected = [dump_target(name, target) for name, target in targets]
 
 def do_filter(match, input):
     def cond(x):
-        return all(x[1]['config'].get(k) == v for k, v in match.items())
-    return filter(cond, input)
+        return all(x[1]['config'].get(k) == v for k, v in list(match.items()))
+    return list(filter(cond, input))
 
-filtered_targets, filtered = zip(*do_filter(match, zip(targets, projected)))
+filtered_targets, filtered = list(zip(*do_filter(match, list(zip(targets, projected)))))
 
 summary = generate_summary(filtered, match)
 

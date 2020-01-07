@@ -29,8 +29,8 @@ class CephClientEndpoints(ClientEndpoints):
         # get the list of mons
         self.mon_addrs  = []
         mon_hosts = self.cluster.get_mon_hosts()
-        for mon_host, mons in mon_hosts.iteritems():
-            for mon, addr in mons.iteritems():
+        for mon_host, mons in mon_hosts.items():
+            for mon, addr in mons.items():
                  self.mon_addrs.append(addr)
 
     def get_rbd_name(self, node, ep_num):
@@ -62,7 +62,7 @@ class CephClientEndpoints(ClientEndpoints):
         common.pdsh(settings.getnodes('head'), fs_new_cmd, continue_if_error=False).communicate()
 
     def mount_fs(self):
-        for ep_num in xrange(0, self.endpoints_per_client):
+        for ep_num in range(0, self.endpoints_per_client):
             dir_name = self.get_dir_name(ep_num) 
             for node in common.get_fqdn_list('clients'):
                 common.pdsh(node, 'sudo mkdir -p -m0755 -- %s' % dir_name, continue_if_error=False).communicate()
@@ -90,7 +90,7 @@ class CephClientEndpoints(ClientEndpoints):
             self.cluster.mkpool(self.data_pool, self.data_pool_profile, 'rbd')
 
         for node in common.get_fqdn_list('clients'):
-            for ep_num in xrange(0, self.endpoints_per_client):
+            for ep_num in range(0, self.endpoints_per_client):
                 rbd_name = self.get_rbd_name(node, ep_num)
 
                 # Make the RBD Image
@@ -103,7 +103,7 @@ class CephClientEndpoints(ClientEndpoints):
                     common.pdsh(settings.getnodes('head'), cmd, continue_if_error=False).communicate()
 
     def mount_rbd(self):
-        for ep_num in xrange(0, self.endpoints_per_client):
+        for ep_num in range(0, self.endpoints_per_client):
             dir_name = self.get_dir_name(ep_num) 
             for node in common.get_fqdn_list('clients'):
                 rbd_name = self.get_rbd_name(node, ep_num)
