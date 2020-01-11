@@ -108,7 +108,7 @@ def get_localnode(nodes):
 
     # if more than one node is listed, fallback to pdsh
     nodes_list = expanded_node_list(nodes);
-    if len(nodes) > 1:
+    if len(nodes_list) > 1:
         return None
 
     local_fqdn = get_fqdn_local()
