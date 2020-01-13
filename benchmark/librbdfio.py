@@ -23,12 +23,12 @@ class LibrbdFio(Benchmark):
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         self.pool_profile = config.get('pool_profile', 'default')
         self.data_pool_profile = config.get('data_pool_profile', None)
-        self.time =  str(config.get('time', None))
+        self.time =  config.get('time', None)
         self.time_based = bool(config.get('time_based', False))
-        self.ramp = str(config.get('ramp', None))
+        self.ramp = config.get('ramp', None)
         self.iodepth = config.get('iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
-        self.end_fsync = str(config.get('end_fsync', 0))
+        self.end_fsync = config.get('end_fsync', 0)
         self.mode = config.get('mode', 'write')
         self.rwmixread = config.get('rwmixread', 50)
         self.rwmixwrite = 100 - self.rwmixread
@@ -37,7 +37,7 @@ class LibrbdFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
-        self.vol_object_size = config.get('vol_object_size', '4M')
+        self.vol_object_size = config.get('vol_object_size', 22)
         self.volumes_per_client = config.get('volumes_per_client', 1)
         self.procs_per_volume = config.get('procs_per_volume', 1)
         self.random_distribution = config.get('random_distribution', None)
@@ -147,16 +147,16 @@ class LibrbdFio(Benchmark):
             fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
 #        fio_cmd += ' --ioengine=%s' % self.ioengine
         if self.time is not None:
-            fio_cmd += ' --runtime=%s' % self.time
+            fio_cmd += ' --runtime=%d' % self.time
         if self.time_based is True:
             fio_cmd += ' --time_based'
         if self.ramp is not None:
-            fio_cmd += ' --ramp_time=%s' % self.ramp
+            fio_cmd += ' --ramp_time=%d' % self.ramp
         fio_cmd += ' --numjobs=%s' % self.numjobs
         fio_cmd += ' --direct=1'
         fio_cmd += ' --bs=%dB' % self.op_size
         fio_cmd += ' --iodepth=%d' % self.iodepth
-        fio_cmd += ' --end_fsync=%s' % self.end_fsync
+        fio_cmd += ' --end_fsync=%d' % self.end_fsync
 #        if self.vol_size:
 #            fio_cmd += ' -- size=%dM' % self.vol_size
         if self.norandommap:
