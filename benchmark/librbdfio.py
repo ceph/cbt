@@ -54,6 +54,7 @@ class LibrbdFio(Benchmark):
         self.out_dir = self.archive_dir
 
         self.norandommap = config.get("norandommap", False)
+        self.wait_pgautoscaler_timeout = config.get("wait_pgautoscaler_timeout", -1)
         # Make the file names string (repeated across volumes)
         self.names = ''
         for proc_num in range(self.procs_per_volume):
@@ -106,6 +107,12 @@ class LibrbdFio(Benchmark):
         monitoring.start(self.run_dir)
 
         time.sleep(5)
+
+        # If the pg autoscaler kicks in before starting the test,
+        # wait for it to complete. Otherwise, results may be skewed.
+        ret = self.cluster.check_pg_autoscaler(self.wait_pgautoscaler_timeout, "%s/pgautoscaler.log" % self.run_dir)
+        if ret == 1:
+            logger.warn("PG autoscaler taking longer to complete. Continuing anyway...results may be skewed.")
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
