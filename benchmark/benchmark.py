@@ -51,7 +51,8 @@ class Benchmark(object):
         aliases = {'bandwidth': 'Bandwidth (MB/sec)',
                    'iops_avg': 'Average IOPS',
                    'iops_stddev': 'Stddev IOPS',
-                   'latency_avg': 'Average Latency(s)'}
+                   'latency_avg': 'Average Latency(s)',
+                   'cpu_cycles_per_op': 'Cycles per operation'}
         res_outputs = [] # list of dictionaries containing the self and baseline benchmark results
         compare_results = []
         self_analyzer_res = {}
