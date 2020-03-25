@@ -10,12 +10,13 @@ class RbdTcmuClientEndpoints(CephClientEndpoints):
         self.mount_rbd()
 
     def map_rbd(self, node, rbd_name):
-        common.pdsh(node, 'sudo targetcli /backstores/user:rbd create cfgstring=%s/%s name=%s size=%sM' % (self.pool, rbd_name, rbd_name, self.endpoint_size), continue_if_error=False).communicate()
-        stdout, stderr = common.pdsh(node, 'sudo targetcli /loopback create', continue_if_error=False).communicate()
+        common.pdsh(node, f'sudo targetcli /backstores/user:rbd create cfgstring={self.pool}/{rbd_name} name={rbd_name} size={self.endpoint_size}M',
+                    continue_if_error=False).communicate()
+        stdout, stderr = common.pdsh(node, f'sudo targetcli /loopback create', continue_if_error=False).communicate()
         wwn = stdout.rstrip().rpartition(": ")[2].rpartition(" ")[2][:-1]
-        common.pdsh(node, 'sudo targetcli /loopback/%s/luns create /backstores/user:rbd/%s' % (wwn, rbd_name), continue_if_error=False).communicate()
-        stdout, stderr = common.pdsh(node, 'cat /sys/kernel/config/target/loopback/%s/tpgt_1/address' % wwn, continue_if_error=False).communicate()
+        common.pdsh(node, f'sudo targetcli /loopback/{wwn}/luns create /backstores/user:rbd/{rbd_name}', continue_if_error=False).communicate()
+        stdout, stderr = common.pdsh(node, f'cat /sys/kernel/config/target/loopback/{wwn}/tpgt_1/address', continue_if_error=False).communicate()
         address = stdout.rstrip().rpartition(": ")[2]
-        stdout, stderr = common.pdsh(node, 'ls /sys/class/scsi_disk/%s:0/device/block' % address, continue_if_error=False).communicate()
+        stdout, stderr = common.pdsh(node, f'ls /sys/class/scsi_disk/{address}:0/device/block', continue_if_error=False).communicate()
         return '/dev/%s' % stdout.rstrip().rpartition(": ")[2]
 
