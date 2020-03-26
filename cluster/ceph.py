@@ -605,6 +605,32 @@ class Ceph(Cluster):
             if len(threads) == 1: break
             self.rt.join(1)
 
+    def check_pg_autoscaler(self, timeout=-1, logfile=None):
+        ret = 0
+        if not timeout: return ret
+        logline = ""
+        if logfile:
+            logdate = 'echo "[`date`] ceph progress" >> %s' % (logfile)
+            logline = "| tee -a %s" % logfile
+        pg_autoscaler_states = ["Complete", "Nothing in progress"]
+        time.sleep(20)
+        start_time = time.time()
+        while True:
+            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s;%s -c %s progress %s' % (logdate, self.ceph_cmd, self.tmp_conf, logline)).communicate()
+            output = (stdout, stderr)
+            for i in range(len(output)):
+                if any(pg_state in output[i] for pg_state in pg_autoscaler_states):
+                    return ret
+            if timeout > 0:
+                cur_time = time.time()
+                if cur_time - start_time > timeout:
+                    logger.info("check_pg_autoscaler() state timeout exceeded...")
+                    ret = ret + 1
+                    return ret
+            logger.info("%s", stdout)
+            time.sleep(10)
+        return ret
+
     # FIXME: This is a total hack that assumes there is only 1 existing ruleset!
     # Will change pending a fix for http://tracker.ceph.com/issues/8060
     def set_ruleset(self, name):
