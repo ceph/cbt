@@ -713,9 +713,14 @@ class Ceph(Cluster):
             if (pool_repl_size > 2):
                 pool_min_repl_size = pool_repl_size - 1
 
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s' % (self.ceph_cmd, self.tmp_conf, name, replication),
+             # Add mandatory UI option to actually create a pool of size 1 (Sigh).
+            yes_flag = ""
+            if int(replication) == 1:
+                yes_flag = "--yes-i-really-mean-it"
+
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s size %s %s' % (self.ceph_cmd, self.tmp_conf, name, replication, yes_flag),
                         continue_if_error=False).communicate()
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, name, pool_min_repl_size),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d %s' % (self.ceph_cmd, self.tmp_conf, name, pool_min_repl_size, yes_flag),
                         continue_if_error=False).communicate()
 
         if crush_profile:
