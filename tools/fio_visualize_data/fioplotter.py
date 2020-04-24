@@ -4,6 +4,7 @@ import json
 import time
 import numpy as np
 from matplotlib import pyplot as plt
+from collections import OrderedDict
 
 class Fioplotter():
   def __init__(self, ctx):
@@ -23,7 +24,7 @@ class Barplot(Fioplotter):
   def __init__(self, ctx, data, stat):
     super().__init__(ctx)
     self.ctx = ctx
-    self.plotdata = data
+    self.plotdata = OrderedDict(sorted(data.items()))
     self.stattype = stat
 
     # Initialize generic plot information
