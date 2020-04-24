@@ -59,5 +59,5 @@ if __name__ == '__main__':
     Barplot(args, pj.get_fio_pctdata(), 'pct')
 
   if args.ftype == 'csv':
-    print("Cannot plot CSV data...coming soon")
+    print("Cannot parse CSV data...coming soon")
 
