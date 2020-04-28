@@ -7,6 +7,7 @@ import time
 import uuid
 import threading
 import logging
+import json
 
 from .cluster import Cluster
 
@@ -524,7 +525,7 @@ class Ceph(Cluster):
     def disable_scrub(self):
         common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
 
-    def check_health(self, check_list=None, logfile=None):
+    def check_health(self, check_list=None, logfile=None, recstatsfile=None):
         # Wait for a defined amount of time in case ceph health is delayed
         time.sleep(self.health_wait)
         logline = ""
@@ -534,8 +535,13 @@ class Ceph(Cluster):
 
         # Match any of these things to continue checking health
         check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery", "stale"]
+        if recstatsfile:
+            header = "Num Deg Objs, Total Deg Objs"
+            stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (header, recstatsfile)).communicate()
+
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s health %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
+            self.log_recovery_stats(recstatsfile)
             if check_list and not any(x in stdout for x in check_list):
                 break
             if "HEALTH_OK" in stdout:
@@ -544,7 +550,29 @@ class Ceph(Cluster):
                 ret = ret + 1
             logger.info("%s", stdout)
             time.sleep(1)
+
         return ret
+
+    def log_recovery_stats(self, recstatsfile=None):
+        if not recstatsfile: return
+        PGMAP = "pgmap"
+        NUM_DEG = "degraded_objects"
+        NUM_DEG_TOT = "degraded_total"
+        fmtjson = "--format=json"
+        separator = ","
+        stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, fmtjson)).communicate()
+        stdout = stdout.split(':', 1)[1]
+        stdout = stdout.strip()
+        jsondata = json.loads(stdout)
+        degstats = []
+        if NUM_DEG in jsondata[PGMAP]:
+            degstats.append(str(jsondata[PGMAP][NUM_DEG]))
+        if NUM_DEG_TOT in jsondata[PGMAP]:
+            degstats.append(str(jsondata[PGMAP][NUM_DEG_TOT]))
+
+        if len(degstats):
+            message = separator.join(degstats)
+            stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (message, recstatsfile)).communicate()
 
     def check_backfill(self, check_list=None, logfile=None):
         # Wait for a defined amount of time in case ceph health is delayed
@@ -882,7 +910,10 @@ class RecoveryTestThread(threading.Thread):
         self.state = 'osdout'
 
     def osdout(self):
-        ret = self.cluster.check_health(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'))
+        reclog = "%s/recovery.log" % self.config.get('run_dir')
+        recstatslog = "%s/recovery_stats.log" % self.config.get('run_dir')
+        ret = self.cluster.check_health(self.health_checklist, reclog, recstatslog)
+
         common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
 
         if self.outhealthtries < self.maxhealthtries and ret == 0:
@@ -893,7 +924,9 @@ class RecoveryTestThread(threading.Thread):
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
         else:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
-            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % str(time.time() - self.lasttime))).communicate()
+            rectime = str(time.time() - self.lasttime)
+            common.pdsh(settings.getnodes('head'), 'echo Time: %s >> %s' % (rectime, recstatslog)).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % rectime)).communicate()
         lcmd = self.logcmd("Unsetting the ceph osd noup flag")
         common.pdsh(settings.getnodes('head'), '%s -c %s osd unset noup;%s' % (self.ceph_cmd, self.cluster.tmp_conf, lcmd)).communicate()
         for osdnum in self.config.get('osds'):
