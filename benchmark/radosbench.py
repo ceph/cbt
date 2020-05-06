@@ -10,7 +10,7 @@ import re
 import json
 
 from cluster.ceph import Ceph
-from .benchmark import Benchmark, Result
+from .benchmark import Benchmark, Result, DataAnalyzer
 from .lis import Lispy, Env
 
 logger = logging.getLogger("cbt")
@@ -45,6 +45,9 @@ class Radosbench(Benchmark):
         self.write_omap = config.get('write_omap', False)
         self.prefill_time = config.get('prefill_time', None)
         self.prefill_objects = config.get('prefill_objects', None)
+
+    def create_data_analyzer(self, run, host, proc):
+        return RadosBenchAnalyzer(self.out_dir, run, host, proc)
 
     def exists(self, expect_exists=False):
         if os.path.exists(self.out_dir):
@@ -244,52 +247,42 @@ class Radosbench(Benchmark):
         logger.info('Convert results to json format.')
         self.parse(out_dir)
 
-    def _compare_client_results(self, client_run, fnames):
-        # normalize the names
-        aliases = {'bandwidth': 'Bandwidth (MB/sec)',
-                   'iops_avg': 'Average IOPS',
-                   'iops_stddev': 'Stddev IOPS',
-                   'latency_avg': 'Average Latency(s)'}
-        json_outputs = []
-        compare_results = []
-        for fname in fnames:
-            with open(fname) as f:
-                json_outputs.append(json.load(f))
-        for alias, stmt in list(self.acceptable.items()):
-            name = aliases[alias]
-            result, baseline = [float(j[name]) for j in json_outputs]
-            # safer than eval()
-            env = Env(None, result=result, baseline=baseline)
-            lispy = Lispy()
-            accepted = lispy.eval(lispy.parse(stmt), env)
-            result = Result(client_run, alias, result, baseline, stmt, accepted)
-            compare_results.append(result)
-        return compare_results
-
-    def evaluate(self, baseline):
-        runs = []
-        if self.prefill_time or self.prefill_objects:
-            runs.append('prefill')
-        if not self.read_only:
-            runs.append('write')
-        if not self.write_only:
-            runs.append(self.readmode)
-        results = []
-        for run in runs:
-            out_dirs = [os.path.join(self.out_dir, run),
-                        os.path.join(baseline.out_dir, run)]
-            for client in settings.getnodes('clients').split(','):
-                host = settings.host_info(client)["host"]
-                for proc in range(self.concurrent_procs):
-                    fname = 'json_output.{proc}.{host}'.format(proc=proc,
-                                                               host=host)
-                    client_run = '{run}/{client}/{proc}'.format(run=run, client=client, proc=proc)
-                    fpaths  = [os.path.join(d, fname) for d in out_dirs]
-                    compare_results = self._compare_client_results(client_run, fpaths)
-                    rejected = sum(not result.accepted for result in compare_results)
-                    results.extend(compare_results)
-            # TODO: check results from monitors
-        return results
-
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
+
+class RadosBenchAnalyzer(DataAnalyzer): 
+    def __init__(self, archive_dir, run, host, proc):
+        super().__init__(archive_dir, run, host, proc)
+        self.out_dir = os.path.join(self.archive_dir, run)
+        self.radosbench_out_fname = os.path.join(self.out_dir, f'json_output.{proc}.{host}')
+        self.radosbench_json_output = json.load(open(self.radosbench_out_fname)) 
+
+    def get_total_ops(self):
+        search_key = "made" # looking for either 'Total writes made' or 'Total reads made'
+        res = [val for key, val in self.radosbench_json_output.items() if search_key in key]
+        return res[0]
+
+    def get_cpu_cycles(self):
+        return monitoring.get_cpu_cycles(self.out_dir)
+
+    def get_cpu_cycles_per_op(self):
+        num_cpu_cycles = self.get_cpu_cycles()
+        if num_cpu_cycles != None:
+            return int(self.get_cpu_cycles()) / int(self.get_total_ops())
+        return None
+
+    def get_latency_avg(self):
+        search_key = "Average Latency" 
+        res = [val for key, val in self.radosbench_json_output.items() if search_key in key]
+        return res[0]
+
+    def get_bandwidth(self):
+        search_key = "Bandwidth" 
+        res = [val for key, val in self.radosbench_json_output.items() if search_key in key]
+        return res[0]
+
+    def get_iops_avg(self):
+        return self.radosbench_json_output["Average IOPS"]
+
+    def get_iops_stddev(self):
+        return self.radosbench_json_output["Stddev IOPS"]

@@ -1,7 +1,6 @@
 from contextlib import contextmanager
-from glob import glob
+import glob
 import os.path
-
 import common
 import settings
 
@@ -52,15 +51,17 @@ class PerfMonitoring(Monitoring):
         self.user = settings.cluster.get('user')
         self.args_template = mconfig.get('args')
         self.perf_runners = []
+        self.perf_dir = '' # we need the output file to extract data
 
     def start(self, directory):
         perf_dir = '%s/perf' % directory
+        self.perf_dir = perf_dir
         common.pdsh(self.nodes, 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
 
         perf_template = 'perf {} &'.format(self.args_template)
         local_node = common.get_localnode(self.nodes)
         if local_node:
-            for pid_path in glob(os.path.join(self.pid_dir, 'osd.*.pid')):
+            for pid_path in glob.glob(os.path.join(self.pid_dir, 'osd.*.pid')):
                 with open(pid_path) as pidfile:
                     pid = pidfile.read().strip()
                     perf_cmd = perf_template.format(perf_dir=perf_dir, pid=pid)
@@ -86,6 +87,17 @@ class PerfMonitoring(Monitoring):
             common.pdsh(self.nodes, 'sudo chown {user}.{user} {dir}/perf/perf_stat.*'.format(
                     user=self.user, dir=directory))
 
+    def get_cpu_cycles(self, out_dir):
+        import re
+        total_cpu_cycles = 0
+        perf_dir_name = str(glob.glob(out_dir + "/perf*")[0])
+        perf_stat_fnames = os.listdir(perf_dir_name)
+        for perf_out_fname in perf_stat_fnames:
+            perf_output_file = open(perf_dir_name +"/"+ perf_out_fname, "rt")
+            cpu_cycles = ((re.search(r'(.*) cycles(.*?) .*', perf_output_file.read(), re.M|re.I)).group(1)).strip()
+            total_cpu_cycles = total_cpu_cycles + int(cpu_cycles.replace(',' , ''))
+        return total_cpu_cycles
+           
     @staticmethod
     def _get_default_nodes():
         return ['osds']
@@ -138,3 +150,10 @@ def monitor(directory):
     yield
     for m in monitors:
         m.stop(directory)
+
+def get_cpu_cycles(out_dir):
+    # check if perf stat is configured
+    for monitoring_profile in Monitoring._get_all():
+        if(isinstance(monitoring_profile, PerfMonitoring)):
+            return monitoring_profile.get_cpu_cycles(out_dir) # if it is, then return the number of cycle
+    return None

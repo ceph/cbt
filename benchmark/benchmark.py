@@ -8,6 +8,7 @@ import hashlib
 import os
 import json
 import yaml
+from abc import ABC, abstractmethod
 
 logger = logging.getLogger('cbt')
 
@@ -40,6 +41,67 @@ class Benchmark(object):
             self.osd_ra_changed = True
         else:
             self.osd_ra = common.get_osd_ra()
+
+    def create_data_analyzer(self, run, host, proc):
+        pass
+
+    def _compare_client_results(self, client_run, self_analyzer, baseline_analyzer):
+        from .lis import Lispy, Env
+        # normalize the names
+        aliases = {'bandwidth': 'Bandwidth (MB/sec)',
+                   'iops_avg': 'Average IOPS',
+                   'iops_stddev': 'Stddev IOPS',
+                   'latency_avg': 'Average Latency(s)',
+                   'cpu_cycles_per_op': 'Cycles per operation'}
+        res_outputs = [] # list of dictionaries containing the self and baseline benchmark results
+        compare_results = []
+        self_analyzer_res = {}
+        baseline_analyzer_res = {}
+        for alias in self.acceptable:
+            name = aliases[alias]
+            self_getter = getattr(self_analyzer, 'get_' + alias)
+            if self_getter == None:
+                logger.info('CPU Cycles Per Operation metric is not configured for this benchmark')
+                continue
+            self_analyzer_res[name] = self_getter()
+            baseline_getter = getattr(baseline_analyzer, 'get_' + alias)
+            baseline_analyzer_res[name] = baseline_getter()
+        res_outputs.append(self_analyzer_res)
+        res_outputs.append(baseline_analyzer_res)  
+        for alias, stmt in list(self.acceptable.items()):
+            name = aliases[alias]
+            result, baseline = [float(j[name]) for j in res_outputs]
+            # safer than eval()
+            env = Env(None, result=result, baseline=baseline)
+            lispy = Lispy()
+            accepted = lispy.eval(lispy.parse(stmt), env)
+            result = Result(client_run, alias, result, baseline, stmt, accepted)
+            compare_results.append(result)
+        return compare_results
+
+    def evaluate(self, baseline):
+        runs = []
+        if self.prefill_time or self.prefill_objects:
+            runs.append('prefill')
+        if not self.read_only:
+            runs.append('write')
+        if not self.write_only:
+            runs.append(self.readmode)
+        results = []
+        for run in runs:
+            out_dirs = [os.path.join(self.out_dir, run),
+                        os.path.join(baseline.out_dir, run)]
+            for client in settings.getnodes('clients').split(','):
+                host = settings.host_info(client)["host"]
+                for proc in range(self.concurrent_procs):
+                    self_analyzer = self.create_data_analyzer(run, host, proc)
+                    baseline_analyzer = baseline.create_data_analyzer(run, host, proc)
+                    client_run = '{run}/{client}/{proc}'.format(run=run, client=client, proc=proc)
+                    compare_results = self._compare_client_results(client_run, self_analyzer, baseline_analyzer)
+                    rejected = sum(not result.accepted for result in compare_results)
+                    results.extend(compare_results)
+            # TODO: check results from monitors
+        return results
 
     def cleandir(self):
         # Wipe and create the run directory
@@ -98,6 +160,32 @@ class Benchmark(object):
 
     def __str__(self):
         return str(self.config)
+
+class DataAnalyzer(ABC):
+    def __init__(self, archive_dir, run, host, proc):
+        super().__init__()
+        self.archive_dir = archive_dir
+    
+    @abstractmethod
+    def get_cpu_cycles_per_op(self):
+        pass
+
+    @abstractmethod
+    def get_latency_avg(self):
+        pass
+
+    @abstractmethod
+    def get_bandwidth(self):
+        pass
+
+    @abstractmethod
+    def get_iops_avg(self):
+        pass
+    
+    @abstractmethod
+    def get_iops_stddev(self):
+        pass
+
 
 class Result:
     def __init__(self, run, alias, result, baseline, stmt, accepted):
