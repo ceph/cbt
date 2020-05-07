@@ -4,6 +4,8 @@ import os
 import sys
 import json
 import time
+import csv
+import operator
 
 class Fiostatsparser():
   def __init__(self, ctx):
@@ -13,6 +15,8 @@ class Fiostatsparser():
     # Output CSV filea
     self.basecsvfile = '/client_csv_data_'
     self.baseopcsvfn = ctx.destdir + self.basecsvfile
+    self.csvsep = ","
+    self.csvfilename = None
 
   def getfiofiles(self, srcdir, ftype):
     files = [os.path.join(srcdir, fname) for fname in next(os.walk(srcdir))[2]]
@@ -25,11 +29,12 @@ class Fiostatsparser():
         self.fiocsvfiles.append(f)
 
   def get_output_csv_filename(self):
-    date = time.strftime("%m-%d-%Y", time.localtime())
-    ltime = time.strftime("%I:%M-%S%p", time.localtime())
-    timestamp = date + "_" + ltime
-    csvfilename = self.baseopcsvfn + timestamp + ".txt"
-    return csvfilename
+    if not self.csvfilename:
+      date = time.strftime("%m-%d-%Y", time.localtime())
+      ltime = time.strftime("%I:%M-%S%p", time.localtime())
+      timestamp = date + "_" + ltime
+      self.csvfilename = self.baseopcsvfn + timestamp + ".txt"
+    return self.csvfilename
 
 class Parsejson(Fiostatsparser):
   def __init__(self, ctx):
@@ -120,7 +125,6 @@ class Parsejson(Fiostatsparser):
     return self.fiopctdata
 
   def dump_all_stats_in_csv(self):
-    separator = ","
     jsonfiofiles = self.fiobwdata.keys()
     # Open csv file
     with open(self.get_output_csv_filename(), "w+") as f:
@@ -135,7 +139,23 @@ class Parsejson(Fiostatsparser):
         for value in [*self.fiopctdata[fn].values()]:
           csvdata.append(value)
         csvstr = [str(data) for data in csvdata]
-        csventry = separator.join(csvstr) + "\n"
+        csventry = self.csvsep.join(csvstr) + "\n"
         # Write to csv file
         f.write(csventry)
+    # Sort the csv entries in the file
+    self.sort_csv_stats()
+
+  def sort_csv_stats(self):
+    try:
+      with open(self.get_output_csv_filename(), "r+") as f:
+        data = csv.reader(f, delimiter=self.csvsep)
+        # Sort according to first column
+        sortedlist = sorted(data, key=operator.itemgetter(0))
+        # Update the sorted result into same file
+        f.seek(0, 0)
+        fileWriter = csv.writer(f, delimiter=self.csvsep)
+        for row in sortedlist:
+          fileWriter.writerow(row)
+    except Exception as e:
+      print("Error opening file %s. Exception: %s" % (csv_file, str(e)))
 
