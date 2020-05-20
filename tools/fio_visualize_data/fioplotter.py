@@ -3,8 +3,8 @@
 import json
 import time
 import numpy as np
+import fioplotcommon as common
 from matplotlib import pyplot as plt
-from collections import OrderedDict
 
 class Fioplotter():
   def __init__(self, ctx):
@@ -24,7 +24,7 @@ class Barplot(Fioplotter):
   def __init__(self, ctx, data, stat):
     super().__init__(ctx)
     self.ctx = ctx
-    self.plotdata = OrderedDict(sorted(data.items()))
+    self.plotdata = common.sort_map_data_by_key(data)
     self.stattype = stat
 
     # Initialize generic plot information
