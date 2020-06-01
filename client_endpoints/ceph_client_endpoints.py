@@ -24,6 +24,8 @@ class CephClientEndpoints(ClientEndpoints):
         self.pool_profile = config.get('pool_profile', 'default')
         self.data_pool = None
         self.data_pool_profile = config.get('data_pool_profile', None)
+        self.recov_pool = None
+        self.recov_pool_profile = config.get('recov_pool_profile', 'default')
         self.order = config.get('order', 22)
         self.disabled_features = config.get('disabled_features', None)
 
@@ -102,6 +104,15 @@ class CephClientEndpoints(ClientEndpoints):
                 if self.disabled_features:
                     cmd = 'sudo %s feature disable %s/%s %s' % (self.rbd_cmd, self.pool, rbd_name, self.disabled_features)
                     common.pdsh(settings.getnodes('head'), cmd, continue_if_error=False).communicate()
+
+    def create_rbd_recovery(self):
+        self.pool = '%s-recov' % self.name
+        self.cluster.rmpool(self.pool, self.recov_pool_profile)
+        self.cluster.mkpool(self.pool, self.recov_pool_profile, 'rbd')
+        for node in common.get_fqdn_list('clients'):
+            for ep_num in range(0, self.endpoints_per_client):
+                rbd_name = '%s-%s' % (self.pool, self.get_rbd_name(node, ep_num))
+                self.cluster.mkimage(rbd_name, self.endpoint_size, self.pool, self.data_pool, self.order)
 
     def mount_rbd(self):
         for ep_num in range(0, self.endpoints_per_client):

@@ -16,3 +16,6 @@ class LibrbdClientEndpoints(CephClientEndpoints):
             self.endpoints.append("%s/%s" % (self.pool, rbd_name))
         self.endpoint_type = "rbd"
         return self.get_endpoints()
+
+    def create_recovery_image(self):
+        self.create_rbd_recovery()

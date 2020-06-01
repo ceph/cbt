@@ -20,3 +20,6 @@ class RbdTcmuClientEndpoints(CephClientEndpoints):
         address = stdout.rstrip().rpartition(": ")[2]
         stdout, stderr = common.pdsh(node, f'ls /sys/class/scsi_disk/{address}:0/device/block', continue_if_error=False).communicate()
         return '/dev/%s' % stdout.rstrip().rpartition(": ")[2]
+
+    def create_recovery_image(self):
+        self.create_rbd_recovery()

@@ -12,3 +12,6 @@ class CephfsFuseClientEndpoints(CephClientEndpoints):
     def mount_fs_helper(self, node, dir_name):
         cmd = 'sudo %s -c %s --client_mds_namespace=%s %s' % (self.ceph_fuse_cmd, self.tmp_conf, self.name, dir_name)
         common.pdsh(node, cmd, continue_if_error=False).communicate()
+
+    def create_recovery_image(self):
+        self.create_rbd_recovery()

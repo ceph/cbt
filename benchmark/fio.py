@@ -40,6 +40,7 @@ class Fio(Benchmark):
         self.norandommap = config.get("norandommap", False)
         self.out_dir = self.archive_dir
         self.client_endpoints = config.get("client_endpoints", None)
+        self.recov_test_type = config.get('recov_test_type', 'blocking')
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -62,6 +63,13 @@ class Fio(Benchmark):
             raise ValueError('No client_endpoints defined!')
         self.client_endpoints_object = client_endpoints_factory.get(self.cluster, self.client_endpoints)
 
+        # Create the recovery image based on test type requested
+        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+            self.client_endpoints_object.create_recovery_image()
+        else:
+            self.create_endpoints()
+
+    def create_endpoints(self):
         new_ep = False
         if not self.client_endpoints_object.get_initialized():
             self.client_endpoints_object.initialize()
@@ -186,17 +194,28 @@ class Fio(Benchmark):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
+        # Create the run directory
+        common.make_remote_dir(self.run_dir)
+
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
-
-        monitoring.start(self.run_dir)
 
         time.sleep(5)
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
+            if self.recov_test_type == 'blocking':
+                recovery_callback = self.recovery_callback_blocking
+            elif self.recov_test_type == 'background':
+                recovery_callback = self.recovery_callback_background
+            self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
+
+        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+            # Wait for signal to create the image & start client IO
+            self.cluster.wait_start_io()
+            self.create_endpoints()
+
+        monitoring.start(self.run_dir)
 
         logger.info('Running fio %s test.', self.mode)
         ps = []
@@ -216,8 +235,11 @@ class Fio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
         self.analyze(self.out_dir)
 
-    def recovery_callback(self):
+    def recovery_callback_blocking(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
+
+    def recovery_callback_background(self):
+        logger.info('Recovery thread completed!')
 
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
