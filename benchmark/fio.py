@@ -17,7 +17,7 @@ class Fio(Benchmark):
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
-        self.direct = config.get('direct', 1)
+        self.direct = str(config.get('direct', 1))
         self.time = config.get('time', None)
         self.time_based = bool(config.get('time_based', False))
         self.ramp = config.get('ramp', None)
