@@ -83,7 +83,9 @@
 import os
 import argparse
 from fiostatsparser import Parsejson
+from fiostatsparser import Parsecsv
 from fioplotter import Barplot
+from fioplotter import Lineplot
 
 def dir_path(path):
   if os.path.isdir(path):
@@ -127,5 +129,8 @@ if __name__ == '__main__':
     Barplot(args, pj)
 
   if args.ftype == 'csv':
-    print("Cannot parse CSV data...coming soon")
+    print("Parsing CSV data...")
+    pcsv = Parsecsv(args)
+    print("Creating plots...")
+    Lineplot(args, pcsv)
 

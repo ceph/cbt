@@ -5,6 +5,7 @@ import sys
 import json
 import time
 import fioplotcommon as common
+import pandas as pd
 
 class Fiostatsparser():
   def __init__(self, ctx):
@@ -163,3 +164,91 @@ class Parsejson(Fiostatsparser):
         f.write(csventry)
     print("Created CSV result file: %s" % f.name)
 
+class Parsecsv(Fiostatsparser):
+  def __init__(self, ctx):
+    super().__init__(ctx)
+    self.KILO = 1000
+    self.MILLION = 1000000
+    self.KBYTE = 1024
+    self._4KBYTE = 4 * 1024
+    self.MBYTE = 1024 * 1024
+    self.OPTYPE = ctx.optype
+    self.metric = ctx.metric
+    self.timerange = ctx.timerange
+    self.subplot = ctx.subplot
+    self.fiocsvfile = ctx.filename
+    self.fiodataframe = []
+    self.parse_csv_data()
+
+  def set_df_column_headers(self):
+    if not len(self.fiodataframe):
+      print("Error: Empty dataframe!")
+      sys.exit(1)
+
+    # Number of columns depends on fio version
+    if (len(self.fiodataframe.columns) == 4):
+      self.fiodataframe.columns = ['time', self.metric, 'rw', 'offset']
+    elif (len(self.fiodataframe.columns) == 5):
+      self.fiodataframe.columns = ['time', self.metric, 'rw', 'offset', 'cmdPrio']
+    else:
+      print("fiostatsparser error: Unable to determine CSV format...aborting.")
+      sys.exit(1)
+
+  def parse_csv_data(self):
+    if self.metric == 'pct':
+      print("'%s' metric not yet supported!" % self.metric)
+      sys.exit(1)
+
+    with open(self.fiocsvfile, 'r') as csv_file:
+      f_info = os.fstat(csv_file.fileno())
+      if f_info.st_size == 0:
+        print('CSV input file %s is empty'%f)
+        sys.exit(1)
+
+      # Read the csv file
+      try:
+        self.fiodataframe = pd.read_csv(csv_file, sep=',', header=None)
+      except ValueError as e:
+        print("Error in reading %s. Please check the file format." % self.fiocsvfile)
+        print("Exception Details: ", str(e))
+        sys.exit(1)
+
+      # Format the data
+      self.set_df_column_headers()
+      self.fiodataframe['time'] = self.fiodataframe['time'] / self.KILO
+      if self.metric == 'lat':
+        self.fiodataframe[self.metric] = self.fiodataframe[self.metric] / self.MILLION
+      if self.metric == 'bw':
+        self.fiodataframe[self.metric] = (self.fiodataframe[self.metric] / self.KBYTE)
+
+  def get_df_stats(self, getrange=False):
+    if self.metric is None:
+      print("Error: Unknown metric!")
+      sys.exit(1)
+
+    start = 0
+    end = 0
+    if getrange and len(self.timerange):
+      start = self.timerange[0]
+      end = self.timerange[1]
+      print("Getting data with range: %s end: %s" % (start, end))
+
+    # Find row that matches the start time
+    startrow = self.fiodataframe.loc[self.fiodataframe['time'] >= float(start)].index[0]
+    if not end:
+      endrow = len(self.fiodataframe) - 1
+    else:
+      endrow = self.fiodataframe.loc[self.fiodataframe['time'] >= float(end)].index[0]
+
+    #print("startrow: %d, endrow: %d" % (startrow, endrow))
+
+    # Calculate mean and stdev of the dataframe metric
+    mean = self.fiodataframe.loc[startrow:endrow, self.metric].mean()
+    stdev = self.fiodataframe.loc[startrow:endrow, self.metric].std()
+    #print("MEAN: %f" % mean)
+    #print("STDEV: %f" % stdev)
+
+    # Create pandas series of the mean value.
+    mean = pd.Series([mean] * ((endrow - startrow) + 1))
+
+    return mean, stdev, startrow, endrow
