@@ -121,12 +121,10 @@ if __name__ == '__main__':
 
   # Parse data and generate plots
   if args.ftype == 'json':
-    print("Parsing JSON files...")
+    print("Parsing JSON data...")
     pj = Parsejson(args)
-    pj.dump_all_stats_in_csv()
     print("Creating plots...")
-    Barplot(args, pj.get_fio_latdata(), 'lat')
-    Barplot(args, pj.get_fio_pctdata(), 'pct')
+    Barplot(args, pj)
 
   if args.ftype == 'csv':
     print("Cannot parse CSV data...coming soon")
