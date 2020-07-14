@@ -25,7 +25,7 @@ utc = UTC()
 
 
 class Check:
-    def __init__(self, owner, project, context):
+    def __init__(self, owner, project, context, pem, app_id, install_id):
         self.owner = owner
         self.project = project
         self.context = context
