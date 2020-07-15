@@ -32,7 +32,7 @@ class Check:
         self.github = github3.GitHub()
         self.github.login_as_app_installation(pem, app_id, install_id)
 
-    def start(self, sha, status, output=None, details_url=None):
+    def start(self, sha, status, output=None, details_url=None, external_id=None):
         repo = self.github.repository(self.owner, self.project)
         started_at = datetime.datetime.now(utc).isoformat()
         if output is None:
@@ -47,6 +47,7 @@ class Check:
                 started_at=started_at,
                 output=output,
                 details_url=details_url,
+                external_id=external_id,
             )
         except github3.exceptions.GitHubException as e:
             log.error(f"failed to create check run {self.context} for #{sha}:"
@@ -58,7 +59,7 @@ class Check:
     #   see https://developer.github.com/v3/checks/runs/#create-a-check-run
     # output: dict
     #   see https://developer.github.com/v3/checks/runs/#output-object
-    def complete(self, sha, conclusion, output, details_url=None):
+    def complete(self, sha, conclusion, output, details_url=None, external_id=None):
         repo = self.github.repository(self.owner, self.project)
         status = 'completed'
         completed_at = datetime.datetime.now(utc).isoformat()
@@ -81,6 +82,7 @@ class Check:
                     completed_at=completed_at,
                     output=output,
                     details_url=details_url,
+                    external_id=external_id,
                 )
             except github3.exceptions.GitHubException as e:
                 log.error(f"failed to create check run {self.context} for "
@@ -96,6 +98,7 @@ class Check:
                     completed_at=completed_at,
                     output=output,
                     details_url=details_url,
+                    external_id=external_id,
                 )
             except github3.exceptions.GitHubException as e:
                 log.error(f"failed to update check run {self.context} for "
