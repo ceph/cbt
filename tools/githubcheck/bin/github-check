@@ -23,6 +23,7 @@ def main():
     check_group = parser.add_argument_group('check options')
     check_group.add_argument('--sha', help='SHA1 of commit', required=True)
     check_group.add_argument('--name', help='the name of check', required=True)
+    check_group.add_argument('--details-url', help='the URL of jenkins job')
     check_group.add_argument('--status', help='the status of check',
                              choices=['queued', 'in_progress', 'completed'],
                              default='in_progress')
@@ -61,13 +62,13 @@ def main():
         output = {'title': 'completed',
                   'summary': args.summary,
                   'text': args.text.read()}
-        check.complete(args.sha, args.conclusion, output)
+        check.complete(args.sha, args.conclusion, output, args.details_url)
     else:
         output = {'title': args.title,
                   'summary': args.summary if args.summary else 'started'}
         if args.text is not None:
             output['text'] = args.text.read()
-        check.start(args.sha, args.status, output)
+        check.start(args.sha, args.status, output, args.details_url)
 
 
 if __name__ == '__main__':
