@@ -94,7 +94,11 @@ class PerfMonitoring(Monitoring):
         perf_stat_fnames = os.listdir(perf_dir_name)
         for perf_out_fname in perf_stat_fnames:
             perf_output_file = open(perf_dir_name +"/"+ perf_out_fname, "rt")
-            cpu_cycles = ((re.search(r'(.*) cycles(.*?) .*', perf_output_file.read(), re.M|re.I)).group(1)).strip()
+            match = re.search(r'(.*) cycles(.*?) .*', perf_output_file.read(), re.M|re.I)
+            if match:
+                cpu_cycles = match.group(1).strip()
+            else:
+                return None
             total_cpu_cycles = total_cpu_cycles + int(cpu_cycles.replace(',' , ''))
         return total_cpu_cycles
            
