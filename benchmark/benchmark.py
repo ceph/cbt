@@ -64,6 +64,14 @@ class Benchmark(object):
                 logger.info('CPU Cycles Per Operation metric is not configured for this benchmark')
                 continue
             self_analyzer_res[name] = self_getter()
+            if self_analyzer_res[name] is None:
+                paranoid_path = "/proc/sys/kernel/perf_event_paranoid"
+                with open(paranoid_path) as f:
+                    paranoid_level = int(f.read())
+                    if paranoid_level >= 1:
+                        msg = '''Perf must be run by user with CAP_SYS_ADMIN to extract CPU related metrics. Or you could set %s to 0, which is %d now'''
+                        logger.warning('%s. %s is %d', msg, paranoid_path, paranoid_level)
+                continue
             baseline_getter = getattr(baseline_analyzer, 'get_' + alias)
             baseline_analyzer_res[name] = baseline_getter()
         res_outputs.append(self_analyzer_res)
