@@ -7,7 +7,7 @@ import sys
 
 import settings
 import benchmarkfactory
-from cluster.ceph import Ceph
+from cluster.ceph import Ceph, discover_mon_nodes, discover_osd_nodes
 from log_support import setup_loggers
 
 logger = logging.getLogger("cbt")
@@ -39,6 +39,16 @@ def main(argv):
     setup_loggers()
     ctx = parse_args(argv)
     settings.initialize(ctx)
+
+    if 'head' not in settings.cluster:
+        print "Must specify 'head' node in config!"
+        exit(1)
+
+    if 'osds' not in settings.cluster:
+        settings.cluster['osds'] = discover_osd_nodes(settings.cluster['head'])
+
+    if 'mons' not in settings.cluster:
+        settings.cluster['mons'] = discover_mon_nodes(settings.cluster['head'])
 
     iteration = 0
     logger.debug("Settings.cluster:\n    %s",
