@@ -2,7 +2,6 @@
 
 import datetime
 import logging
-import sys
 
 import github3
 import github3.exceptions
@@ -31,6 +30,7 @@ class Check:
         self.context = context
         self.github = github3.GitHub()
         self.github.login_as_app_installation(pem, app_id, install_id)
+        self.check_run = None
 
     def start(self, sha, status, output=None, details_url=None, external_id=None):
         repo = self.github.repository(self.owner, self.project)
@@ -40,7 +40,7 @@ class Check:
                       'summary': 'started',
                       'text': 'details'}
         try:
-            check_run = repo.create_check_run(
+            self.check_run = repo.create_check_run(
                 name=self.context,
                 head_sha=sha,
                 status=status,
@@ -53,6 +53,20 @@ class Check:
             log.error(f"failed to create check run {self.context} for #{sha}:"
                       f" {e}")
 
+    def update(self, sha, output, details_url=None, external_id=None):
+        # update an existing one
+        log.debug(f"updating existing check run {self.context} for #{sha}")
+        try:
+            self.check_run.update(
+                status='in_progress',
+                output=output,
+                details_url=details_url,
+                external_id=external_id,
+            )
+        except github3.exceptions.GitHubException as e:
+            log.error(f"failed to update check run {self.context} for "
+                      f"#{sha}: {e}")
+
     # conclusion: string: one of
     #   success, failure, neutral, cancelled, skipped, timed_out, or
     #   action_required
@@ -64,8 +78,8 @@ class Check:
         status = 'completed'
         completed_at = datetime.datetime.now(utc).isoformat()
         try:
-            check_run = next(c for c in repo.commit(sha).check_runs()
-                             if c.name == self.context)
+            self.check_run = next(c for c in repo.commit(sha).check_runs()
+                                  if c.name == self.context)
         except github3.exceptions.GitHubException as e:
             log.error(f"could not retrieve existing check runs for #{sha}:"
                       f" {e}")
@@ -74,7 +88,7 @@ class Check:
             log.debug(f"could not find existing check runs {self.context} for "
                       f"#{sha}, creating a new one")
             try:
-                check_run = repo.create_check_run(
+                self.check_run = repo.create_check_run(
                     name=self.context,
                     head_sha=sha,
                     status=status,
@@ -92,15 +106,15 @@ class Check:
             log.debug(f"updating existing check run {self.context} for #{sha} "
                       f"with status {status}")
             try:
-                check_run.update(
+                self.check_run.update(
                     status=status,
                     conclusion=conclusion,
                     completed_at=completed_at,
                     output=output,
+                    name=self.context,
                     details_url=details_url,
                     external_id=external_id,
                 )
             except github3.exceptions.GitHubException as e:
                 log.error(f"failed to update check run {self.context} for "
                           f"#{sha}: {e}")
-

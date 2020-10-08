@@ -1,9 +1,54 @@
 #!/usr/bin/env python3
 
 import argparse
+import itertools
 import sys
 
-from githubcheck import Check
+from githubcheck import Annotation, Check
+from githubcheck import Flake8
+
+
+def batched(elements, batch_size):
+    it = iter(elements)
+    while True:
+        chunk = list(itertools.islice(it, batch_size))
+        if chunk:
+            yield chunk
+        else:
+            break
+
+
+def post_flake8_check(check, args):
+    output = {'title': 'Flake8',
+              'summary': 'processing'}
+    check.start('in_progress', output)
+
+    # see https://developer.github.com/v3/checks/runs/#output-object
+    MAX_ANNOTATIONS_PER_REQ = 50
+    annotations = []
+    stats = None
+    parser = Flake8(args.lint_tox_dir, 'flake8', args.lint_preamble)
+
+    for m in parser.scan(args.lint_output):
+        if isinstance(m, str):
+            stats = m
+        else:
+            assert isinstance(m, Annotation)
+            annotations.append(m)
+
+    output['summary'] = '{} issues found'.format(len(annotations))
+    for batch in batched(annotations, MAX_ANNOTATIONS_PER_REQ):
+        output['annotations'] = [a.to_dict() for a in batch]
+        check.update(output)
+        del output['annotations']
+
+    if stats:
+        output['text'] = stats
+    if len(annotations) > 0:
+        conclusion = 'failure'
+    else:
+        conclusion = 'success'
+    check.complete(conclusion, output)
 
 
 def main():
@@ -46,11 +91,33 @@ def main():
                              help='path to a Markdown formatted text file',
                              type=argparse.FileType('r'),
                              default=default_text)
+
+    lint_group = parser.add_argument_group('lint options')
+    lint_group.add_argument('--lint',
+                            help='translate lint warnings to annotations',
+                            action='store_true')
+    # preamble looks like "<testenv>:<command>"
+    lint_group.add_argument('--lint-preamble',
+                            help='prefix of the line before the lint output',
+                            default='lint:flake8')
+    lint_group.add_argument('--lint-tox-dir',
+                            help='path to tox.ini')
+    lint_group.add_argument('--lint-output',
+                            help='path to the messages from lint',
+                            type=argparse.FileType('r'),
+                            default=sys.stdin)
+
     args = parser.parse_args()
 
     check = Check(args.owner, args.repo, args.name,
-                  args.pkey_file.read(), args.app_id, args.install_id)
-    if args.status == 'completed':
+                  args.pkey_file.read(), args.app_id, args.install_id,
+                  args.sha, args.details_url, args.external_id)
+    if args.lint:
+        if args.lint_tox_dir is None:
+            parser.error("please specify '--lint-tox-dir' "
+                         "if '--link' is specified")
+        post_flake8_check(check, args)
+    elif args.status == 'completed':
         if args.conclusion is None:
             parser.error("please specify '--conclusion' "
                          "if '--status' is 'completed'")
@@ -63,13 +130,13 @@ def main():
         output = {'title': 'completed',
                   'summary': args.summary,
                   'text': args.text.read()}
-        check.complete(args.sha, args.conclusion, output, args.details_url, args.external_id)
+        check.complete(args.conclusion, output)
     else:
         output = {'title': args.title,
                   'summary': args.summary if args.summary else 'started'}
         if args.text is not None:
             output['text'] = args.text.read()
-        check.start(args.sha, args.status, output, args.details_url, args.external_id)
+        check.start(args.status, output)
 
 
 if __name__ == '__main__':

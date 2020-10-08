@@ -18,7 +18,7 @@ setup(name='githubcheck',
       packages=['githubcheck'],
       install_requires=[
           'github3.py',
+          'jinja2',
       ],
       zip_safe=False,
-      scripts=['bin/github-check'],
-)
+      scripts=['bin/github-check'])
