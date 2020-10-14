@@ -1,9 +1,7 @@
-import subprocess
 import logging
 
 import settings
 import common
-import monitoring
 import hashlib
 import os
 import json
@@ -11,6 +9,7 @@ import yaml
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger('cbt')
+
 
 class Benchmark(object):
     def __init__(self, archive_dir, cluster, config):
@@ -29,7 +28,7 @@ class Benchmark(object):
         self.osd_ra = config.get('osd_ra', None)
         self.cmd_path = ''
         self.valgrind = config.get('valgrind', None)
-        self.cmd_path_full = '' 
+        self.cmd_path_full = ''
         self.log_iops = config.get('log_iops', True)
         self.log_bw = config.get('log_bw', True)
         self.log_lat = config.get('log_lat', True)
@@ -53,7 +52,7 @@ class Benchmark(object):
                    'iops_stddev': 'Stddev IOPS',
                    'latency_avg': 'Average Latency(s)',
                    'cpu_cycles_per_op': 'Cycles per operation'}
-        res_outputs = [] # list of dictionaries containing the self and baseline benchmark results
+        res_outputs = []  # list of dictionaries containing the self and baseline benchmark results
         compare_results = []
         self_analyzer_res = {}
         baseline_analyzer_res = {}
@@ -75,7 +74,7 @@ class Benchmark(object):
             baseline_getter = getattr(baseline_analyzer, 'get_' + alias)
             baseline_analyzer_res[name] = baseline_getter()
         res_outputs.append(self_analyzer_res)
-        res_outputs.append(baseline_analyzer_res)  
+        res_outputs.append(baseline_analyzer_res)
         for alias, stmt in list(self.acceptable.items()):
             name = aliases[alias]
             result, baseline = [float(j[name]) for j in res_outputs]
@@ -97,8 +96,6 @@ class Benchmark(object):
             runs.append(self.readmode)
         results = []
         for run in runs:
-            out_dirs = [os.path.join(self.out_dir, run),
-                        os.path.join(baseline.out_dir, run)]
             for client in settings.getnodes('clients').split(','):
                 host = settings.host_info(client)["host"]
                 for proc in range(self.concurrent_procs):
@@ -106,7 +103,6 @@ class Benchmark(object):
                     baseline_analyzer = baseline.create_data_analyzer(run, host, proc)
                     client_run = '{run}/{client}/{proc}'.format(run=run, client=client, proc=proc)
                     compare_results = self._compare_client_results(client_run, self_analyzer, baseline_analyzer)
-                    rejected = sum(not result.accepted for result in compare_results)
                     results.extend(compare_results)
             # TODO: check results from monitors
         return results
@@ -161,7 +157,7 @@ class Benchmark(object):
         pass
 
     def dropcaches(self):
-        nodes = settings.getnodes('clients', 'osds') 
+        nodes = settings.getnodes('clients', 'osds')
 
         common.pdsh(nodes, 'sync').communicate()
         common.pdsh(nodes, 'echo 3 | sudo tee /proc/sys/vm/drop_caches').communicate()
@@ -169,11 +165,12 @@ class Benchmark(object):
     def __str__(self):
         return str(self.config)
 
+
 class DataAnalyzer(ABC):
     def __init__(self, archive_dir, run, host, proc):
         super().__init__()
         self.archive_dir = archive_dir
-    
+
     @abstractmethod
     def get_cpu_cycles_per_op(self):
         pass
@@ -189,7 +186,7 @@ class DataAnalyzer(ABC):
     @abstractmethod
     def get_iops_avg(self):
         pass
-    
+
     @abstractmethod
     def get_iops_stddev(self):
         pass

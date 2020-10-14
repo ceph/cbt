@@ -2,7 +2,8 @@ import logging
 import os
 import yaml
 
-has_a_tty = os.isatty(1) # test stdout
+has_a_tty = os.isatty(1)  # test stdout
+
 
 def load_run_params(run_params_file):
     with open(run_params_file) as fd:

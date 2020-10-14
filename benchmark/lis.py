@@ -1,16 +1,16 @@
-import re
 import operator as op
 
 # a mini s-expr interpreter
 # inspired by https://norvig.com/lispy.html
 
 Symbol = str
-List   = list
+List = list
+
 
 class Lispy:
     @staticmethod
     def _tokenize(s):
-        return s.replace('(',' ( ').replace(')',' ) ').split()
+        return s.replace('(', ' ( ').replace(')', ' ) ').split()
 
     @staticmethod
     def _atom(token):
@@ -30,7 +30,7 @@ class Lispy:
             stmt = []
             while tokens[0] != ')':
                 stmt.append(self._read_from_tokens(tokens))
-            tokens.pop(0) # pop off ')'
+            tokens.pop(0)  # pop off ')'
             return stmt
         elif token == ')':
             raise SyntaxError('unexpected ")"')

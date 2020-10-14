@@ -1,4 +1,3 @@
-import subprocess
 import common
 import settings
 import monitoring
@@ -9,6 +8,7 @@ import logging
 from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
+
 
 class RbdFio(Benchmark):
 
@@ -21,7 +21,7 @@ class RbdFio(Benchmark):
 
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
-        self.time =  str(config.get('time', None))
+        self.time = str(config.get('time', None))
         self.ramp = str(config.get('ramp', None))
         self.iodepth = config.get('iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
@@ -55,7 +55,7 @@ class RbdFio(Benchmark):
             return True
         return False
 
-    def initialize(self): 
+    def initialize(self):
         super(RbdFio, self).initialize()
 
         logger.info('Pausing for 60s for idle monitoring.')
@@ -66,7 +66,7 @@ class RbdFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
         self.mkimages()
- 
+
         # Create the run directory
         common.make_remote_dir(self.run_dir)
 
@@ -155,5 +155,5 @@ class RbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s` %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
         monitoring.stop()
 
-    def recovery_callback(self): 
+    def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()
