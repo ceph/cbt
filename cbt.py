@@ -19,18 +19,18 @@ def parse_args(args):
         '-a', '--archive',
         required=True,
         help='Directory where the results should be archived.',
-        )
+    )
 
     parser.add_argument(
         '-c', '--conf',
         required=False,
         help='The ceph.conf file to use.',
-        )
+    )
 
     parser.add_argument(
         'config_file',
         help='YAML config file.',
-        )
+    )
 
     return parser.parse_args(args[1:])
 
@@ -70,7 +70,6 @@ def main(argv):
 
                 # always try to initialize endpoints.
                 b.initialize_endpoints()
-
 
                 try:
                     b.run()

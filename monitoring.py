@@ -4,6 +4,7 @@ import os.path
 import common
 import settings
 
+
 class Monitoring(object):
     def __init__(self, mconfig):
         # the initializers should be the very single places interrogating
@@ -25,12 +26,13 @@ class Monitoring(object):
         if monitoring == 'blktrace':
             return BlktraceMonitoring(mconfig)
 
+
 class CollectlMonitoring(Monitoring):
     def __init__(self, mconfig):
         super(CollectlMonitoring, self).__init__(mconfig)
 
         self.args = mconfig.get('args', '-s+mYZ -i 1:10 -F0 -f {collectl_dir} '
-                                        '--rawdskfilt \"+cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ \"')
+                                        r'--rawdskfilt \"+cciss/c\d+d\d+ |hd[ab] | sd[a-z]+ |dm-\d+ |xvd[a-z] |fio[a-z]+ | vd[a-z]+ |emcpower[a-z]+ |psv\d+ |nvme[0-9]n[0-9]+p[0-9]+ \"')
 
     def start(self, directory):
         collectl_dir = '%s/collectl' % directory
@@ -44,6 +46,7 @@ class CollectlMonitoring(Monitoring):
     def _get_default_nodes():
         return ['clients', 'osds', 'mons', 'rgws']
 
+
 class PerfMonitoring(Monitoring):
     def __init__(self, mconfig):
         super(PerfMonitoring, self).__init__(mconfig)
@@ -51,7 +54,7 @@ class PerfMonitoring(Monitoring):
         self.user = settings.cluster.get('user')
         self.args_template = mconfig.get('args')
         self.perf_runners = []
-        self.perf_dir = '' # we need the output file to extract data
+        self.perf_dir = ''  # we need the output file to extract data
 
     def start(self, directory):
         perf_dir = '%s/perf' % directory
@@ -81,11 +84,10 @@ class PerfMonitoring(Monitoring):
         else:
             common.pdsh(self.nodes, 'sudo pkill -SIGINT -f perf\ ').communicate()
         if directory:
-            sc = settings.cluster
             common.pdsh(self.nodes, 'sudo chown {user}.{user} {dir}/perf/perf.data'.format(
-                    user=self.user, dir=directory))
+                user=self.user, dir=directory))
             common.pdsh(self.nodes, 'sudo chown {user}.{user} {dir}/perf/perf_stat.*'.format(
-                    user=self.user, dir=directory))
+                user=self.user, dir=directory))
 
     def get_cpu_cycles(self, out_dir):
         import re
@@ -93,18 +95,19 @@ class PerfMonitoring(Monitoring):
         perf_dir_name = str(glob.glob(out_dir + "/perf*")[0])
         perf_stat_fnames = os.listdir(perf_dir_name)
         for perf_out_fname in perf_stat_fnames:
-            perf_output_file = open(perf_dir_name +"/"+ perf_out_fname, "rt")
-            match = re.search(r'(.*) cycles(.*?) .*', perf_output_file.read(), re.M|re.I)
+            perf_output_file = open(perf_dir_name + "/" + perf_out_fname, "rt")
+            match = re.search(r'(.*) cycles(.*?) .*', perf_output_file.read(), re.M | re.I)
             if match:
                 cpu_cycles = match.group(1).strip()
             else:
                 return None
-            total_cpu_cycles = total_cpu_cycles + int(cpu_cycles.replace(',' , ''))
+            total_cpu_cycles = total_cpu_cycles + int(cpu_cycles.replace(',', ''))
         return total_cpu_cycles
-           
+
     @staticmethod
     def _get_default_nodes():
         return ['osds']
+
 
 class BlktraceMonitoring(Monitoring):
     def __init__(self, mconfig):
@@ -118,7 +121,7 @@ class BlktraceMonitoring(Monitoring):
         common.pdsh(self.nodes, 'mkdir -p -m0755 -- %s' % blktrace_dir).communicate()
         for device in range(0, self.osds_per_node):
             common.pdsh(self.nodes, 'cd %s;sudo blktrace -o device%s -d /dev/disk/by-partlabel/osd-device-%s-data'
-                     % (blktrace_dir, device, device))
+                        % (blktrace_dir, device, device))
 
     def stop(self, directory):
         common.pdsh(self.nodes, 'sudo pkill -SIGINT -f blktrace').communicate()
@@ -137,13 +140,16 @@ class BlktraceMonitoring(Monitoring):
     def _get_default_nodes():
         return ['osds']
 
+
 def start(directory):
     for m in Monitoring._get_all():
         m.start(directory)
 
+
 def stop(directory=None):
     for m in Monitoring._get_all():
         m.stop(directory)
+
 
 @contextmanager
 def monitor(directory):
@@ -155,9 +161,10 @@ def monitor(directory):
     for m in monitors:
         m.stop(directory)
 
+
 def get_cpu_cycles(out_dir):
     # check if perf stat is configured
     for monitoring_profile in Monitoring._get_all():
         if(isinstance(monitoring_profile, PerfMonitoring)):
-            return monitoring_profile.get_cpu_cycles(out_dir) # if it is, then return the number of cycle
+            return monitoring_profile.get_cpu_cycles(out_dir)  # if it is, then return the number of cycle
     return None

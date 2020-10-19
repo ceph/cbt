@@ -7,6 +7,7 @@ from .client_endpoints import ClientEndpoints
 
 logger = logging.getLogger("cbt")
 
+
 class CephClientEndpoints(ClientEndpoints):
     def __init__(self, cluster, config):
         super(CephClientEndpoints, self).__init__(cluster, config)
@@ -27,11 +28,11 @@ class CephClientEndpoints(ClientEndpoints):
         self.disabled_features = config.get('disabled_features', None)
 
         # get the list of mons
-        self.mon_addrs  = []
+        self.mon_addrs = []
         mon_hosts = self.cluster.get_mon_hosts()
         for mon_host, mons in mon_hosts.items():
             for mon, addr in mons.items():
-                 self.mon_addrs.append(addr)
+                self.mon_addrs.append(addr)
 
     def get_rbd_name(self, node, ep_num):
         node_part = node.rpartition("@")[2]
@@ -63,7 +64,7 @@ class CephClientEndpoints(ClientEndpoints):
 
     def mount_fs(self):
         for ep_num in range(0, self.endpoints_per_client):
-            dir_name = self.get_dir_name(ep_num) 
+            dir_name = self.get_dir_name(ep_num)
             for node in common.get_fqdn_list('clients'):
                 common.pdsh(node, 'sudo mkdir -p -m0755 -- %s' % dir_name, continue_if_error=False).communicate()
                 # FIXME: Apparently something is racey because we can get:
@@ -104,7 +105,7 @@ class CephClientEndpoints(ClientEndpoints):
 
     def mount_rbd(self):
         for ep_num in range(0, self.endpoints_per_client):
-            dir_name = self.get_dir_name(ep_num) 
+            dir_name = self.get_dir_name(ep_num)
             for node in common.get_fqdn_list('clients'):
                 rbd_name = self.get_rbd_name(node, ep_num)
                 rbd_device = self.map_rbd(node, rbd_name)

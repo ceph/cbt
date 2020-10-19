@@ -1,14 +1,10 @@
-import subprocess
 import common
 import settings
 import monitoring
 import os
 import time
-import threading
 import logging
-import re
 
-from cluster.ceph import Ceph
 from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
@@ -20,7 +16,7 @@ class Getput(Benchmark):
         super(Getput, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
-        self.runtime =  config.get('runtime', None)
+        self.runtime = config.get('runtime', None)
         self.container_prefix = config.get('container_prefix', 'cbt-getput')
         self.object_prefix = config.get('object_prefix', 'cbt-getput')
         self.procs = config.get('procs', 1)
@@ -37,7 +33,7 @@ class Getput(Benchmark):
         self.cmd_path = config.get('cmd_path', "/usr/bin/getput")
         self.user = config.get('user', 'cbt')
         self.subuser = '%s:swift' % self.user
-        self.key = config.get('key', 'vzCEkuryfn060dfee4fgQPqFrncKEIkh3ZcdOANY') # dummy key from ceph radosgw docs
+        self.key = config.get('key', 'vzCEkuryfn060dfee4fgQPqFrncKEIkh3ZcdOANY')  # dummy key from ceph radosgw docs
         self.auth_urls = config.get('auth', self.cluster.get_auth_urls())
         self.cleanup()
         self.cleandir()
@@ -49,7 +45,7 @@ class Getput(Benchmark):
         return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
-    def initialize(self): 
+    def initialize(self):
         super(Getput, self).initialize()
 
         # create the user and key
@@ -82,7 +78,7 @@ class Getput(Benchmark):
                 container_prefix_flag = '%s-gw%s' % (container_prefix_flag, gwnum)
             getput_cmd += '%s ' % container_prefix_flag
 
-        # For now we'll only test distinct objects per client/gw 
+        # For now we'll only test distinct objects per client/gw
         if self.object_prefix is not None:
             getput_cmd += '-o%s-`%s`-gw%s ' % (self.object_prefix, common.get_fqdn_cmd(), gwnum)
         else:
@@ -117,7 +113,7 @@ class Getput(Benchmark):
 
         # We'll always drop caches for rados bench
         self.dropcaches()
-        
+
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
 
@@ -126,7 +122,7 @@ class Getput(Benchmark):
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        # Run getput 
+        # Run getput
         monitoring.start(self.run_dir)
         logger.info('Running getput %s test.' % self.test)
 
@@ -147,7 +143,7 @@ class Getput(Benchmark):
         self.cluster.dump_historic_ops(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-    def recovery_callback(self): 
+    def recovery_callback(self):
         self.cleanup()
 
     def cleanup(self):

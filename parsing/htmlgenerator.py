@@ -1,6 +1,9 @@
 import base64
 import zlib
-import urllib.request, urllib.parse, urllib.error
+import urllib.request
+import urllib.parse
+import urllib.error
+
 
 class HTMLGenerator(object):
     def __init__(self):
@@ -35,10 +38,10 @@ class HTMLGenerator(object):
     def format_data(self, data):
         lines = []
         for row in data:
-            tmprow = [] 
+            tmprow = []
             for pair in row:
                 first = '"' + pair[0] + '"'
-                second = '' 
+                second = ''
                 if isinstance(pair[1], float):
                     second = "%.2f" % pair[1]
                 elif isinstance(pair[1], str) or isinstance(pair[1], str):

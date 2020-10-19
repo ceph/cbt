@@ -1,4 +1,3 @@
-import subprocess
 import common
 import settings
 import monitoring
@@ -14,6 +13,7 @@ from .cluster import Cluster
 
 logger = logging.getLogger("cbt")
 
+
 def sshtarget(user, host):
     h = host
     if user:
@@ -24,9 +24,10 @@ def sshtarget(user, host):
 # but there are no cross-OSD dependencies so we can bring up multiple OSDs
 # in parallel.
 
+
 class OsdThread(threading.Thread):
     def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir, tmp_dir):
-        threading.Thread.__init__(self, name='OsdThread-%d'%osdnum)
+        threading.Thread.__init__(self, name='OsdThread-%d' % osdnum)
         self.start_time = time.time()
         self.response_time = -1.0
         self.cl_obj = cl_obj
@@ -54,11 +55,11 @@ class OsdThread(threading.Thread):
             common.pdsh(phost, 'sudo %s auth get-or-create osd.%s mon \'allow rwx\' osd \'allow *\' -o %s' % (self.cl_obj.ceph_cmd, self.osdnum, key_fn)).communicate()
 
             common.pdsh(phost, 'sudo %s -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.cl_obj.ceph_cmd, ceph_conf, self.osdnum, self.host)).communicate()
-            cmd='ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
+            cmd = 'ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
             common.pdsh(phost, 'sudo sh -c "%s"' % cmd).communicate()
 
             # Start the OSD
-            pidfile="%s/ceph-osd.%d.pid" % (self.cl_obj.pid_dir, self.osdnum)
+            pidfile = "%s/ceph-osd.%d.pid" % (self.cl_obj.pid_dir, self.osdnum)
             cmd = '%s -c %s -i %d --pid-file=%s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, pidfile)
             if self.cl_obj.osd_valgrind:
                 cmd = common.setup_valgrind(self.cl_obj.osd_valgrind, 'osd.%d' % self.osdnum, self.cl_obj.tmp_dir) + ' ' + cmd
@@ -72,15 +73,14 @@ class OsdThread(threading.Thread):
             self.response_time = time.time() - self.start_time
 
     def __str__(self):
-        return 'osd thrd %d %s %s'%(self.osdnum, self.host, self.osduuid)
+        return 'osd thrd %d %s %s' % (self.osdnum, self.host, self.osduuid)
 
     # this is intended to be called by parent thread after join()
     def postprocess(self):
         if not (self.exc is None):
             logger.error('thread %s: %s' % (self.name, str(self.exc)))
             raise Exception('OSD %s creation did not complete' % self.osdnum)
-        logger.info('thread %s completed creation of OSD %d elapsed time %f'%(self.name, self.osdnum, self.response_time))
-
+        logger.info('thread %s completed creation of OSD %d elapsed time %f' % (self.name, self.osdnum, self.response_time))
 
 
 class Ceph(Cluster):
@@ -111,7 +111,7 @@ class Ceph(Cluster):
         self.use_existing = config.get('use_existing', True)
         self.newstore_block = config.get('newstore_block', False)
         self.version_compat = config.get('version_compat', '')
-        # these parameters control parallel OSD build 
+        # these parameters control parallel OSD build
         self.ceph_osd_online_rate = config.get('osd_online_rate', 10)
         self.ceph_osd_online_tmo = config.get('osd_online_timeout', 120)
         self.ceph_osd_parallel_creates = config.get('osd_parallel_creates')
@@ -147,7 +147,7 @@ class Ceph(Cluster):
 
         # safety check to make sure we don't blow away an existing cluster!
         if self.use_existing:
-             raise RuntimeError('initialize was called on an existing cluster! Avoiding touching anything.') 
+            raise RuntimeError('initialize was called on an existing cluster! Avoiding touching anything.')
 
         super(Ceph, self).initialize()
 
@@ -185,7 +185,7 @@ class Ceph(Cluster):
         self.check_health()
         monitoring.stop()
 
-        # Disable scrub and wait for any scrubbing to complete 
+        # Disable scrub and wait for any scrubbing to complete
         self.disable_scrub()
         # FIXME with no PGs, osd pg dump appears to hang now.
         # Disable this since it wa a workaround for an old problem from the cuttlefish era.
@@ -237,10 +237,10 @@ class Ceph(Cluster):
         mount_opts = sc.get('mount_opts', '')
 
         if fs == '':
-             settings.shutdown("No OSD filesystem specified.  Exiting.")
+            settings.shutdown("No OSD filesystem specified.  Exiting.")
 
         mkfs_threads = []
-        for device in range (0,sc.get('osds_per_node')):
+        for device in range(0, sc.get('osds_per_node')):
             osds = settings.getnodes('osds')
             common.pdsh(osds, 'sudo umount /dev/disk/by-partlabel/osd-device-%s-data' % device).communicate()
             common.pdsh(osds, 'sudo rm -rf %s/osd-device-%s-data' % (self.mnt_dir, device)).communicate()
@@ -254,12 +254,12 @@ class Ceph(Cluster):
                 common.pdsh(osds, 'sudo zpool create -f -O xattr=sa -m legacy osd-device-%s-data /dev/disk/by-partlabel/osd-device-%s-data' % (device, device)).communicate()
                 common.pdsh(osds, 'sudo zpool add osd-device-%s-data log /dev/disk/by-partlabel/osd-device-%s-zil' % (device, device)).communicate()
                 common.pdsh(osds, 'sudo mount %s -t zfs osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, device, self.mnt_dir, device)).communicate()
-            else: 
+            else:
                 # do mkfs and mount in 1 long command
                 # alternative is to wait until make_osds to mount it
-                mkfs_cmd='sudo sh -c "mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)
+                mkfs_cmd = 'sudo sh -c "mkfs.%s %s /dev/disk/by-partlabel/osd-device-%s-data' % (fs, mkfs_opts, device)
                 mkfs_cmd += '; mount %s -t %s /dev/disk/by-partlabel/osd-device-%s-data %s/osd-device-%s-data' % (mount_opts, fs, device, self.mnt_dir, device)
-                
+
                 # make a symlink for block if using newstore+block
                 if self.newstore_block:
                     mkfs_cmd += ' ; sudo ln -s /dev/disk/by-partlabel/osd-device-%s-block %s/osd-device-%s-data/block' % (device, self.mnt_dir, device)
@@ -267,7 +267,7 @@ class Ceph(Cluster):
 
                 mkfs_threads.append((device, common.pdsh(osds, mkfs_cmd)))
         for device, t in mkfs_threads:  # for tmpfs and zfs cases, thread list is empty
-            logger.info('for device %d on all hosts awaiting mkfs and mount'%device)
+            logger.info('for device %d on all hosts awaiting mkfs and mount' % device)
             t.communicate()
 
     def distribute_conf(self):
@@ -281,7 +281,7 @@ class Ceph(Cluster):
 
     def get_mon_hosts(self):
         # get the list of mons
-        mon_hosts  = {}
+        mon_hosts = {}
         mons_config = settings.cluster.get('mons')
 
         # For mons specified using the string/list representation, we'll
@@ -309,11 +309,10 @@ class Ceph(Cluster):
             for host, mon_config in mons_config.items():
                 mon_hosts[host] = {}
                 for mon_id, addr in mon_config.items():
-                     mon_hosts[host][mon_id] = addr
+                    mon_hosts[host][mon_id] = addr
         else:
             raise ValueError("Failed to parse monitor syntax: %r" % mon_hosts)
         return mon_hosts
-
 
     def make_mons(self):
         # Build and distribute the client keyring
@@ -336,7 +335,7 @@ class Ceph(Cluster):
         monhosts = self.get_mon_hosts()
         logger.info(monhosts)
         for monhost, mons in monhosts.items():
-           for mon, addr in mons.items():
+            for mon, addr in mons.items():
                 cmd = cmd + ' --add %s %s' % (mon, addr)
         cmd = cmd + ' --print %s' % self.monmap_fn
         common.pdsh(settings.getnodes('head'), cmd).communicate()
@@ -353,13 +352,13 @@ class Ceph(Cluster):
                 common.pdsh(monhost, 'mkdir -p %s/mon.%s' % (self.tmp_dir, mon)).communicate()
                 common.pdsh(monhost, 'sudo sh -c "ulimit -c unlimited && exec %s --mkfs -c %s -i %s --monmap=%s --keyring=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, self.monmap_fn, keyring_fn)).communicate()
                 common.pdsh(monhost, 'cp %s %s/mon.%s/keyring' % (keyring_fn, self.tmp_dir, mon)).communicate()
-            
+
         # Start the mons
         for monhost, mons in monhosts.items():
             if user:
                 monhost = '%s@%s' % (user, monhost)
             for mon, addr in mons.items():
-                pidfile="%s/%s.pid" % (self.pid_dir, monhost)
+                pidfile = "%s/%s.pid" % (self.pid_dir, monhost)
                 cmd = 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %s --keyring=%s --pid-file=%s"' % (self.ceph_mon_cmd, self.tmp_conf, mon, keyring_fn, pidfile)
                 if self.mon_valgrind:
                     cmd = "%s %s" % (common.setup_valgrind(self.mon_valgrind, 'mon.%s' % monhost, self.tmp_dir), cmd)
@@ -376,10 +375,10 @@ class Ceph(Cluster):
 
         # set up degree of OSD creation parallelism
 
-        logger.info('OSD creation rate: < %d OSDs/sec , join timeout %d, parallel creates < %s'%(
-                        self.ceph_osd_online_rate,
-                        self.ceph_osd_online_tmo,
-                        str(self.ceph_osd_parallel_creates)))
+        logger.info('OSD creation rate: < %d OSDs/sec , join timeout %d, parallel creates < %s' % (
+            self.ceph_osd_online_rate,
+            self.ceph_osd_online_tmo,
+            str(self.ceph_osd_parallel_creates)))
         osd_online_interval = 1.0 / self.ceph_osd_online_rate
         max_parallel_creates = settings.cluster.get('osds_per_node') * len(osdhosts)
         if self.ceph_osd_parallel_creates:
@@ -395,7 +394,7 @@ class Ceph(Cluster):
                 # Build the OSD
                 osduuid = str(uuid.uuid4())
 #                osddir='/var/lib/ceph/osd/%s-%d'%(clusterid, osdnum)
-                osddir='%s/osd-device-%s-data' % (self.mnt_dir, devnumstr)
+                osddir = '%s/osd-device-%s-data' % (self.mnt_dir, devnumstr)
                 # create the OSD first, so we know what number it has been assigned.
                 common.pdsh(pdshhost, 'sudo %s -c %s osd create %s' % (self.ceph_cmd, self.tmp_conf, osduuid)).communicate()
                 # bring the OSD online in background while continuing to create OSDs in foreground
@@ -411,7 +410,7 @@ class Ceph(Cluster):
                     thrd.join(self.ceph_osd_online_tmo)
                     thrd.postprocess()
                     threads_finished += 1
-                time.sleep(osd_online_interval) # don't flood Ceph with OSD commands
+                time.sleep(osd_online_interval)  # don't flood Ceph with OSD commands
                 osdnum += 1
 
         # wait for rest of them to finish
@@ -517,10 +516,10 @@ class Ceph(Cluster):
                 if num_osds == 1:
                     time.sleep(5)
                     for pool in rgw_default_pools:
-                        common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, pool, pool_min_repl_size),
-                        continue_if_error=False).communicate()
+                        common.pdsh(settings.getnodes('head'),
+                                    'sudo %s -c %s osd pool set %s min_size %d' % (self.ceph_cmd, self.tmp_conf, pool, pool_min_repl_size),
+                                    continue_if_error=False).communicate()
                         time.sleep(5)
-
 
     def disable_scrub(self):
         common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
@@ -554,7 +553,8 @@ class Ceph(Cluster):
         return ret
 
     def log_recovery_stats(self, recstatsfile=None):
-        if not recstatsfile: return
+        if not recstatsfile:
+            return
         PGMAP = "pgmap"
         NUM_DEG = "degraded_objects"
         NUM_DEG_TOT = "degraded_total"
@@ -582,7 +582,7 @@ class Ceph(Cluster):
             logline = "| tee -a %s" % logfile
         ret = 0
 
-        # Match any of these things to continue checking backfill 
+        # Match any of these things to continue checking backfill
         check_list = ["backfill", "misplaced"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
@@ -595,7 +595,6 @@ class Ceph(Cluster):
                     logger.info("%s", line)
             time.sleep(1)
         return ret
-
 
     def check_scrub(self):
         logger.info('Waiting until Scrubbing completes...')
@@ -616,7 +615,6 @@ class Ceph(Cluster):
     def set_osd_param(self, param, value):
         common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
 
-
     def __str__(self):
         return "foo"
 
@@ -630,12 +628,14 @@ class Ceph(Cluster):
         self.stoprequest.set()
         while True:
             threads = threading.enumerate()
-            if len(threads) == 1: break
+            if len(threads) == 1:
+                break
             self.rt.join(1)
 
     def check_pg_autoscaler(self, timeout=-1, logfile=None):
         ret = 0
-        if not timeout: return ret
+        if not timeout:
+            return ret
         logline = ""
         if logfile:
             logdate = 'echo "[`date`] ceph progress" >> %s' % (logfile)
@@ -675,14 +675,14 @@ class Ceph(Cluster):
 
     def make_profiles(self):
         crush_profiles = self.config.get('crush_profiles', {})
-        for name,profile in list(crush_profiles.items()):
+        for name, profile in list(crush_profiles.items()):
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush add-bucket %s-root root' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush add-bucket %s-rack rack' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush move %s-rack root=%s-root' % (self.ceph_cmd, self.tmp_conf, name, name)).communicate()
             # FIXME: We need to build a dict mapping OSDs to hosts and create a proper hierarchy!
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush add-bucket %s-host host' % (self.ceph_cmd, self.tmp_conf, name)).communicate()
             common.pdsh(settings.getnodes('head'), '%s -c %s osd crush move %s-host rack=%s-rack' % (self.ceph_cmd, self.tmp_conf, name, name)).communicate()
-            
+
             osds = profile.get('osds', None)
             if not osds:
                 raise Exception("No OSDs defined for crush profile, bailing!")
@@ -692,7 +692,7 @@ class Ceph(Cluster):
             self.set_ruleset(name)
 
         erasure_profiles = self.config.get('erasure_profiles', {})
-        for name,profile in list(erasure_profiles.items()):
+        for name, profile in list(erasure_profiles.items()):
             k = profile.get('erasure_k', 6)
             m = profile.get('erasure_m', 2)
             common.pdsh(settings.getnodes('head'), '%s -c %s osd erasure-code-profile set %s crush-failure-domain=osd k=%s m=%s' % (self.ceph_cmd, self.tmp_conf, name, k, m)).communicate()
@@ -741,7 +741,7 @@ class Ceph(Cluster):
             if (pool_repl_size > 2):
                 pool_min_repl_size = pool_repl_size - 1
 
-             # Add mandatory UI option to actually create a pool of size 1 (Sigh).
+            # Add mandatory UI option to actually create a pool of size 1 (Sigh).
             yes_flag = ""
             if int(replication) == 1:
                 yes_flag = "--yes-i-really-mean-it"
@@ -753,12 +753,12 @@ class Ceph(Cluster):
 
         if crush_profile:
             try:
-              rule_index = int(crush_profile)
-              # set crush profile using the integer 0-based index of crush rule
-              # displayed by: ceph osd crush rule ls
-              ruleset = crush_profile
-            except ValueError as e:
-              ruleset = self.get_ruleset(crush_profile)
+                rule_index = int(crush_profile)
+                # set crush profile using the integer 0-based index of crush rule
+                # displayed by: ceph osd crush rule ls
+                ruleset = crush_profile
+            except ValueError:
+                ruleset = self.get_ruleset(crush_profile)
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
                         continue_if_error=False).communicate()
 
@@ -829,18 +829,18 @@ class Ceph(Cluster):
     def unmount_all(self):
         # Should take care of pretty much everything so long as wierd mnt_dirs aren't used.
         common.pdsh(settings.getnodes('clients'), 'sudo umount $(grep %s /proc/mounts | cut -f2 -d" " | sort -r)' % self.mnt_dir).communicate()
-        
+
         # Kill the fuse processes for good measure
         common.pdsh(settings.getnodes('clients'), 'sudo killall -SIGKILL %s' % self.rbd_fuse_cmd).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo killall -SIGKILL %s' % self.ceph_fuse_cmd).communicate()
 
         # Unmount RBD and NBD for good measure
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec umount \'{}\' \;').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec umount \'{}\' \\;').communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec umount \'{}\' \\;').communicate()
 
         # Unmap rbd, nbd, and clear the targetcli config
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_cmd).communicate()
-        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \;' % self.rbd_nbd_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/rbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \\;' % self.rbd_cmd).communicate()
+        common.pdsh(settings.getnodes('clients'), 'sudo find /dev/nbd* -maxdepth 0 -type b -exec %s unmap \'{}\' \\;' % self.rbd_nbd_cmd).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo targetcli clearconfig confirm=True', continue_if_error=False).communicate()
 
     def get_urls(self):
@@ -876,6 +876,7 @@ class Ceph(Cluster):
         self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'), 'rgw')
         self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default'), 'rgw')
 
+
 class RecoveryTestThread(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
         threading.Thread.__init__(self)
@@ -883,7 +884,7 @@ class RecoveryTestThread(threading.Thread):
         self.cluster = cluster
         self.callback = callback
         self.state = 'pre'
-        self.states = {'pre': self.pre, 'markdown': self.markdown, 'osdout': self.osdout, 'osdin':self.osdin, 'post':self.post, 'done':self.done}
+        self.states = {'pre': self.pre, 'markdown': self.markdown, 'osdout': self.osdout, 'osdin': self.osdin, 'post': self.post, 'done': self.done}
         self.stoprequest = stoprequest
         self.haltrequest = haltrequest
         self.outhealthtries = 0
@@ -923,7 +924,7 @@ class RecoveryTestThread(threading.Thread):
 
         if self.outhealthtries < self.maxhealthtries and ret == 0:
             self.outhealthtries = self.outhealthtries + 1
-            return # Cluster hasn't become unhealthy yet.
+            return  # Cluster hasn't become unhealthy yet.
 
         if ret == 0:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
@@ -949,7 +950,7 @@ class RecoveryTestThread(threading.Thread):
 
         if self.inhealthtries < self.maxhealthtries and ret == 0:
             self.inhealthtries = self.inhealthtries + 1
-            return # Cluster hasn't become unhealthy yet.
+            return  # Cluster hasn't become unhealthy yet.
 
         if ret == 0:
             common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went into backfill.')).communicate()
@@ -991,6 +992,5 @@ class RecoveryTestThread(threading.Thread):
         self.haltrequest.clear()
         self.stoprequest.clear()
         while not self.haltrequest.isSet():
-          self.states[self.state]()
+            self.states[self.state]()
         common.pdsh(settings.getnodes('head'), self.logcmd('Exiting recovery test thread.  Last state was: %s' % self.state)).communicate()
-

@@ -1,27 +1,25 @@
-import subprocess
 import common
 import settings
 import monitoring
-import os
 import time
-import string
 import logging
 
 from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
 
+
 class RawFio(Benchmark):
 
     def __init__(self, archive_dir, cluster, config):
         super(RawFio, self).__init__(archive_dir, cluster, config)
         # comma-separated list of block devices to use inside the client host/VM/container
-        self.block_device_list = config.get('block_devices', '/dev/vdb' )
-        self.block_devices = [ d.strip() for d in self.block_device_list.split(',') ]
+        self.block_device_list = config.get('block_devices', '/dev/vdb')
+        self.block_devices = [d.strip() for d in self.block_device_list.split(',')]
         self.concurrent_procs = config.get('concurrent_procs', len(self.block_devices))
         self.total_procs = self.concurrent_procs * len(settings.getnodes('clients').split(','))
         self.fio_out_format = "json"
-        self.time =  str(config.get('time', '300'))
+        self.time = str(config.get('time', '300'))
         self.ramp = str(config.get('ramp', '0'))
         self.startdelay = config.get('startdelay', None)
         self.rate_iops = config.get('rate_iops', None)
@@ -35,7 +33,7 @@ class RawFio(Benchmark):
         self.op_size = config.get('op_size', 4194304)
         self.vol_size = config.get('vol_size', 65536) * 0.9
         self.fio_cmd = config.get('fio_cmd', 'sudo /usr/bin/fio')
-        # FIXME there are too many permutations, need to put results in SQLITE3 
+        # FIXME there are too many permutations, need to put results in SQLITE3
         self.run_dir = '%s/raw_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.run_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
         self.out_dir = '%s/raw_ra-%08d/op_size-%08d/concurrent_procs-%03d/iodepth-%03d/%s' % (self.archive_dir, int(self.osd_ra), int(self.op_size), int(self.total_procs), int(self.iodepth), self.mode)
 
@@ -45,7 +43,7 @@ class RawFio(Benchmark):
     #         return True
     #     return False
 
-    def initialize(self): 
+    def initialize(self):
         super(RawFio, self).initialize()
         common.pdsh(settings.getnodes('clients'),
                     'sudo rm -rf %s' % self.run_dir,
@@ -61,11 +59,11 @@ class RawFio(Benchmark):
             fiopath = b
             pre_cmd = 'sudo %s --rw=write -ioengine=%s --bs=%s ' % (self.fio_cmd, self.ioengine, self.op_size)
             pre_cmd = '%s --size %dM --name=%s --output-format=%s> /dev/null' % (
-                       pre_cmd, self.vol_size, fiopath, self.fio_out_format)
+                pre_cmd, self.vol_size, fiopath, self.fio_out_format)
             initializer_list.append(common.pdsh(clnts, pre_cmd,
-                                    continue_if_error=False))
+                                                continue_if_error=False))
         for p in initializer_list:
-             p.communicate()
+            p.communicate()
 
         # Create the run directory
         common.pdsh(clnts, 'rm -rf %s' % self.run_dir,
@@ -106,7 +104,7 @@ class RawFio(Benchmark):
             fio_cmd += ' --direct=%s' % self.direct
             fio_cmd += ' --bs=%dB' % self.op_size
             fio_cmd += ' --iodepth=%d' % self.iodepth
-            fio_cmd += ' --size=%dM' % self.vol_size 
+            fio_cmd += ' --size=%dM' % self.vol_size
             if self.log_iops:
                 fio_cmd += ' --write_iops_log=%s' % out_file
             if self.log_bw:
@@ -127,21 +125,20 @@ class RawFio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
     def cleanup(self):
-         super(RawFio, self).cleanup()
-         clnts = settings.getnodes('clients')
+        super(RawFio, self).cleanup()
+        clnts = settings.getnodes('clients')
 
-         logger.debug("Kill fio: %s" % clnts)
-         common.pdsh(clnts, 'killall fio').communicate()
-         time.sleep(3)
-         common.pdsh(clnts, 'killall -9 fio').communicate()
+        logger.debug("Kill fio: %s" % clnts)
+        common.pdsh(clnts, 'killall fio').communicate()
+        time.sleep(3)
+        common.pdsh(clnts, 'killall -9 fio').communicate()
 
     def set_client_param(self, param, value):
-         cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)
-         common.pdsh(settings.getnodes('clients'), cmd).communicate()
+        cmd = 'find /sys/block/vd* ! -iname vda -exec sudo sh -c "echo %s > {}/queue/%s" \;' % (value, param)
+        common.pdsh(settings.getnodes('clients'), cmd).communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RawFio, self).__str__())
 
     def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall fio').communicate()
-

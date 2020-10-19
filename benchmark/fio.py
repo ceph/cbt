@@ -1,26 +1,24 @@
-import subprocess
 import common
 import settings
 import monitoring
 import os
 import time
 import logging
-import json
 import client_endpoints_factory
 
-from cluster.ceph import Ceph
 from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
+
 
 class Fio(Benchmark):
     def __init__(self, archive_dir, cluster, config):
         super(Fio, self).__init__(archive_dir, cluster, config)
 
-        # FIXME there are too many permutations, need to put results in SQLITE3 
+        # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         self.direct = config.get('direct', 1)
-        self.time =  config.get('time', None)
+        self.time = config.get('time', None)
         self.time_based = bool(config.get('time_based', False))
         self.ramp = config.get('ramp', None)
         self.iodepth = config.get('iodepth', 16)
@@ -60,7 +58,7 @@ class Fio(Benchmark):
         super(Fio, self).initialize_endpoints()
 
         # Get the client_endpoints and set them up
-        if self.client_endpoints == None:
+        if self.client_endpoints is None:
             raise ValueError('No client_endpoints defined!')
         self.client_endpoints_object = client_endpoints_factory.get(self.cluster, self.client_endpoints)
 
@@ -68,7 +66,7 @@ class Fio(Benchmark):
         if not self.client_endpoints_object.get_initialized():
             self.client_endpoints_object.initialize()
             new_ep = True
-        
+
         self.endpoint_type = self.client_endpoints_object.get_endpoint_type()
         self.endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()
         self.endpoints = self.client_endpoints_object.get_endpoints()
@@ -89,7 +87,6 @@ class Fio(Benchmark):
         # Prefill Data
         if new_ep and self.prefill:
             self.prefill_data()
-
 
     def fio_command_extra(self, ep_num):
         cmd = ''
@@ -156,7 +153,7 @@ class Fio(Benchmark):
 
         # Set the output size
         if self.size:
-            cmd += ' --size=%dM' % self.size 
+            cmd += ' --size=%dM' % self.size
         cmd += ' --numjobs=%d' % self.numjobs
 
         # Time options
@@ -243,5 +240,4 @@ class Fio(Benchmark):
                                     found = 1
 
     def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(FioBenchmark, self).__str__())
- 
+        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Fio, self).__str__())

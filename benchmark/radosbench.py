@@ -1,17 +1,13 @@
-import subprocess
 import common
 import settings
 import monitoring
 import os
 import time
-import threading
 import logging
 import re
 import json
 
-from cluster.ceph import Ceph
-from .benchmark import Benchmark, Result, DataAnalyzer
-from .lis import Lispy, Env
+from .benchmark import Benchmark, DataAnalyzer
 
 logger = logging.getLogger("cbt")
 
@@ -22,7 +18,7 @@ class Radosbench(Benchmark):
         super(Radosbench, self).__init__(archive_dir, cluster, config)
 
         self.tmp_conf = self.cluster.tmp_conf
-        self.time =  str(config.get('time', '300'))
+        self.time = str(config.get('time', '300'))
         self.concurrent_procs = config.get('concurrent_procs', 1)
         self.concurrent_ops = config.get('concurrent_ops', 16)
         self.pool_per_proc = config.get('pool_per_proc', False)  # default behavior used to be True
@@ -60,7 +56,7 @@ class Radosbench(Benchmark):
             return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
-    def initialize(self): 
+    def initialize(self):
         super(Radosbench, self).initialize()
 
         logger.info('Pausing for 60s for idle monitoring.')
@@ -71,8 +67,8 @@ class Radosbench(Benchmark):
 
     def get_rados_version(self):
         stdout, _ = common.pdsh(settings.getnodes('head'), '%s -c %s -v' % (self.cmd_path, self.tmp_conf)).communicate()
-        m = (re.findall("version (\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
-             re.findall("version v(\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
+        m = (re.findall(r"version (\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
+             re.findall(r"version v(\d+)(?:.\d+)* \([0-9a-f]+\)", stdout) or
              (255, 0))
         return int(m[0])
 
@@ -87,7 +83,7 @@ class Radosbench(Benchmark):
             return
         elif self.read_only and not do_prefill:
             logger.error('Please prefill the testbench with "prefill_time" and/or '
-                         '"prefill_objects" option for a "read_only" test');
+                         '"prefill_objects" option for a "read_only" test')
             return
 
         # Remake the pools
@@ -125,7 +121,7 @@ class Radosbench(Benchmark):
                 raise ValueError('max_objects not supported by rados_version < 10')
             max_objects_str = '--max-objects %s' % max_objects
 
-        # Operation type 
+        # Operation type
         op_type = mode
         if mode == 'prefill':
             op_type = 'write'
@@ -133,7 +129,7 @@ class Radosbench(Benchmark):
         if op_type == 'write':
             op_size_str = '-b %s' % self.op_size
         else:
-            op_size_str = ''  
+            op_size_str = ''
 
         # Write to OMAP
         write_omap_str = ''
@@ -209,17 +205,17 @@ class Radosbench(Benchmark):
 
     def mkpools(self):
         with monitoring.monitor("%s/pool_monitoring" % self.run_dir):
-            if self.pool_per_proc: # allow use of a separate storage pool per process
+            if self.pool_per_proc:  # allow use of a separate storage pool per process
                 for i in range(self.concurrent_procs):
                     for node in settings.getnodes('clients').split(','):
                         node = node.rpartition("@")[2]
                         self.cluster.rmpool('rados-bench-%s-%s' % (node, i), self.pool_profile)
                         self.cluster.mkpool('rados-bench-%s-%s' % (node, i), self.pool_profile, 'radosbench')
-            else: # the default behavior is to use a single Ceph storage pool for all rados bench processes
+            else:  # the default behavior is to use a single Ceph storage pool for all rados bench processes
                 self.cluster.rmpool('rados-bench-cbt', self.pool_profile)
                 self.cluster.mkpool('rados-bench-cbt', self.pool_profile, 'radosbench')
 
-    def recovery_callback(self): 
+    def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
 
     def parse(self, out_dir):
@@ -242,7 +238,6 @@ class Radosbench(Benchmark):
                 with open(json_out_file, 'w') as json_fd:
                     json.dump(result, json_fd)
 
-
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
         self.parse(out_dir)
@@ -250,15 +245,16 @@ class Radosbench(Benchmark):
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Radosbench, self).__str__())
 
-class RadosBenchAnalyzer(DataAnalyzer): 
+
+class RadosBenchAnalyzer(DataAnalyzer):
     def __init__(self, archive_dir, run, host, proc):
         super().__init__(archive_dir, run, host, proc)
         self.out_dir = os.path.join(self.archive_dir, run)
         self.radosbench_out_fname = os.path.join(self.out_dir, f'json_output.{proc}.{host}')
-        self.radosbench_json_output = json.load(open(self.radosbench_out_fname)) 
+        self.radosbench_json_output = json.load(open(self.radosbench_out_fname))
 
     def get_total_ops(self):
-        search_key = "made" # looking for either 'Total writes made' or 'Total reads made'
+        search_key = "made"  # looking for either 'Total writes made' or 'Total reads made'
         res = [val for key, val in self.radosbench_json_output.items() if search_key in key]
         return res[0]
 
@@ -272,12 +268,12 @@ class RadosBenchAnalyzer(DataAnalyzer):
         return None
 
     def get_latency_avg(self):
-        search_key = "Average Latency" 
+        search_key = "Average Latency"
         res = [val for key, val in self.radosbench_json_output.items() if search_key in key]
         return res[0]
 
     def get_bandwidth(self):
-        search_key = "Bandwidth" 
+        search_key = "Bandwidth"
         res = [val for key, val in self.radosbench_json_output.items() if search_key in key]
         return res[0]
 

@@ -1,16 +1,14 @@
-import subprocess
 import common
 import settings
 import monitoring
 import os
-import time
 import logging
 import client_endpoints_factory
 
-from cluster.ceph import Ceph
 from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
+
 
 class Hsbench(Benchmark):
 
@@ -40,7 +38,7 @@ class Hsbench(Benchmark):
         return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
-    def initialize(self): 
+    def initialize(self):
         super(Hsbench, self).initialize()
 
         # Clean and Create the run directory
@@ -49,14 +47,12 @@ class Hsbench(Benchmark):
 
     def initialize_endpoints(self):
         super(Hsbench, self).initialize_endpoints()
-        if self.client_endpoints == None:
+        if self.client_endpoints is None:
             raise ValueError('No client_endpoints defined!')
         self.client_endpoints_object = client_endpoints_factory.get(self.cluster, self.client_endpoints)
 
-        new_ep = False
         if not self.client_endpoints_object.get_initialized():
             self.client_endpoints_object.initialize()
-            new_ep = True
 
         self.endpoint_type = self.client_endpoints_object.get_endpoint_type()
         self.endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()
@@ -70,7 +66,7 @@ class Hsbench(Benchmark):
     def run_command(self, ep_num):
         out_csv = '%s/output.%d.csv' % (self.run_dir, ep_num)
         out_json = '%s/output.%d.json' % (self.run_dir, ep_num)
-        
+
         cmd = 'sudo %s' % self.cmd_path_full
         if self.buckets:
             cmd += ' -b %d' % self.buckets
@@ -106,10 +102,10 @@ class Hsbench(Benchmark):
 
     def run(self):
         super(Hsbench, self).run()
-        
+
         # We'll always drop caches
         self.dropcaches()
-        
+
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
 
@@ -140,7 +136,7 @@ class Hsbench(Benchmark):
         self.cluster.dump_historic_ops(self.run_dir)
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-    def recovery_callback(self): 
+    def recovery_callback(self):
         self.cleanup()
 
     def cleanup(self):

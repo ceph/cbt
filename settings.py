@@ -13,6 +13,7 @@ client_endpoints = {}
 benchmarks = {}
 monitoring_profiles = {}
 
+
 def _handle_monitoring_legacy():
     """
     Inject collectl even if the config says nothing about it to preserve
@@ -21,6 +22,7 @@ def _handle_monitoring_legacy():
     global monitoring_profiles
     if 'collectl' not in monitoring_profiles:
         monitoring_profiles['collectl'] = {}
+
 
 def initialize(ctx):
     global cluster, client_endpoints, benchmarks, monitoring_profiles
@@ -81,6 +83,7 @@ def initialize(ctx):
     except IOError as e:
         shutdown('Was not able to access conf file: %s' % cluster['conf_file'])
 
+
 def host_info(host):
     ret = {}
     user = cluster.get('user')
@@ -93,6 +96,7 @@ def host_info(host):
     ret['host'] = host
     ret['addr'] = socket.gethostbyname(host)
     return ret
+
 
 def getnodes(*nodelists):
     nodes = []
@@ -125,6 +129,7 @@ def uniquenodes(nodes):
             host_str = "%s@%s" % (info['user'], host_str)
         ret.append(host_str)
     return set(ret)
+
 
 def shutdown(message):
     sys.exit(message)

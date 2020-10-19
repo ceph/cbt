@@ -1,16 +1,13 @@
-import subprocess
+from .benchmark import Benchmark
 import common
 import settings
 import monitoring
 import os
 import time
-import threading
 import logging
 
 logger = logging.getLogger('cbt')
 
-from cluster.ceph import Ceph
-from .benchmark import Benchmark
 
 class CephTestRados(Benchmark):
 
@@ -20,10 +17,14 @@ class CephTestRados(Benchmark):
         self.tmp_conf = self.cluster.tmp_conf
 
         self.bools = {}
-        if config.get('ec_pool', False):  self.bools['ec_pool'] = True
-        if config.get('write_fadvise_dontneed', False): self.bools['write_fadvise_dontneed'] = True
-        if config.get('pool_snaps', False): self.bools['pool_snaps'] = True
-        if config.get('write_append_excl', True): self.bools['write_append_excl'] = True
+        if config.get('ec_pool', False):
+            self.bools['ec_pool'] = True
+        if config.get('write_fadvise_dontneed', False):
+            self.bools['write_fadvise_dontneed'] = True
+        if config.get('pool_snaps', False):
+            self.bools['pool_snaps'] = True
+        if config.get('write_append_excl', True):
+            self.bools['write_append_excl'] = True
 
         self.variables = {}
         self.variables['object_size'] = int(config.get('object_size', 4000000))
@@ -35,8 +36,7 @@ class CephTestRados(Benchmark):
         self.variables['max_stride_size'] = str(config.get('max_stride_size', self.variables['object_size'] / 5))
         self.variables['max_seconds'] = str(config.get('max_seconds', 0))
 
-
-        self.weights = {'read': 100, 'write':100, 'delete':10}
+        self.weights = {'read': 100, 'write': 100, 'delete': 10}
         for weight in ['snap_create', 'snap_remove', 'rollback', 'setattr', 'rmattr', 'watch', 'copy_from', 'hit_set_list', 'is_dirty', 'cache_flush', 'cache_try_flush', 'cache_evict' 'append', 'write', 'read', 'delete']:
             self.addweight(weight)
         if 'write_append_excl' in self.bools and 'append' in self.weights:
@@ -64,12 +64,12 @@ class CephTestRados(Benchmark):
         return False
 
     # Initialize may only be called once depending on rebuild_every_test setting
-    def initialize(self): 
+    def initialize(self):
         super(CephTestRados, self).initialize()
 
     def run(self):
         super(CephTestRados, self).run()
-        
+
         # Remake the pool
         self.mkpool()
         self.dropcaches()
@@ -122,7 +122,7 @@ class CephTestRados(Benchmark):
         self.cluster.mkpool('ceph_test_rados', self.pool_profile, 'ceph_test_rados')
         monitoring.stop()
 
-    def recovery_callback(self): 
+    def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados').communicate()
 
     def __str__(self):
