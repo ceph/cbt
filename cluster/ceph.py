@@ -115,6 +115,7 @@ class Ceph(Cluster):
         self.ceph_osd_online_rate = config.get('osd_online_rate', 10)
         self.ceph_osd_online_tmo = config.get('osd_online_timeout', 120)
         self.ceph_osd_parallel_creates = config.get('osd_parallel_creates')
+        self.disable_bal = config.get('disable_balancer', False)
 
         self.client_keyring = '/etc/ceph/ceph.keyring'
         self.client_secret = '/etc/ceph/ceph.secret'
@@ -187,6 +188,9 @@ class Ceph(Cluster):
 
         # Disable scrub and wait for any scrubbing to complete
         self.disable_scrub()
+        if self.disable_bal:
+            self.disable_balancer()
+
         # FIXME with no PGs, osd pg dump appears to hang now.
         # Disable this since it wa a workaround for an old problem from the cuttlefish era.
 #        self.check_scrub()
@@ -523,6 +527,9 @@ class Ceph(Cluster):
 
     def disable_scrub(self):
         common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
+
+    def disable_balancer(self):
+        common.pdsh(settings.getnodes('head'), "ceph balancer off").communicate()
 
     def check_health(self, check_list=None, logfile=None, recstatsfile=None):
         # Wait for a defined amount of time in case ceph health is delayed
