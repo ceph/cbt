@@ -433,8 +433,7 @@ class Ceph(Cluster):
                     cmd = "%s %s" % (common.setup_valgrind(self.mgr_valgrind, mgrname, self.tmp_dir), cmd)
                 else:
                     cmd = "%s %s" % (self.ceph_run_cmd, cmd)
-                if user:
-                    pdshhost = '%s@%s' % (user, mgrhost)
+                pdshhost = sshtarget(user, mgrhost)
                 data_dir = "%s/mgr.%s" % (self.tmp_dir, mgrname)
                 common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
                 common.pdsh(pdshhost, 'sudo %s auth get-or-create mgr.%s mon \'allow profile mgr\' mds \'allow *\' osd \'allow *\' -o %s/keyring' % (self.ceph_cmd, mgrname, data_dir)).communicate()
@@ -454,8 +453,7 @@ class Ceph(Cluster):
                     cmd = "%s %s" % (common.setup_valgrind(self.mds_valgrind, mdsname, self.tmp_dir), cmd)
                 else:
                     cmd = "%s %s" % (self.ceph_run_cmd, cmd)
-                if user:
-                    pdshhost = '%s@%s' % (user, mdshost)
+                pdshhost = sshtarget(user, mdshost)
                 data_dir = "%s/mds.%s" % (self.tmp_dir, mdsname)
                 common.pdsh(pdshhost, 'sudo mkdir -p %s' % data_dir).communicate()
                 common.pdsh(pdshhost, 'sudo %s auth get-or-create mds.%s mon \'allow profile mds\' osd \'allow rw tag cephfs *=*\' mds \'allow\' mgr \'allow profile mds\' -o %s/keyring' % (self.ceph_cmd, mdsname, data_dir)).communicate()
@@ -504,8 +502,7 @@ class Ceph(Cluster):
                 else:
                     cmd = '%s %s' % (self.ceph_run_cmd, cmd)
 
-                if user:
-                    pdshhost = '%s@%s' % (user, rgwhost)
+                pdshhost = sshtarget(user, rgwhost)
                 common.pdsh(pdshhost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s"' % cmd).communicate()
 
                 # set min_size of pools to 1, when there is only one osd
