@@ -18,6 +18,8 @@ class LibrbdFio(Benchmark):
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
         self.pool_profile = config.get('pool_profile', 'default')
+        self.recov_pool_profile = config.get('recov_pool_profile', 'default')
+        self.recov_test_type = config.get('recov_test_type', 'blocking')
         self.data_pool_profile = config.get('data_pool_profile', None)
         self.time = config.get('time', None)
         self.time_based = bool(config.get('time_based', False))
@@ -43,6 +45,7 @@ class LibrbdFio(Benchmark):
         # use_existing_volumes needs to be true to set the pool and rbd names
         self.use_existing_volumes = config.get('use_existing_volumes', False)
         self.pool_name = config.get("poolname", "cbt-librbdfio")
+        self.recov_pool_name = config.get("recov_pool_name", "cbt-librbdfio-recov")
         self.rbdname = config.get('rbdname', '')
 
         self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
@@ -77,19 +80,22 @@ class LibrbdFio(Benchmark):
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
-        self.mkimages()
-
-        # populate the fio files
-        ps = []
-        logger.info('Attempting to populating fio files...')
-        if (self.use_existing_volumes == False):
-            for volnum in range(self.volumes_per_client):
-                rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
-                pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
-                p = common.pdsh(settings.getnodes('clients'), pre_cmd)
-                ps.append(p)
-            for p in ps:
-                p.wait()
+        # Create the recovery image based on test type requested
+        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+            self.mkrecovimage()
+        else:
+            self.mkimages()
+            # populate the fio files
+            ps = []
+            logger.info('Attempting to populating fio files...')
+            if (self.use_existing_volumes == False):
+                for volnum in range(self.volumes_per_client):
+                    rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
+                    pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
+                    p = common.pdsh(settings.getnodes('clients'), pre_cmd)
+                    ps.append(p)
+                for p in ps:
+                    p.wait()
 
     def run(self):
         super(LibrbdFio, self).run()
@@ -97,10 +103,11 @@ class LibrbdFio(Benchmark):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
+        # Create the run directory
+        common.make_remote_dir(self.run_dir)
+
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
-
-        monitoring.start(self.run_dir)
 
         time.sleep(5)
 
@@ -110,10 +117,20 @@ class LibrbdFio(Benchmark):
         if ret == 1:
             logger.warn("PG autoscaler taking longer to complete. Continuing anyway...results may be skewed.")
 
-        # Run the backfill testing thread if requested
+        # Start the recovery thread if requested
         if 'recovery_test' in self.cluster.config:
-            recovery_callback = self.recovery_callback
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback)
+            if self.recov_test_type == 'blocking':
+                recovery_callback = self.recovery_callback_blocking
+            elif self.recov_test_type == 'background':
+                recovery_callback = self.recovery_callback_background
+            self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
+
+        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+            # Create the image to run client IO
+            self.cluster.wait_start_io()
+            self.mkimages()
+
+        monitoring.start(self.run_dir)
 
         logger.info('Running rbd fio %s test.', self.mode)
         ps = []
@@ -183,6 +200,17 @@ class LibrbdFio(Benchmark):
         fio_cmd += ' %s > %s' % (self.names, out_file)
         return fio_cmd
 
+    def mkrecovimage(self):
+        monitoring.start("%s/recovery_pool_monitoring" % self.run_dir)
+        if (self.use_existing_volumes == False):
+          self.cluster.rmpool(self.recov_pool_name, self.recov_pool_profile)
+          self.cluster.mkpool(self.recov_pool_name, self.recov_pool_profile, 'rbd')
+          for node in common.get_fqdn_list('clients'):
+              for volnum in range(0, self.volumes_per_client):
+                  node = node.rpartition("@")[2]
+                  self.cluster.mkimage('cbt-librbdfio-recov-%s-%d' % (node,volnum), self.vol_size, self.recov_pool_name, self.data_pool, self.vol_object_size)
+        monitoring.stop()
+
     def mkimages(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
         if (self.use_existing_volumes == False):
@@ -192,14 +220,17 @@ class LibrbdFio(Benchmark):
                 self.data_pool = self.pool_name + "-data"
                 self.cluster.rmpool(self.data_pool, self.data_pool_profile)
                 self.cluster.mkpool(self.data_pool, self.data_pool_profile, 'rbd')
-            for node in common.get_fqdn_list('clients'):
-                for volnum in range(0, self.volumes_per_client):
-                    node = node.rpartition("@")[2]
-                    self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node, volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
+        for node in common.get_fqdn_list('clients'):
+            for volnum in range(0, self.volumes_per_client):
+                node = node.rpartition("@")[2]
+                self.cluster.mkimage('cbt-librbdfio-%s-%d' % (node,volnum), self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
         monitoring.stop()
 
-    def recovery_callback(self):
+    def recovery_callback_blocking(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
+
+    def recovery_callback_background(self):
+        logger.info('Recovery thread completed!')
 
     def parse(self, out_dir):
         for client in settings.getnodes('clients').split(','):

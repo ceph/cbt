@@ -136,10 +136,17 @@ class Ceph(Cluster):
         self.use_existing = config.get('use_existing', True)
         self.stoprequest = threading.Event()
         self.haltrequest = threading.Event()
+        self.startiorequest = threading.Event()
 
         self.urls = []
         self.auth_urls = []
         self.osd_count = config.get('osds_per_node') * len(settings.getnodes('osds'))
+
+        # Recovery objects prefill info
+        self.prefill_recov_objects = 0
+        self.prefill_recov_object_size = 0
+        self.prefill_recov_time = 0
+        self.recov_pool_name = ''
 
     def initialize(self):
         # Reset the rulesets
@@ -562,6 +569,8 @@ class Ceph(Cluster):
         PGMAP = "pgmap"
         NUM_DEG = "degraded_objects"
         NUM_DEG_TOT = "degraded_total"
+        NUM_MISP = "misplaced_objects"
+        NUM_MISP_TOT = "misplaced_total"
         fmtjson = "--format=json"
         separator = ","
         stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, fmtjson)).communicate()
@@ -573,12 +582,16 @@ class Ceph(Cluster):
             degstats.append(str(jsondata[PGMAP][NUM_DEG]))
         if NUM_DEG_TOT in jsondata[PGMAP]:
             degstats.append(str(jsondata[PGMAP][NUM_DEG_TOT]))
+        if NUM_MISP in jsondata[PGMAP]:
+            degstats.append(str(jsondata[PGMAP][NUM_MISP]))
+        if NUM_MISP_TOT in jsondata[PGMAP]:
+            degstats.append(str(jsondata[PGMAP][NUM_MISP_TOT]))
 
         if len(degstats):
             message = separator.join(degstats)
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (message, recstatsfile)).communicate()
 
-    def check_backfill(self, check_list=None, logfile=None):
+    def check_backfill(self, check_list=None, logfile=None, recstatsfile=None):
         # Wait for a defined amount of time in case ceph health is delayed
         time.sleep(self.health_wait)
         logline = ""
@@ -586,7 +599,11 @@ class Ceph(Cluster):
             logline = "| tee -a %s" % logfile
         ret = 0
 
-        # Match any of these things to continue checking backfill
+        if recstatsfile:
+            header = "Num Misplaced Objs, Total Misplaced Objs"
+            stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (header, recstatsfile)).communicate()
+
+        # Match any of these things to continue checking backfill 
         check_list = ["backfill", "misplaced"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
@@ -596,6 +613,7 @@ class Ceph(Cluster):
                 ret = ret + 1
             for line in stdout.splitlines():
                 if 'misplaced' in line:
+                    self.log_recovery_stats(recstatsfile)
                     logger.info("%s", line)
             time.sleep(1)
         return ret
@@ -622,11 +640,24 @@ class Ceph(Cluster):
     def __str__(self):
         return "foo"
 
-    def create_recovery_test(self, run_dir, callback):
+    def create_recovery_test(self, run_dir, callback, test_type='blocking'):
         rt_config = self.config.get("recovery_test", {})
         rt_config['run_dir'] = run_dir
-        self.rt = RecoveryTestThread(rt_config, self, callback, self.stoprequest, self.haltrequest)
+        if test_type == 'blocking':
+            self.rt = RecoveryTestThreadBlocking(rt_config, self, callback, self.stoprequest, self.haltrequest)
+        elif test_type == 'background':
+            self.rt = RecoveryTestThreadBackground(rt_config, self, callback, self.stoprequest, self.haltrequest, self.startiorequest)
         self.rt.start()
+
+    def wait_start_io(self):
+        logger.info("Waiting for signal to start client io...")
+        self.startiorequest.wait()
+
+    def maybe_populate_recovery_pool(self):
+        if self.prefill_recov_objects > 0 or self.prefill_recov_time > 0:
+            logger.info('prefilling %s %sbyte objects into recovery pool %s' % (self.prefill_recov_objects, self.prefill_recov_object_size, self.recov_pool_name))
+            common.pdsh(settings.getnodes('head'), 'sudo %s -p %s bench %s write -b %s --max-objects %s --no-cleanup' % (self.rados_cmd, self.recov_pool_name, self.prefill_recov_time, self.prefill_recov_object_size, self.prefill_recov_objects)).communicate()
+            self.check_health()
 
     def wait_recovery_done(self):
         self.stoprequest.set()
@@ -727,6 +758,14 @@ class Ceph(Cluster):
         prefill_objects = profile.get('prefill_objects', 0)
         prefill_object_size = profile.get('prefill_object_size', 0)
         prefill_time = profile.get('prefill_time', 0)
+        # Options for prefilling recovery objects
+        recov_pool = profile.get('recov_pool', False)
+        if recov_pool:
+            self.prefill_recov_objects = profile.get('prefill_recov_objects', 0)
+            self.prefill_recov_object_size = profile.get('prefill_recov_object_size', 0)
+            self.prefill_recov_time = profile.get('prefill_recov_time', 0)
+            if self.prefill_recov_objects > 0:
+                self.recov_pool_name = name
 
         if replication and replication == 'erasure':
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
@@ -826,7 +865,7 @@ class Ceph(Cluster):
         if data_pool:
             dp_option = "--data-pool %s" % data_pool
         try:
-            common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order), False).communicate()
+            common.pdsh(settings.getnodes('head'), '%s -c %s create %s --size %s --pool %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, name, size, pool, dp_option, order), continue_if_error=False).communicate()
         except Exception as e:
             logger.error(str(e))
 
@@ -880,8 +919,7 @@ class Ceph(Cluster):
         self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'), 'rgw')
         self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default'), 'rgw')
 
-
-class RecoveryTestThread(threading.Thread):
+class RecoveryTestThreadBlocking(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):
         threading.Thread.__init__(self)
         self.config = config
@@ -990,7 +1028,7 @@ class RecoveryTestThread(threading.Thread):
 
     def join(self, timeout=None):
         common.pdsh(settings.getnodes('head'), self.logcmd('Received notification that parent is finished and waiting.')).communicate()
-        super(RecoveryTestThread, self).join(timeout)
+        super(RecoveryTestThreadBlocking, self).join(timeout)
 
     def run(self):
         self.haltrequest.clear()
@@ -998,3 +1036,131 @@ class RecoveryTestThread(threading.Thread):
         while not self.haltrequest.isSet():
             self.states[self.state]()
         common.pdsh(settings.getnodes('head'), self.logcmd('Exiting recovery test thread.  Last state was: %s' % self.state)).communicate()
+
+class RecoveryTestThreadBackground(threading.Thread):
+    def __init__(self, config, cluster, callback, stoprequest, haltrequest, startiorequest):
+        threading.Thread.__init__(self)
+        self.config = config
+        self.cluster = cluster
+        self.callback = callback
+        self.state = 'pre'
+        self.states = {'pre': self.pre, 'markdown': self.markdown, 'osdout': self.osdout, 'osdin':self.osdin, 'post':self.post, 'done':self.done}
+        self.startiorequest = startiorequest
+        self.stoprequest = stoprequest
+        self.haltrequest = haltrequest
+        self.outhealthtries = 0
+        self.inhealthtries = 0
+        self.maxhealthtries = 60
+        self.health_checklist = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery"]
+        self.ceph_cmd = self.cluster.ceph_cmd
+        self.lasttime = time.time()
+
+    def logcmd(self, message):
+        return 'echo "[`date`] %s" >> %s/recovery.log' % (message, self.config.get('run_dir'))
+
+    def pre(self):
+        pre_time = self.config.get("pre_time", 60)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Starting Recovery Test Thread, waiting %s seconds.' % pre_time)).communicate()
+        time.sleep(pre_time)
+        lcmd = self.logcmd("Setting the ceph osd noup flag")
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd set noup;%s' % (self.ceph_cmd, self.cluster.tmp_conf, lcmd)).communicate()
+        self.state = 'markdown'
+
+    def markdown(self):
+        for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s down." % osdnum)
+            common.pdsh(settings.getnodes('head'), '%s -c %s osd down %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+            lcmd = self.logcmd("Marking OSD %s out." % osdnum)
+            common.pdsh(settings.getnodes('head'), '%s -c %s osd out %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+        common.pdsh(settings.getnodes('head'), self.logcmd('Waiting for the cluster to break and heal')).communicate()
+        self.lasttime = time.time()
+        self.state = 'osdout'
+
+    def osdout(self):
+        reclog = "%s/recovery.log" % self.config.get('run_dir')
+        recstatslog = "%s/recovery_stats.log" % self.config.get('run_dir')
+        ret = self.cluster.check_health(self.health_checklist, reclog, recstatslog)
+
+        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+
+        if ret == 0:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went unhealthy.')).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+            rectime = str(time.time() - self.lasttime)
+            common.pdsh(settings.getnodes('head'), 'echo Time: %s >> %s' % (rectime, recstatslog)).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % rectime)).communicate()
+
+        # Populate the recovery pool
+        self.cluster.maybe_populate_recovery_pool()
+
+        common.pdsh(settings.getnodes('head'), self.logcmd("osdout state - Sleeping for 10 secs after populating recovery pool.")).communicate()
+        time.sleep(10)
+        lcmd = self.logcmd("Unsetting the ceph osd noup flag")
+        common.pdsh(settings.getnodes('head'), '%s -c %s osd unset noup;%s' % (self.ceph_cmd, self.cluster.tmp_conf, lcmd)).communicate()
+        for osdnum in self.config.get('osds'):
+            lcmd = self.logcmd("Marking OSD %s up." % osdnum)
+            common.pdsh(settings.getnodes('head'), '%s -c %s osd up %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+            lcmd = self.logcmd("Marking OSD %s in." % osdnum)
+            common.pdsh(settings.getnodes('head'), '%s -c %s osd in %s;%s' % (self.ceph_cmd, self.cluster.tmp_conf, osdnum, lcmd)).communicate()
+        self.lasttime = time.time()
+        self.state = "osdin"
+
+    def osdin(self):
+        # Set startiorequest event to initiate client IO on another pool
+        self.startiorequest.set()
+        # Make recovery thread Wait until the cluster is done backfilling.
+        recstatslog = "%s/recovery_backfill_stats.log" % self.config.get('run_dir')
+        ret = self.cluster.check_backfill(self.health_checklist, "%s/recovery.log" % self.config.get('run_dir'), recstatslog)
+        common.pdsh(settings.getnodes('head'), self.logcmd("ret: %s" % ret)).communicate()
+
+        if self.inhealthtries < self.maxhealthtries and ret == 0:
+            self.inhealthtries = self.inhealthtries + 1
+            return # Cluster hasn't become unhealthy yet.
+
+        if ret == 0:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster never went into backfill.')).communicate()
+        else:
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster appears to have healed.')).communicate()
+            rectime = str(time.time() - self.lasttime)
+            common.pdsh(settings.getnodes('head'), 'echo Time: %s >> %s' % (rectime, recstatslog)).communicate()
+            common.pdsh(settings.getnodes('head'), self.logcmd('Time: %s' % rectime)).communicate()
+        self.state = "post"
+
+    def post(self):
+        if self.stoprequest.isSet():
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, but stoprequest is set, finishing now.')).communicate()
+            self.haltrequest.set()
+            return
+
+        if self.config.get("repeat", False):
+            # reset counters
+            self.outhealthtries = 0
+            self.inhealthtries = 0
+
+            common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, but repeat is set.  Moving to "markdown" state.')).communicate()
+            self.state = "markdown"
+            return
+
+        post_time = self.config.get("post_time", 60)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
+        time.sleep(post_time)
+        self.state = "done"
+
+    def done(self):
+        common.pdsh(settings.getnodes('head'), self.logcmd("Done.  Calling parent callback function.")).communicate()
+        self.callback()
+        self.haltrequest.set()
+
+    def join(self, timeout=None):
+        common.pdsh(settings.getnodes('head'), self.logcmd('Received notification that parent is finished and waiting.')).communicate()
+        super(RecoveryTestThreadBackground, self).join(timeout)
+
+    def run(self):
+        self.haltrequest.clear()
+        self.stoprequest.clear()
+        self.startiorequest.clear()
+        while not self.haltrequest.isSet():
+          self.states[self.state]()
+        common.pdsh(settings.getnodes('head'), self.logcmd('Exiting recovery test thread.  Last state was: %s' % self.state)).communicate()
+

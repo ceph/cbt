@@ -13,3 +13,6 @@ class RbdNbdClientEndpoints(CephClientEndpoints):
         cmd = 'sudo %s map %s/%s' % (self.rbd_nbd_cmd, self.pool, rbd_name) 
         stdout, stderr = common.pdsh(node, cmd, continue_if_error=False).communicate()
         return stdout.rstrip().rpartition(": ")[2]
+
+    def create_recovery_image(self):
+        self.create_rbd_recovery()

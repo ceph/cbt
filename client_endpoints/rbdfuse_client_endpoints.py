@@ -28,3 +28,6 @@ class RbdFuseClientEndpoints(CephClientEndpoints):
         logger.info('Mapped RBD-Fuse pool %s to %s' % (self.pool, fuse_dir))
 
         return '%s/%s' % (fuse_dir, rbd_name)
+
+    def create_recovery_image(self):
+        self.create_rbd_recovery()

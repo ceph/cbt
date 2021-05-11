@@ -42,3 +42,6 @@ class ClientEndpoints(object):
 
     def remove(self):
         pass
+
+    def create_recovery_image(self):
+        pass
