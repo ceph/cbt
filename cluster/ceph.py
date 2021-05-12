@@ -632,7 +632,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('osds'), 'sudo %s -c %s daemon osd.0 config show > %s/ceph_settings.out' % (self.ceph_cmd, self.tmp_conf, run_dir)).communicate()
 
     def dump_historic_ops(self, run_dir):
-        common.pdsh(settings.getnodes('osds'), 'find "/var/run/ceph/ceph-osd*.asok" -maxdepth 1 -exec sudo %s --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % (self.ceph_cmd, run_dir)).communicate()
+        common.pdsh(settings.getnodes('osds'), 'find "/var/run/ceph/" -maxdepth 1 -name "ceph-osd*.asok" -exec sudo %s --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % (self.ceph_cmd, run_dir)).communicate()
 
     def set_osd_param(self, param, value):
         common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
