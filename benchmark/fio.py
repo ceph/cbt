@@ -66,8 +66,7 @@ class Fio(Benchmark):
         # Create the recovery image based on test type requested
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
             self.client_endpoints_object.create_recovery_image()
-        else:
-            self.create_endpoints()
+        self.create_endpoints()
 
     def create_endpoints(self):
         new_ep = False
@@ -211,9 +210,8 @@ class Fio(Benchmark):
             self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
 
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
-            # Wait for signal to create the image & start client IO
+            # Wait for signal to start client IO
             self.cluster.wait_start_io()
-            self.create_endpoints()
 
         monitoring.start(self.run_dir)
 
