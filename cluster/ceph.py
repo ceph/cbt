@@ -546,7 +546,7 @@ class Ceph(Cluster):
         # Match any of these things to continue checking health
         check_list = ["degraded", "peering", "recovery_wait", "stuck", "inactive", "unclean", "recovery", "stale"]
         if recstatsfile:
-            header = "Num Deg Objs, Total Deg Objs"
+            header = "Time, Num Deg Objs, Total Deg Objs"
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (header, recstatsfile)).communicate()
 
         while True:
@@ -576,8 +576,13 @@ class Ceph(Cluster):
         stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, fmtjson)).communicate()
         stdout = stdout.split(':', 1)[1]
         stdout = stdout.strip()
-        jsondata = json.loads(stdout)
+        try:
+            jsondata = json.loads(stdout)
+        except ValueError as e:
+            logger.error(str(e))
+            return
         degstats = []
+        degstats.append(str(time.time()))
         if NUM_DEG in jsondata[PGMAP]:
             degstats.append(str(jsondata[PGMAP][NUM_DEG]))
         if NUM_DEG_TOT in jsondata[PGMAP]:
@@ -600,10 +605,10 @@ class Ceph(Cluster):
         ret = 0
 
         if recstatsfile:
-            header = "Num Misplaced Objs, Total Misplaced Objs"
+            header = "Time, Num Misplaced Objs, Total Misplaced Objs"
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (header, recstatsfile)).communicate()
 
-        # Match any of these things to continue checking backfill 
+        # Match any of these things to continue checking backfill
         check_list = ["backfill", "misplaced"]
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s -s %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
@@ -632,7 +637,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('osds'), 'sudo %s -c %s daemon osd.0 config show > %s/ceph_settings.out' % (self.ceph_cmd, self.tmp_conf, run_dir)).communicate()
 
     def dump_historic_ops(self, run_dir):
-        common.pdsh(settings.getnodes('osds'), 'find "/var/run/ceph/ceph-osd*.asok" -maxdepth 1 -exec sudo %s --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % (self.ceph_cmd, run_dir)).communicate()
+        common.pdsh(settings.getnodes('osds'), 'find /var/run/ceph/ceph-osd*.asok -maxdepth 1 -exec sudo %s --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % (self.ceph_cmd, run_dir)).communicate()
 
     def set_osd_param(self, param, value):
         common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
@@ -1142,9 +1147,7 @@ class RecoveryTestThreadBackground(threading.Thread):
             self.state = "markdown"
             return
 
-        post_time = self.config.get("post_time", 60)
-        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, completion in %s seconds.' % post_time)).communicate()
-        time.sleep(post_time)
+        common.pdsh(settings.getnodes('head'), self.logcmd('Cluster is healthy, finishing up...')).communicate()
         self.state = "done"
 
     def done(self):
