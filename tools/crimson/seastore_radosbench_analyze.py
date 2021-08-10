@@ -283,8 +283,8 @@ def wash_dataset(dataset, writes_4KB):
                     dataset["committed_trans"],
                     dataset_size)
 
-    # 4. from invalidated_reason
-    data_name = "invalidated_reason_by_extent"
+    # 4. from invalidated_reason, committed_trans
+    data_name = "trans_invalidate_committed_ratio_by_extent"
 
     def merge_lists(lists):
         assert(len(lists))
@@ -302,11 +302,22 @@ def wash_dataset(dataset, writes_4KB):
     inplace_merge_l2("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", dataset["invalidated_reason"])
     inplace_merge_l2("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     dataset["invalidated_reason"])
 
+    merged_committed_trans = merge_lists([items for name, items in dataset["committed_trans"].items()])
+
     def filter_out_empty_l2(l2_items):
         return {name:items
                 for name, items in l2_items.items()
                 if any(items)}
-    washed_dataset[data_name] = filter_out_empty_l2(dataset["invalidated_reason"])
+    non_empty_invalidated_reasons = filter_out_empty_l2(dataset["invalidated_reason"])
+
+    def assign_ratio_l2_l1(l2_numerators, denominators):
+        ret = {}
+        for name, numerators in l2_numerators.items():
+            ratios = get_ratio(numerators, denominators)
+            ret[name] = ratios
+        return ret
+    washed_dataset[data_name] = assign_ratio_l2_l1(
+            non_empty_invalidated_reasons, merged_committed_trans)
 
     # 5. from invalidated_efforts_4KB, committed_efforts_4KB
     data_name = "trans_invalidate_committed_ratio_by_effort---accurate"
@@ -347,12 +358,8 @@ def wash_dataset(dataset, writes_4KB):
                                    items_by_effort["MUTATE_DELTA"]])
         committed_disk_efforts_4KB_merged[ext_name] = disk_writes
 
-    washed_dataset[data_name] = {}
-    def assign_ratio_l2(l2_out, l2_numerators, denominators):
-        for name, numerators in l2_numerators.items():
-            ratios = get_ratio(numerators, denominators)
-            l2_out[name] = ratios
-    assign_ratio_l2(washed_dataset[data_name], committed_disk_efforts_4KB_merged, writes_4KB)
+    washed_dataset[data_name] = assign_ratio_l2_l1(
+            committed_disk_efforts_4KB_merged, writes_4KB)
 
     # 7. from writes_4KB, committed_disk_efforts_4KB,
     #         segment_read_4KB, segment_write_4KB, segment_write_meta_4KB
