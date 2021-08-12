@@ -79,9 +79,8 @@ def parse_metric_file(metric_file):
     data["cache_hit"] = defaultdict(lambda: 0)
     data["created_trans"] = defaultdict(lambda: 0)
     data["committed_trans"] = defaultdict(lambda: 0)
-    data["invalidated_trans"] = defaultdict(lambda: 0)
-    # extent-type -> count
-    data["invalidated_reason"] = defaultdict(lambda: 0)
+    # src-> extent-type -> count
+    data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: 0))
     # effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: 0)
     data["committed_efforts_4KB"] = defaultdict(lambda: 0)
@@ -122,11 +121,9 @@ def parse_metric_file(metric_file):
         elif name == "cache_trans_read_successful":
             data["committed_trans"]["READ"] += value
 
-        # src -> count
-        # extent-type -> count
+        # src -> extent-type -> count
         elif name == "cache_trans_invalidated":
-            data["invalidated_trans"][labels["src"]] += value
-            data["invalidated_reason"][labels["ext"]] += value
+            data["invalidated_trans"][labels["src"]][labels["ext"]] += value
 
         # effort-type -> blocks
         elif name == "cache_invalidated_extent_bytes":
@@ -172,9 +169,8 @@ def prepare_raw_dataset():
     data["cache_hit"] = defaultdict(lambda: [])
     data["created_trans"] = defaultdict(lambda: [])
     data["committed_trans"] = defaultdict(lambda: [])
-    data["invalidated_trans"] = defaultdict(lambda: [])
-    # extent-type -> count
-    data["invalidated_reason"] = defaultdict(lambda: [])
+    # src -> extent-type -> count
+    data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: []))
     # effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: [])
     data["committed_efforts_4KB"] = defaultdict(lambda: [])
@@ -207,16 +203,11 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff_l2("cache_hit",               dataset, metrics_start, metrics_end)
     get_diff_l2("created_trans",           dataset, metrics_start, metrics_end)
     get_diff_l2("committed_trans",         dataset, metrics_start, metrics_end)
-    get_diff_l2("invalidated_trans",       dataset, metrics_start, metrics_end)
-
-    # extent-type -> count
-    get_diff_l2("invalidated_reason",      dataset, metrics_start, metrics_end)
 
     # effort-type -> blocks
     get_diff_l2("invalidated_efforts_4KB", dataset, metrics_start, metrics_end)
     get_diff_l2("committed_efforts_4KB",   dataset, metrics_start, metrics_end)
 
-    # extent-type -> effort-type -> blocks
     def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
         for l1_name, l1_items_end in metrics_end[metric_name].items():
             for l2_name, value_end in l1_items_end.items():
@@ -224,6 +215,9 @@ def append_raw_data(dataset, metrics_start, metrics_end):
                 value = value_end - value_start
                 assert(value >= 0)
                 dataset[metric_name][l1_name][l2_name].append(value)
+    # src -> extent-type -> count
+    get_diff_l3("invalidated_trans",          dataset, metrics_start, metrics_end)
+    # extent-type -> effort-type -> blocks
     get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
 def wash_dataset(dataset, writes_4KB):
@@ -255,78 +249,86 @@ def wash_dataset(dataset, writes_4KB):
                 assert(numerator == 0)
             ratios.append(ratio)
         return ratios
-    def assign_ratio_l2(l2_out, l2_numerators, l2_denominators, expected_size):
+    def get_ratio_l2(l2_numerators, l2_denominators, expected_size):
+        l2_ret = {}
         for name, denominators in l2_denominators.items():
             numerators = l2_numerators[name]
             ratios = get_ratio(numerators, denominators)
             assert(len(ratios) == expected_size)
-            l2_out[name] = ratios
-
-    washed_dataset[data_name] = {}
-    assign_ratio_l2(washed_dataset[data_name],
-                    dataset["cache_hit"],
-                    dataset["cache_access"],
-                    dataset_size)
+            l2_ret[name] = ratios
+        return l2_ret;
+    washed_dataset[data_name] = get_ratio_l2(dataset["cache_hit"],
+                                             dataset["cache_access"],
+                                             dataset_size)
 
     # 3. from invalidated_trans, committed_trans
     data_name = "trans_invalidate_committed_ratio_by_src---inaccurate"
 
+    def merge_lists(lists):
+        assert(len(lists))
+        length = 0
+        for _list in lists:
+            if length == 0:
+                length = len(_list)
+                assert(length)
+            else:
+                assert(length == len(_list))
+        return [sum(values) for values in zip(*lists)]
+    def merge_lists_l2(l3_items):
+        l2_ret = {}
+        for l2_name, l2_items in l3_items.items():
+            l2_ret[l2_name] = merge_lists(l2_items.values())
+        return l2_ret;
+    invalidated_trans_by_src = merge_lists_l2(dataset["invalidated_trans"])
+
     for src_name, created_list in dataset["created_trans"].items():
         for created, invalidated, committed in zip(created_list,
-                                                   dataset["invalidated_trans"][src_name],
+                                                   invalidated_trans_by_src[src_name],
                                                    dataset["committed_trans"][src_name]):
             assert(created == invalidated + committed)
 
-    washed_dataset[data_name] = {}
-    assign_ratio_l2(washed_dataset[data_name],
-                    dataset["invalidated_trans"],
-                    dataset["committed_trans"],
-                    dataset_size)
+    washed_dataset[data_name] = get_ratio_l2(invalidated_trans_by_src,
+                                             dataset["committed_trans"],
+                                             dataset_size)
 
-    # 4. from invalidated_reason, committed_trans
+    # 4.x from invalidated_trans, committed_trans
     data_name = "trans_invalidate_committed_ratio_by_extent"
 
-    def merge_lists(lists):
-        assert(len(lists))
-        length = len(lists[0])
-        for _list in lists:
-            assert(length == len(_list))
-        return [sum(values) for values in zip(*lists)]
-    def inplace_merge_l2(to_metric, from_metric1, from_metric2, l2_items):
-        from_items1 = l2_items[from_metric1]
-        from_items2 = l2_items[from_metric2]
-        to_items = merge_lists([from_items1, from_items2])
-        del l2_items[from_metric1]
-        del l2_items[from_metric2]
-        l2_items[to_metric] = to_items
-    inplace_merge_l2("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", dataset["invalidated_reason"])
-    inplace_merge_l2("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     dataset["invalidated_reason"])
-
-    merged_committed_trans = merge_lists([items for name, items in dataset["committed_trans"].items()])
+    def inplace_merge_l1_from_l3(to_metric, from_metric1, from_metric2, l3_items):
+        for l2_items in l3_items.values():
+            from_items1 = l2_items[from_metric1]
+            from_items2 = l2_items[from_metric2]
+            to_items = merge_lists([from_items1, from_items2])
+            del l2_items[from_metric1]
+            del l2_items[from_metric2]
+            l2_items[to_metric] = to_items
+    inplace_merge_l1_from_l3("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", dataset["invalidated_trans"])
+    inplace_merge_l1_from_l3("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     dataset["invalidated_trans"])
 
     def filter_out_empty_l2(l2_items):
         return {name:items
                 for name, items in l2_items.items()
                 if any(items)}
-    non_empty_invalidated_reasons = filter_out_empty_l2(dataset["invalidated_reason"])
-
-    def assign_ratio_l2_l1(l2_numerators, denominators):
+    def get_ratio_l2_by_l1(l2_numerators, denominators):
         ret = {}
         for name, numerators in l2_numerators.items():
             ratios = get_ratio(numerators, denominators)
             ret[name] = ratios
         return ret
-    washed_dataset[data_name] = assign_ratio_l2_l1(
-            non_empty_invalidated_reasons, merged_committed_trans)
+    for src, invalidated_trans_by_extent in dataset["invalidated_trans"].items():
+        data_name = "trans_invalidate_committed_ratio_by_extent---" + src
+        non_empty_invalidated_trans = filter_out_empty_l2(invalidated_trans_by_extent)
+        if len(non_empty_invalidated_trans) == 0:
+            continue
+        washed_dataset[data_name] = get_ratio_l2_by_l1(
+            non_empty_invalidated_trans, dataset["committed_trans"][src])
 
     # 5. from invalidated_efforts_4KB, committed_efforts_4KB
     data_name = "trans_invalidate_committed_ratio_by_effort---accurate"
 
-    washed_dataset[data_name] = {}
-    assign_ratio_l2(washed_dataset[data_name],
-                    dataset["invalidated_efforts_4KB"],
-                    dataset["committed_efforts_4KB"],
-                    dataset_size)
+    washed_dataset[data_name] = get_ratio_l2(dataset["invalidated_efforts_4KB"],
+                                             dataset["committed_efforts_4KB"],
+                                             dataset_size)
 
     # 6. from writes_4KB, committed_disk_efforts_4KB
     data_name = "write_amplification_by_extent"
@@ -358,8 +360,8 @@ def wash_dataset(dataset, writes_4KB):
                                    items_by_effort["MUTATE_DELTA"]])
         committed_disk_efforts_4KB_merged[ext_name] = disk_writes
 
-    washed_dataset[data_name] = assign_ratio_l2_l1(
-            committed_disk_efforts_4KB_merged, writes_4KB)
+    washed_dataset[data_name] = get_ratio_l2_by_l1(
+        committed_disk_efforts_4KB_merged, writes_4KB)
 
     # 7. from writes_4KB, committed_disk_efforts_4KB,
     #         segment_read_4KB, segment_write_4KB, segment_write_meta_4KB
