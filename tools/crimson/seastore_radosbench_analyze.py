@@ -10,8 +10,7 @@ import seaborn as sns
 def load_dir(dir_name):
     load_folder = path.join(os.getcwd(), dir_name)
     benches = []
-    metrics_start = []
-    metrics_end = []
+    metrics = []
     for file_name in os.listdir(load_folder):
         if not file_name.endswith(".log"):
             continue
@@ -24,15 +23,25 @@ def load_dir(dir_name):
             benches.append((index, file_dir))
         else:
             assert(file_type.startswith("metrics"))
-            if names[3].startswith("start"):
-                metrics_start.append((index, file_dir))
-            else:
-                assert(names[3].startswith("end"))
-                metrics_end.append((index, file_dir))
+            metrics.append((index, file_dir))
+
     benches.sort()
-    metrics_start.sort()
-    metrics_end.sort()
-    return [item[1] for item in benches], [item[1] for item in metrics_start], [item[1] for item in metrics_end]
+    metrics.sort()
+
+    assert(len(metrics) > 1)
+    if len(metrics) == len(benches):
+        # no matching matric file to the last bench result
+        benches.pop()
+    assert(len(metrics) == len(benches) + 1)
+
+    index = 0;
+    while index < len(benches):
+        assert(metrics[index][0] == index)
+        assert(benches[index][0] == index + 1)
+        index += 1
+    assert(metrics[index][0] == index)
+
+    return [item[1] for item in benches], [item[1] for item in metrics]
 
 def parse_bench_file(bench_file):
     writes = 0
@@ -412,9 +421,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("loading dir %s ..." % (args.directory))
-    benches, metrics_start, metrics_end = load_dir(args.directory)
-    assert(len(benches) == len(metrics_start))
-    assert(len(metrics_start) == len(metrics_end))
+    benches, metrics = load_dir(args.directory)
     print("loaded %d rounds" % (len(benches)))
     print()
 
@@ -423,19 +430,26 @@ if __name__ == "__main__":
     illegal_metrics = set()
     ignored_metrics = set()
     raw_dataset = prepare_raw_dataset()
-    for bench_file, metric_start_file, metric_end_file in zip(benches, metrics_start, metrics_end):
-        print(".", end="", flush=True)
-        write_4KB = parse_bench_file(bench_file)
 
-        metrics_start, illegal, ignored = parse_metric_file(metric_start_file)
-        illegal_metrics |= illegal
-        ignored_metrics |= ignored
-        metrics_end, illegal, ignored = parse_metric_file(metric_end_file)
+    index = 0
+    metric_file = metrics[index]
+    metrics_start, illegal, ignored = parse_metric_file(metric_file)
+    illegal_metrics |= illegal
+    ignored_metrics |= ignored
+    while index < len(benches):
+        print(".", end="", flush=True)
+        bench_file = benches[index]
+        metric_file = metrics[index + 1]
+
+        write_4KB = parse_bench_file(bench_file)
+        metrics_end, illegal, ignored = parse_metric_file(metric_file)
         illegal_metrics |= illegal
         ignored_metrics |= ignored
 
         append_raw_data(raw_dataset, metrics_start, metrics_end)
         writes_4KB.append(write_4KB)
+        index += 1
+        metrics_start = metrics_end
     print()
     print("   illegal metrics: %s" % (illegal_metrics))
     print("   ignored metrics: %s" % (ignored_metrics))
