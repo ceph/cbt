@@ -90,11 +90,11 @@ def parse_metric_file(metric_file):
     data["committed_trans"] = defaultdict(lambda: 0)
     # src-> extent-type -> count
     data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: 0))
-    # effort-type -> blocks
-    data["invalidated_efforts_4KB"] = defaultdict(lambda: 0)
-    data["committed_efforts_4KB"] = defaultdict(lambda: 0)
-    # extent-type -> effort-type -> blocks
-    data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
+    # src-> effort-type -> blocks
+    data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
+    # src-> extent-type -> effort-type -> blocks
+    data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
     illegal_metrics = set()
     ignored_metrics = set()
@@ -134,30 +134,28 @@ def parse_metric_file(metric_file):
         elif name == "cache_trans_invalidated":
             data["invalidated_trans"][labels["src"]][labels["ext"]] += value
 
-        # effort-type -> blocks
+        # src -> effort-type -> blocks
         elif name == "cache_invalidated_extent_bytes":
             if labels["src"] == "READ":
                 assert(labels["effort"] == "READ")
-                data["invalidated_efforts_4KB"]["READ_ONLY"] += (value/4096)
-            else:
-                data["invalidated_efforts_4KB"][labels["effort"]] += (value/4096) 
+            data["invalidated_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
         elif name == "cache_invalidated_delta_bytes":
             assert(labels["src"] != "READ")
-            data["invalidated_efforts_4KB"]["MUTATE_DELTA"] += (value/4096)
+            data["invalidated_efforts_4KB"][labels["src"]]["MUTATE_DELTA"] += (value/4096)
 
-        # effort-type -> blocks
-        # extent-type -> effort-type -> blocks
+        # src -> effort-type -> blocks
+        # src -> extent-type -> effort-type -> blocks
         elif name == "cache_committed_extent_bytes":
             assert(labels["src"] != "READ")
-            data["committed_efforts_4KB"][labels["effort"]] += (value/4096)
+            data["committed_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
             if labels["effort"] == "FRESH":
-                data["committed_disk_efforts_4KB"][labels["ext"]]["FRESH"] += (value/4096)
+                data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]]["FRESH"] += (value/4096)
         elif name == "cache_committed_delta_bytes":
             assert(labels["src"] != "READ")
-            data["committed_efforts_4KB"]["MUTATE_DELTA"] += (value/4096)
-            data["committed_disk_efforts_4KB"][labels["ext"]]["MUTATE_DELTA"] += (value/4096)
+            data["committed_efforts_4KB"][labels["src"]]["MUTATE_DELTA"] += (value/4096)
+            data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]]["MUTATE_DELTA"] += (value/4096)
         elif name == "cache_successful_read_extent_bytes":
-            data["committed_efforts_4KB"]["READ_ONLY"] += (value/4096)
+            data["committed_efforts_4KB"]["READ"]["READ"] += (value/4096)
 
         # others
         else:
@@ -180,56 +178,65 @@ def prepare_raw_dataset():
     data["committed_trans"] = defaultdict(lambda: [])
     # src -> extent-type -> count
     data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: []))
-    # effort-type -> blocks
-    data["invalidated_efforts_4KB"] = defaultdict(lambda: [])
-    data["committed_efforts_4KB"] = defaultdict(lambda: [])
-    # extent-type -> effort-type -> blocks
-    data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
+    # src -> effort-type -> blocks
+    data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
+    # src -> extent-type -> effort-type -> blocks
+    data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [])))
     return data
 
 def append_raw_data(dataset, metrics_start, metrics_end):
     # blocks
-    def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
+    def get_diff(metric_name, dataset, metrics_start, metrics_end):
         value = metrics_end[metric_name] - metrics_start[metric_name]
         assert(value >= 0)
         dataset[metric_name].append(value)
-    get_diff_l1("segment_read_4KB",       dataset, metrics_start, metrics_end)
-    get_diff_l1("segment_write_4KB",      dataset, metrics_start, metrics_end)
-    get_diff_l1("segment_write_meta_4KB", dataset, metrics_start, metrics_end)
+    get_diff("segment_read_4KB",       dataset, metrics_start, metrics_end)
+    get_diff("segment_write_4KB",      dataset, metrics_start, metrics_end)
+    get_diff("segment_write_meta_4KB", dataset, metrics_start, metrics_end)
 
     # these are special: no diff
     dataset["cached_4KB"].append(metrics_end["cached_4KB"])
     dataset["dirty_4KB"].append(metrics_end["dirty_4KB"])
 
     # src -> count
-    def get_diff_l2(metric_name, dataset, metrics_start, metrics_end):
-        for l1_name, value_end in metrics_end[metric_name].items():
-            value_start = metrics_start[metric_name][l1_name]
+    def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
+        for name, value_end in metrics_end[metric_name].items():
+            value_start = metrics_start[metric_name][name]
             value = value_end - value_start
             assert(value >= 0)
-            dataset[metric_name][l1_name].append(value)
-    get_diff_l2("cache_access",            dataset, metrics_start, metrics_end)
-    get_diff_l2("cache_hit",               dataset, metrics_start, metrics_end)
-    get_diff_l2("created_trans",           dataset, metrics_start, metrics_end)
-    get_diff_l2("committed_trans",         dataset, metrics_start, metrics_end)
+            dataset[metric_name][name].append(value)
+    get_diff_l1("cache_access",            dataset, metrics_start, metrics_end)
+    get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
+    get_diff_l1("created_trans",           dataset, metrics_start, metrics_end)
+    get_diff_l1("committed_trans",         dataset, metrics_start, metrics_end)
 
-    # effort-type -> blocks
+    def get_diff_l2(metric_name, dataset, metrics_start, metrics_end):
+        for l2_name, l2_items_end in metrics_end[metric_name].items():
+            for name, value_end in l2_items_end.items():
+                value_start = metrics_start[metric_name][l2_name][name]
+                value = value_end - value_start
+                assert(value >= 0)
+                dataset[metric_name][l2_name][name].append(value)
+    # src -> extent-type -> count
+    get_diff_l2("invalidated_trans",          dataset, metrics_start, metrics_end)
+    # src -> effort-type -> blocks
     get_diff_l2("invalidated_efforts_4KB", dataset, metrics_start, metrics_end)
     get_diff_l2("committed_efforts_4KB",   dataset, metrics_start, metrics_end)
 
     def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
-        for l1_name, l1_items_end in metrics_end[metric_name].items():
-            for l2_name, value_end in l1_items_end.items():
-                value_start = metrics_start[metric_name][l1_name][l2_name]
-                value = value_end - value_start
-                assert(value >= 0)
-                dataset[metric_name][l1_name][l2_name].append(value)
-    # src -> extent-type -> count
-    get_diff_l3("invalidated_trans",          dataset, metrics_start, metrics_end)
-    # extent-type -> effort-type -> blocks
+        for l3_name, l3_items_end in metrics_end[metric_name].items():
+            for l2_name, l2_items_end in l3_items_end.items():
+                for name, value_end in l2_items_end.items():
+                    value_start = metrics_start[metric_name][l3_name][l2_name][name]
+                    value = value_end - value_start
+                    assert(value >= 0)
+                    dataset[metric_name][l3_name][l2_name][name].append(value)
+    # src -> extent-type -> effort-type -> blocks
     get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
 def wash_dataset(dataset, writes_4KB):
+    INVALID_RATIO = -0.1
     dataset_size = len(writes_4KB)
     washed_dataset = {}
 
@@ -251,7 +258,7 @@ def wash_dataset(dataset, writes_4KB):
         assert(len(numerators) == len(denominators))
         ratios = []
         for numerator, denominator in zip(numerators, denominators):
-            ratio = -0.1
+            ratio = INVALID_RATIO
             if denominator != 0:
                 ratio = (numerator/denominator)
             else:
@@ -301,8 +308,6 @@ def wash_dataset(dataset, writes_4KB):
                                              dataset_size)
 
     # 4.x from invalidated_trans, committed_trans
-    data_name = "trans_invalidate_committed_ratio_by_extent"
-
     def inplace_merge_l1_from_l3(to_metric, from_metric1, from_metric2, l3_items):
         for l2_items in l3_items.values():
             from_items1 = l2_items[from_metric1]
@@ -328,20 +333,28 @@ def wash_dataset(dataset, writes_4KB):
         data_name = "trans_invalidate_committed_ratio_by_extent---" + src
         non_empty_invalidated_trans = filter_out_empty_l2(invalidated_trans_by_extent)
         if len(non_empty_invalidated_trans) == 0:
+            print(data_name + " is emtpy!")
             continue
         washed_dataset[data_name] = get_ratio_l2_by_l1(
             non_empty_invalidated_trans, dataset["committed_trans"][src])
 
-    # 5. from invalidated_efforts_4KB, committed_efforts_4KB
-    data_name = "trans_invalidate_committed_ratio_by_effort---accurate"
+    # 5.x from invalidated_efforts_4KB, committed_efforts_4KB
+    def filter_out_invalid_ratio_l2(l2_items):
+        return {name:items
+                for name, items in l2_items.items()
+                if any(item != INVALID_RATIO for item in items)}
+    for src, committed_efforts_4KB in dataset["committed_efforts_4KB"].items():
+        data_name = "trans_invalidate_committed_ratio_by_effort---accurate---" + src
+        result_ratio = get_ratio_l2(dataset["invalidated_efforts_4KB"][src],
+                                    committed_efforts_4KB,
+                                    dataset_size)
+        non_empty_result_ratio = filter_out_invalid_ratio_l2(result_ratio)
+        if len(non_empty_result_ratio) == 0:
+            print(data_name + " is empty!")
+            continue
+        washed_dataset[data_name] = result_ratio
 
-    washed_dataset[data_name] = get_ratio_l2(dataset["invalidated_efforts_4KB"],
-                                             dataset["committed_efforts_4KB"],
-                                             dataset_size)
-
-    # 6. from writes_4KB, committed_disk_efforts_4KB
-    data_name = "write_amplification_by_extent"
-
+    # 6.x from writes_4KB, committed_disk_efforts_4KB
     def inplace_merge_l2_from_l3(l2_to_metric, l2_from_metric1, l2_from_metric2, l3_items):
         l2_from_items1 = l3_items[l2_from_metric1]
         l2_from_items2 = l3_items[l2_from_metric2]
@@ -353,24 +366,34 @@ def wash_dataset(dataset, writes_4KB):
         del l3_items[l2_from_metric1]
         del l3_items[l2_from_metric2]
         l3_items[l2_to_metric] = l2_to_items
-    inplace_merge_l2_from_l3("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", dataset["committed_disk_efforts_4KB"])
-    inplace_merge_l2_from_l3("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     dataset["committed_disk_efforts_4KB"])
 
     def filter_out_empty_l2_from_l3(l3_items):
         return {l2_name:l2_items
                 for l2_name, l2_items in l3_items.items()
                 if any([any(items) for name, items in l2_items.items()])}
-    committed_disk_efforts_4KB = filter_out_empty_l2_from_l3(dataset["committed_disk_efforts_4KB"])
 
-    committed_disk_efforts_4KB_merged = {}
-    for ext_name, items_by_effort in committed_disk_efforts_4KB.items():
-        assert(len(items_by_effort) == 2)
-        disk_writes = merge_lists([items_by_effort["FRESH"],
-                                   items_by_effort["MUTATE_DELTA"]])
-        committed_disk_efforts_4KB_merged[ext_name] = disk_writes
+    write_amplification_dataset = []
+    for src, committed_disk_efforts in dataset["committed_disk_efforts_4KB"].items():
+        data_name = "write_amplification_by_extent---" + src
 
-    washed_dataset[data_name] = get_ratio_l2_by_l1(
-        committed_disk_efforts_4KB_merged, writes_4KB)
+        inplace_merge_l2_from_l3("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", committed_disk_efforts)
+        inplace_merge_l2_from_l3("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     committed_disk_efforts)
+
+        non_empty_committed_disk_efforts = filter_out_empty_l2_from_l3(committed_disk_efforts)
+        if len(non_empty_committed_disk_efforts) == 0:
+            print(data_name + " is empty!")
+            continue
+
+        committed_disk_efforts_merged = {}
+        for ext_name, items_by_effort in non_empty_committed_disk_efforts.items():
+            assert(len(items_by_effort) == 2)
+            disk_writes = merge_lists([items_by_effort["FRESH"],
+                                       items_by_effort["MUTATE_DELTA"]])
+            committed_disk_efforts_merged[ext_name] = disk_writes
+
+        data = get_ratio_l2_by_l1(committed_disk_efforts_merged, writes_4KB)
+        washed_dataset[data_name] = data
+        write_amplification_dataset.append(data)
 
     # 7. from writes_4KB, committed_disk_efforts_4KB,
     #         segment_read_4KB, segment_write_4KB, segment_write_meta_4KB
@@ -382,8 +405,11 @@ def wash_dataset(dataset, writes_4KB):
                                      dataset["segment_write_meta_4KB"]])
     segment_write_amp = get_ratio(segment_write_4KB, writes_4KB)
 
-    extent_level_amp = merge_lists([ext_ratios for ext_name, ext_ratios
-                                    in washed_dataset["write_amplification_by_extent"].items()])
+    ratio_list_to_merge = []
+    for data in write_amplification_dataset:
+        for ext_name, ext_ratios in data.items():
+            ratio_list_to_merge.append(ext_ratios)
+    extent_level_amp = merge_lists(ratio_list_to_merge)
     assert(len(extent_level_amp) == dataset_size)
 
     washed_dataset[data_name] = {
