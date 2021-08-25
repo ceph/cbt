@@ -83,11 +83,18 @@ def parse_metric_file(metric_file):
     data["segment_write_meta_4KB"] = 0
     data["cached_4KB"] = 0
     data["dirty_4KB"] = 0
+    # tree-type -> depth
+    data["tree_depth"] = defaultdict(lambda: 0)
     # src -> count
     data["cache_access"] = defaultdict(lambda: 0)
     data["cache_hit"] = defaultdict(lambda: 0)
     data["created_trans"] = defaultdict(lambda: 0)
     data["committed_trans"] = defaultdict(lambda: 0)
+    # src -> tree-type -> count
+    data["tree_erases_committed"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["tree_erases_invalidated"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["tree_inserts_committed"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["tree_inserts_invalidated"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> extent-type -> count
     data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> effort-type -> blocks
@@ -117,6 +124,10 @@ def parse_metric_file(metric_file):
         elif name == "cache_dirty_extent_bytes":
             data["dirty_4KB"] += (value/4096)
 
+        # tree-type -> depth
+        elif name == "cache_tree_depth":
+            data["tree_depth"][labels["tree"]] += value
+
         # src -> count
         elif name == "cache_cache_access":
             data["cache_access"][labels["src"]] += value
@@ -129,6 +140,28 @@ def parse_metric_file(metric_file):
             data["committed_trans"][labels["src"]] += value
         elif name == "cache_trans_read_successful":
             data["committed_trans"]["READ"] += value
+
+        # src -> tree-type -> count
+        elif name == "cache_tree_erases_committed":
+            assert(labels["src"] != "READ")
+            if labels["src"] == "CLEANER":
+                assert(labels["tree"] != "ONODE")
+            data["tree_erases_committed"][labels["src"]][labels["tree"]] += value
+        elif name == "cache_tree_erases_invalidated":
+            assert(labels["src"] != "READ")
+            if labels["src"] == "CLEANER":
+                assert(labels["tree"] != "ONODE")
+            data["tree_erases_invalidated"][labels["src"]][labels["tree"]] += value
+        elif name == "cache_tree_inserts_committed":
+            assert(labels["src"] != "READ")
+            if labels["src"] == "CLEANER":
+                assert(labels["tree"] != "ONODE")
+            data["tree_inserts_committed"][labels["src"]][labels["tree"]] += value
+        elif name == "cache_tree_inserts_invalidated":
+            assert(labels["src"] != "READ")
+            if labels["src"] == "CLEANER":
+                assert(labels["tree"] != "ONODE")
+            data["tree_inserts_invalidated"][labels["src"]][labels["tree"]] += value
 
         # src -> extent-type -> count
         elif name == "cache_trans_invalidated":
@@ -171,11 +204,18 @@ def prepare_raw_dataset():
     data["segment_write_meta_4KB"] = []
     data["cached_4KB"] = []
     data["dirty_4KB"] = []
+    # tree-type -> depth
+    data["tree_depth"] = defaultdict(lambda: [])
     # src -> count
     data["cache_access"] = defaultdict(lambda: [])
     data["cache_hit"] = defaultdict(lambda: [])
     data["created_trans"] = defaultdict(lambda: [])
     data["committed_trans"] = defaultdict(lambda: [])
+    # src -> tree-type -> count
+    data["tree_erases_committed"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["tree_erases_invalidated"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["tree_inserts_committed"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["tree_inserts_invalidated"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> extent-type -> count
     data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> effort-type -> blocks
@@ -198,6 +238,8 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # these are special: no diff
     dataset["cached_4KB"].append(metrics_end["cached_4KB"])
     dataset["dirty_4KB"].append(metrics_end["dirty_4KB"])
+    for name, value in metrics_end["tree_depth"].items():
+        dataset["tree_depth"][name].append(value)
 
     # src -> count
     def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
@@ -218,11 +260,16 @@ def append_raw_data(dataset, metrics_start, metrics_end):
                 value = value_end - value_start
                 assert(value >= 0)
                 dataset[metric_name][l2_name][name].append(value)
+    # src -> tree-type -> count
+    get_diff_l2("tree_erases_committed",    dataset, metrics_start, metrics_end)
+    get_diff_l2("tree_erases_invalidated",  dataset, metrics_start, metrics_end)
+    get_diff_l2("tree_inserts_committed",   dataset, metrics_start, metrics_end)
+    get_diff_l2("tree_inserts_invalidated", dataset, metrics_start, metrics_end)
     # src -> extent-type -> count
-    get_diff_l2("invalidated_trans",          dataset, metrics_start, metrics_end)
+    get_diff_l2("invalidated_trans",        dataset, metrics_start, metrics_end)
     # src -> effort-type -> blocks
-    get_diff_l2("invalidated_efforts_4KB", dataset, metrics_start, metrics_end)
-    get_diff_l2("committed_efforts_4KB",   dataset, metrics_start, metrics_end)
+    get_diff_l2("invalidated_efforts_4KB",  dataset, metrics_start, metrics_end)
+    get_diff_l2("committed_efforts_4KB",    dataset, metrics_start, metrics_end)
 
     def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
         for l3_name, l3_items_end in metrics_end[metric_name].items():
@@ -251,7 +298,61 @@ def wash_dataset(dataset, writes_4KB):
         "dirty_4KB": dataset["dirty_4KB"]
     }
 
-    # 2. from cache_hit, cache_access
+    # 2. from tree_depth
+    data_name = "tree_depth"
+    for name, values in dataset["tree_depth"].items():
+        assert(len(values) == dataset_size)
+    washed_dataset[data_name] = dataset["tree_depth"]
+
+    # 3. from tree_erases_committed, tree_inserts_committed
+    data_name = "tree_operations"
+
+    def merge_lists(lists):
+        assert(len(lists))
+        length = 0
+        for _list in lists:
+            if length == 0:
+                length = len(_list)
+                assert(length)
+            else:
+                assert(length == len(_list))
+        return [sum(values) for values in zip(*lists)]
+    def merge_lists_l1_by_l2(l3_items):
+        l2_ret = {}
+        for l2_name, l2_items in l3_items.items():
+            for name, items in l2_items.items():
+                if name in l2_ret:
+                    l2_ret[name] = merge_lists([l2_ret[name], items])
+                else:
+                    l2_ret[name] = items
+        return l2_ret
+    _tree_inserts_committed_by_tree = merge_lists_l1_by_l2(dataset["tree_inserts_committed"])
+    _tree_erases_committed_by_tree = merge_lists_l1_by_l2(dataset["tree_erases_committed"])
+
+    def accumulate(values):
+        out = []
+        out_value = 0
+        for v in values:
+            out_value += v
+            out.append(out_value)
+        return out
+    def accumulate_l2(l2_items):
+        out = {}
+        for name, values in l2_items.items():
+            out[name] = accumulate(values)
+        return out
+    tree_inserts_committed_by_tree = accumulate_l2(_tree_inserts_committed_by_tree)
+    tree_erases_committed_by_tree = accumulate_l2(_tree_erases_committed_by_tree)
+
+    washed_dataset[data_name] = {}
+    for tree_type, values in tree_inserts_committed_by_tree.items():
+        sub_name = tree_type + "_inserts"
+        washed_dataset[data_name][sub_name] = values;
+    for tree_type, values in tree_erases_committed_by_tree.items():
+        sub_name = tree_type + "_erases"
+        washed_dataset[data_name][sub_name] = values;
+
+    # 4. from cache_hit, cache_access
     data_name = "cache_hit_access_ratio_by_src"
 
     def get_ratio(numerators, denominators):
@@ -277,19 +378,9 @@ def wash_dataset(dataset, writes_4KB):
                                              dataset["cache_access"],
                                              dataset_size)
 
-    # 3. from invalidated_trans, committed_trans
+    # 5. from invalidated_trans, committed_trans
     data_name = "trans_invalidate_committed_ratio_by_src---inaccurate"
 
-    def merge_lists(lists):
-        assert(len(lists))
-        length = 0
-        for _list in lists:
-            if length == 0:
-                length = len(_list)
-                assert(length)
-            else:
-                assert(length == len(_list))
-        return [sum(values) for values in zip(*lists)]
     def merge_lists_l2(l3_items):
         l2_ret = {}
         for l2_name, l2_items in l3_items.items():
@@ -307,7 +398,7 @@ def wash_dataset(dataset, writes_4KB):
                                              dataset["committed_trans"],
                                              dataset_size)
 
-    # 4.x from invalidated_trans, committed_trans
+    # 6.x from invalidated_trans, committed_trans
     def inplace_merge_l1_from_l3(to_metric, from_metric1, from_metric2, l3_items):
         for l2_items in l3_items.values():
             from_items1 = l2_items[from_metric1]
@@ -338,7 +429,7 @@ def wash_dataset(dataset, writes_4KB):
         washed_dataset[data_name] = get_ratio_l2_by_l1(
             non_empty_invalidated_trans, dataset["committed_trans"][src])
 
-    # 5.x from invalidated_efforts_4KB, committed_efforts_4KB
+    # 7.x from invalidated_efforts_4KB, committed_efforts_4KB
     def filter_out_invalid_ratio_l2(l2_items):
         return {name:items
                 for name, items in l2_items.items()
@@ -348,13 +439,26 @@ def wash_dataset(dataset, writes_4KB):
         result_ratio = get_ratio_l2(dataset["invalidated_efforts_4KB"][src],
                                     committed_efforts_4KB,
                                     dataset_size)
+
+        tree_erases_committed = dataset["tree_erases_committed"][src]
+        tree_erases_invalidated = dataset["tree_erases_invalidated"][src]
+        for tree_type, cmt_items in tree_erases_committed.items():
+            sub_name = tree_type + "_ERASES"
+            result_ratio[sub_name] = get_ratio(tree_erases_invalidated[tree_type], cmt_items)
+
+        tree_inserts_committed = dataset["tree_inserts_committed"][src]
+        tree_inserts_invalidated = dataset["tree_inserts_invalidated"][src]
+        for tree_type, cmt_items in tree_inserts_committed.items():
+            sub_name = tree_type + "_INSERTS"
+            result_ratio[sub_name] = get_ratio(tree_inserts_invalidated[tree_type], cmt_items)
+
         non_empty_result_ratio = filter_out_invalid_ratio_l2(result_ratio)
         if len(non_empty_result_ratio) == 0:
             print(data_name + " is empty!")
             continue
-        washed_dataset[data_name] = result_ratio
+        washed_dataset[data_name] = non_empty_result_ratio
 
-    # 6.x from writes_4KB, committed_disk_efforts_4KB
+    # 8.x from writes_4KB, committed_disk_efforts_4KB
     def inplace_merge_l2_from_l3(l2_to_metric, l2_from_metric1, l2_from_metric2, l3_items):
         l2_from_items1 = l3_items[l2_from_metric1]
         l2_from_items2 = l3_items[l2_from_metric2]
@@ -395,7 +499,7 @@ def wash_dataset(dataset, writes_4KB):
         washed_dataset[data_name] = data
         write_amplification_dataset.append(data)
 
-    # 7. from writes_4KB, committed_disk_efforts_4KB,
+    # 9. from writes_4KB, committed_disk_efforts_4KB,
     #         segment_read_4KB, segment_write_4KB, segment_write_meta_4KB
     data_name = "write_amplification_overall"
 
