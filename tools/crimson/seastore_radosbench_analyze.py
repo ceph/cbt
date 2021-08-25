@@ -34,7 +34,7 @@ def load_dir(dir_name):
         benches.pop()
     assert(len(metrics) == len(benches) + 1)
 
-    index = 0;
+    index = 0
     while index < len(benches):
         assert(metrics[index][0] == index)
         assert(benches[index][0] == index + 1)
@@ -194,7 +194,7 @@ def parse_metric_file(metric_file):
         else:
             ignored_metrics.add(name)
 
-    return data, illegal_metrics, ignored_metrics;
+    return data, illegal_metrics, ignored_metrics
 
 def prepare_raw_dataset():
     data = {}
@@ -347,10 +347,10 @@ def wash_dataset(dataset, writes_4KB):
     washed_dataset[data_name] = {}
     for tree_type, values in tree_inserts_committed_by_tree.items():
         sub_name = tree_type + "_inserts"
-        washed_dataset[data_name][sub_name] = values;
+        washed_dataset[data_name][sub_name] = values
     for tree_type, values in tree_erases_committed_by_tree.items():
         sub_name = tree_type + "_erases"
-        washed_dataset[data_name][sub_name] = values;
+        washed_dataset[data_name][sub_name] = values
 
     # 4. from cache_hit, cache_access
     data_name = "cache_hit_access_ratio_by_src"
@@ -373,10 +373,15 @@ def wash_dataset(dataset, writes_4KB):
             ratios = get_ratio(numerators, denominators)
             assert(len(ratios) == expected_size)
             l2_ret[name] = ratios
-        return l2_ret;
-    washed_dataset[data_name] = get_ratio_l2(dataset["cache_hit"],
-                                             dataset["cache_access"],
-                                             dataset_size)
+        return l2_ret
+    def filter_out_invalid_ratio_l2(l2_items):
+        return {name:items
+                for name, items in l2_items.items()
+                if any(item != INVALID_RATIO for item in items)}
+    cache_hit_access_ratio = get_ratio_l2(dataset["cache_hit"],
+                                          dataset["cache_access"],
+                                          dataset_size)
+    washed_dataset[data_name] = filter_out_invalid_ratio_l2(cache_hit_access_ratio)
 
     # 5. from invalidated_trans, committed_trans
     data_name = "trans_invalidate_committed_ratio_by_src---inaccurate"
@@ -385,7 +390,7 @@ def wash_dataset(dataset, writes_4KB):
         l2_ret = {}
         for l2_name, l2_items in l3_items.items():
             l2_ret[l2_name] = merge_lists(l2_items.values())
-        return l2_ret;
+        return l2_ret
     invalidated_trans_by_src = merge_lists_l2(dataset["invalidated_trans"])
 
     for src_name, created_list in dataset["created_trans"].items():
@@ -430,10 +435,6 @@ def wash_dataset(dataset, writes_4KB):
             non_empty_invalidated_trans, dataset["committed_trans"][src])
 
     # 7.x from invalidated_efforts_4KB, committed_efforts_4KB
-    def filter_out_invalid_ratio_l2(l2_items):
-        return {name:items
-                for name, items in l2_items.items()
-                if any(item != INVALID_RATIO for item in items)}
     for src, committed_efforts_4KB in dataset["committed_efforts_4KB"].items():
         data_name = "trans_invalidate_committed_ratio_by_effort---accurate---" + src
         result_ratio = get_ratio_l2(dataset["invalidated_efforts_4KB"][src],
@@ -595,8 +596,6 @@ if __name__ == "__main__":
     for name, data in dataset.items():
         print(".", end="", flush=True)
         ylim = None
-        if name == "cache_hit_access_ratio_by_src":
-            ylim = (0.93, 1.0)
         relplot_data(args.directory, name, data, indexes, ylim)
     print()
     print("generate figures done")
