@@ -399,10 +399,14 @@ def wash_dataset(dataset, writes_4KB):
     invalidated_trans_by_src = merge_lists_l2(dataset["invalidated_trans"])
 
     for src_name, created_list in dataset["created_trans"].items():
+        index = 0
         for created, invalidated, committed in zip(created_list,
                                                    invalidated_trans_by_src[src_name],
                                                    dataset["committed_trans"][src_name]):
-            assert(created == invalidated + committed)
+            index += 1
+            if (created != invalidated + committed):
+                print("WARN: extra created transactions %d -- %s at round %d"
+                      % (created - invalidated - committed, src_name, index))
 
     washed_dataset[data_name] = get_ratio_l2(invalidated_trans_by_src,
                                              dataset["committed_trans"],
