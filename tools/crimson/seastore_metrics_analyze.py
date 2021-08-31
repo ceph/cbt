@@ -52,6 +52,11 @@ def parse_bench_file(bench_file):
                 writes = int([x for x in line.split(' ') if x][3])
             elif line.startswith("Object size:"):
                 obj_size = int([x for x in line.split(' ') if x][2])
+            elif line.startswith("     issued"):
+                writes = int([x for x in line.split(',') if x][1])
+            elif line.startswith("rbd_iodepth32") and line.find('rw=') >= 0:
+                obj_size = int([x for x in line.split(',') if x][2].split('-')[1][:-1])
+
     assert(writes)
     assert(obj_size)
     return (writes * obj_size / 4096)
