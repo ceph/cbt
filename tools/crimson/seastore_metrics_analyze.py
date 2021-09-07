@@ -12,42 +12,68 @@ class BenchT(Enum):
     NULL    = 0
     RADOS   = 1
     FIO     = 2
+    METRICS = 3
 
 def load_dir(dir_name):
     load_folder = path.join(os.getcwd(), dir_name)
     benches = []
     metrics = []
-    for file_name in os.listdir(load_folder):
-        if not file_name.endswith(".log"):
+    for full_file_name in os.listdir(load_folder):
+        if not full_file_name.endswith(".log"):
             continue
+        file_name = full_file_name.rstrip(".log")
         names = file_name.split("_")
+        if names[0] != "result":
+            continue
+
         index = int(names[1])
         file_type = names[2]
-        file_dir = path.join(load_folder, file_name)
+        file_dir = path.join(load_folder, full_file_name)
 
         if file_type.startswith("bench"):
+            assert(len(names) == 3)
             benches.append((index, file_dir))
         else:
             assert(file_type.startswith("metrics"))
-            metrics.append((index, file_dir))
+            time = -1
+            if len(names) == 4:
+                time = int(names[3]) / 1000 # as seconds
+            else:
+                assert(len(names) == 3)
+            metrics.append((index, file_dir, time))
 
     benches.sort()
     metrics.sort()
-
     assert(len(metrics) > 1)
-    if len(metrics) == len(benches):
-        # no matching matric file to the last bench result
-        benches.pop()
-    assert(len(metrics) == len(benches) + 1)
+    if metrics[0][2] != -1:
+        # Mode: METRICS
+        assert(len(benches) == 0)
+    else:
+        # Mode with bench files
+        assert(len(benches))
+        if len(metrics) == len(benches):
+            # no matching matric file to the last bench result
+            benches.pop()
+        assert(len(metrics) == len(benches) + 1)
 
     index = 0
-    while index < len(benches):
-        assert(metrics[index][0] == index)
-        assert(benches[index][0] == index + 1)
-        index += 1
     assert(metrics[index][0] == index)
+    ctime = metrics[index][2]
+    ret_times = []
+    index += 1
+    while index < len(metrics):
+        assert(metrics[index][0] == index)
+        if len(benches):
+            assert(benches[index - 1][0] == index)
+        else:
+            time = metrics[index][2]
+            difftime = time - ctime
+            assert(difftime > 0)
+            ret_times.append(difftime)
+            ctime = time
+        index += 1
 
-    return [item[1] for item in benches], [item[1] for item in metrics]
+    return [item[1] for item in benches], [item[1] for item in metrics], ret_times
 
 def parse_bench_file(bench_file):
     btype = BenchT.NULL
@@ -301,7 +327,16 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # src -> extent-type -> effort-type -> blocks
     get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
-def wash_dataset(dataset, writes_4KB):
+def wash_dataset(dataset, writes_4KB, times_sec):
+    if len(times_sec) > 0:
+        assert(len(writes_4KB) == 0)
+        print("WARN: no bench file available, guess writes_4KB from committed OBJECT_DATA_BLOCK!")
+        writes_by_mutate = dataset["committed_disk_efforts_4KB"]["MUTATE"]
+        writes_by_odb = writes_by_mutate["OBJECT_DATA_BLOCK"]
+        assert(all(blocks == 0 for blocks in writes_by_odb["MUTATE_DELTA"]))
+        writes_4KB = writes_by_odb["FRESH"]
+        assert(len(writes_4KB) == len(times_sec))
+
     INVALID_RATIO = -0.1
     dataset_size = len(writes_4KB)
     washed_dataset = {}
@@ -546,19 +581,36 @@ def wash_dataset(dataset, writes_4KB):
         "SEGMENTED_READ": segment_read_amp
     }
 
+    if len(times_sec) == 0:
+        # indexes
+        indexes = []
+        current = writes_4KB[0]
+        indexes.append(current)
+        for data in writes_4KB[1:]:
+            assert(data > 0)
+            current += data
+            indexes.append(current)
+        return washed_dataset, indexes
+
     # indexes
     indexes = []
-    current = 0
-    for write in writes_4KB:
-        current += write
+    current = times_sec[0]
+    indexes.append(current)
+    for data in times_sec[1:]:
+        assert(data > 0)
+        current += data
         indexes.append(current)
 
     return washed_dataset, indexes
 
-def relplot_data(directory, name, data, indexes, ylim):
+def relplot_data(directory, bench_type, name, data, indexes, ylim):
     sns.set_theme(style="whitegrid")
     to_draw = pd.DataFrame(data, index=indexes)
-    to_draw.index.name = "writes_4KB"
+    assert(bench_type != BenchT.NULL)
+    if bench_type == BenchT.METRICS:
+        to_draw.index.name = "time_seconds"
+    else:
+        to_draw.index.name = "writes_4KB"
     g = sns.relplot(data=to_draw,
                     kind="line",
                     markers=True,
@@ -575,7 +627,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("loading dir %s ..." % (args.directory))
-    benches, metrics = load_dir(args.directory)
+    benches, metrics, times = load_dir(args.directory)
     print("loaded %d rounds" % (len(benches)))
     print()
 
@@ -586,23 +638,27 @@ if __name__ == "__main__":
     raw_dataset = prepare_raw_dataset()
 
     bench_type = BenchT.NULL
+    if len(times):
+        bench_type = BenchT.METRICS
 
     index = 0
     metric_file = metrics[index]
     metrics_start, illegal, ignored = parse_metric_file(metric_file)
     illegal_metrics |= illegal
     ignored_metrics |= ignored
-    while index < len(benches):
+    while index < (len(metrics) - 1):
         print(".", end="", flush=True)
         metric_file = metrics[index + 1]
 
-        bench_file = benches[index]
-        write_4KB, btype = parse_bench_file(bench_file)
-        if bench_type == BenchT.NULL:
-            bench_type = btype
-        else:
-            assert(bench_type == btype)
-        writes_4KB.append(write_4KB)
+        if bench_type != BenchT.METRICS:
+            # mode with bench files
+            bench_file = benches[index]
+            write_4KB, btype = parse_bench_file(bench_file)
+            if bench_type == BenchT.NULL:
+                bench_type = btype
+            else:
+                assert(bench_type == btype)
+            writes_4KB.append(write_4KB)
 
         metrics_end, illegal, ignored = parse_metric_file(metric_file)
         illegal_metrics |= illegal
@@ -619,7 +675,7 @@ if __name__ == "__main__":
     print()
 
     print("wash results ...")
-    dataset, indexes = wash_dataset(raw_dataset, writes_4KB)
+    dataset, indexes = wash_dataset(raw_dataset, writes_4KB, times)
     print("wash results done")
     print()
 
@@ -627,6 +683,6 @@ if __name__ == "__main__":
     for name, data in dataset.items():
         print(".", end="", flush=True)
         ylim = None
-        relplot_data(args.directory, name, data, indexes, ylim)
+        relplot_data(args.directory, bench_type, name, data, indexes, ylim)
     print()
     print("generate figures done")
