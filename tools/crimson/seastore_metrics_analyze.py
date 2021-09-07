@@ -113,11 +113,12 @@ def _process_json_item(json_item):
     labels = {}
     for k, v in json_item[1]:
         if k == "value":
-            if isinstance(v, int):
+            if isinstance(v, int) or isinstance(v, float):
                 value = v
         else:
             assert(isinstance(v, str))
             labels[k] = v
+    assert(labels["shard"] == "0")
     return name, labels, value
 
 def parse_metric_file(metric_file):
@@ -271,11 +272,11 @@ def prepare_raw_dataset():
     return data
 
 def append_raw_data(dataset, metrics_start, metrics_end):
-    # blocks
     def get_diff(metric_name, dataset, metrics_start, metrics_end):
         value = metrics_end[metric_name] - metrics_start[metric_name]
         assert(value >= 0)
         dataset[metric_name].append(value)
+    # blocks
     get_diff("segment_read_4KB",       dataset, metrics_start, metrics_end)
     get_diff("segment_write_4KB",      dataset, metrics_start, metrics_end)
     get_diff("segment_write_meta_4KB", dataset, metrics_start, metrics_end)
@@ -286,13 +287,13 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     for name, value in metrics_end["tree_depth"].items():
         dataset["tree_depth"][name].append(value)
 
-    # src -> count
     def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
         for name, value_end in metrics_end[metric_name].items():
             value_start = metrics_start[metric_name][name]
             value = value_end - value_start
             assert(value >= 0)
             dataset[metric_name][name].append(value)
+    # src -> count
     get_diff_l1("cache_access",            dataset, metrics_start, metrics_end)
     get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
     get_diff_l1("created_trans",           dataset, metrics_start, metrics_end)
@@ -417,7 +418,9 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             if denominator != 0:
                 ratio = (numerator/denominator)
             else:
-                assert(numerator == 0)
+                if numerator != 0:
+                    # special case
+                    ratio = INVALID_RATIO - 0.1
             ratios.append(ratio)
         return ratios
     def get_ratio_l2(l2_numerators, l2_denominators, expected_size):
@@ -449,13 +452,16 @@ def wash_dataset(dataset, writes_4KB, times_sec):
 
     for src_name, created_list in dataset["created_trans"].items():
         index = 0
+        total_diff = 0
         for created, invalidated, committed in zip(created_list,
                                                    invalidated_trans_by_src[src_name],
                                                    dataset["committed_trans"][src_name]):
             index += 1
-            if (created != invalidated + committed):
-                print("WARN: extra created transactions %d -- %s at round %d"
-                      % (created - invalidated - committed, src_name, index))
+            diff = created - invalidated - committed
+            if diff != 0:
+                total_diff += diff
+                print("WARN: extra created transactions %d -- total %d -- %s at round %d"
+                      % (diff, total_diff, src_name, index))
 
     washed_dataset[data_name] = get_ratio_l2(invalidated_trans_by_src,
                                              dataset["committed_trans"],
@@ -535,7 +541,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
                 for l2_name, l2_items in l3_items.items()
                 if any([any(items) for name, items in l2_items.items()])}
 
-    write_amplification_dataset = []
+    extent_writes_list = []
     for src, committed_disk_efforts in dataset["committed_disk_efforts_4KB"].items():
         data_name = "write_amplification_by_extent---" + src
 
@@ -552,28 +558,22 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             assert(len(items_by_effort) == 2)
             disk_writes = merge_lists([items_by_effort["FRESH"],
                                        items_by_effort["MUTATE_DELTA"]])
+            extent_writes_list.append(disk_writes)
             committed_disk_efforts_merged[ext_name] = disk_writes
 
         data = get_ratio_l2_by_l1(committed_disk_efforts_merged, writes_4KB)
         washed_dataset[data_name] = data
-        write_amplification_dataset.append(data)
 
     # 9. from writes_4KB, committed_disk_efforts_4KB,
     #         segment_read_4KB, segment_write_4KB, segment_write_meta_4KB
     data_name = "write_amplification_overall"
 
     segment_read_amp = get_ratio(dataset["segment_read_4KB"], writes_4KB)
-
-    segment_write_4KB = merge_lists([dataset["segment_write_4KB"],
-                                     dataset["segment_write_meta_4KB"]])
-    segment_write_amp = get_ratio(segment_write_4KB, writes_4KB)
-
-    ratio_list_to_merge = []
-    for data in write_amplification_dataset:
-        for ext_name, ext_ratios in data.items():
-            ratio_list_to_merge.append(ext_ratios)
-    extent_level_amp = merge_lists(ratio_list_to_merge)
-    assert(len(extent_level_amp) == dataset_size)
+    segment_total_write_4KB = merge_lists([dataset["segment_write_4KB"],
+                                           dataset["segment_write_meta_4KB"]])
+    segment_write_amp = get_ratio(segment_total_write_4KB, writes_4KB)
+    extent_writes_4KB = merge_lists(extent_writes_list)
+    extent_level_amp = get_ratio(extent_writes_4KB, writes_4KB)
 
     washed_dataset[data_name] = {
         "FRESH_EXTENTS+DELTA": extent_level_amp,
