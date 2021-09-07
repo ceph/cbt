@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
+from enum import Enum
 import json
 import os
 from os import path
 import pandas as pd
 import seaborn as sns
+
+class BenchT(Enum):
+    NULL    = 0
+    RADOS   = 1
+    FIO     = 2
 
 def load_dir(dir_name):
     load_folder = path.join(os.getcwd(), dir_name)
@@ -44,22 +50,30 @@ def load_dir(dir_name):
     return [item[1] for item in benches], [item[1] for item in metrics]
 
 def parse_bench_file(bench_file):
+    btype = BenchT.NULL
     writes = 0
     obj_size = 0
     with open(bench_file, 'r') as reader:
         for line in reader:
             if line.startswith("Total writes made:"):
+                assert(btype == BenchT.NULL)
+                btype = BenchT.RADOS
                 writes = int([x for x in line.split(' ') if x][3])
             elif line.startswith("Object size:"):
+                assert(btype == BenchT.RADOS)
                 obj_size = int([x for x in line.split(' ') if x][2])
-            elif line.startswith("     issued"):
-                writes = int([x for x in line.split(',') if x][1])
             elif line.startswith("rbd_iodepth32") and line.find('rw=') >= 0:
+                assert(btype == BenchT.NULL)
+                btype = BenchT.FIO
                 obj_size = int([x for x in line.split(',') if x][2].split('-')[1][:-1])
+            elif line.startswith("     issued"):
+                assert(btype == BenchT.FIO)
+                writes = int([x for x in line.split(',') if x][1])
 
+    assert(btype != BenchT.NULL)
     assert(writes)
     assert(obj_size)
-    return (writes * obj_size / 4096)
+    return (writes * obj_size / 4096), btype
 
 def _load_json(file):
     def parse_object_pairs(pairs):
@@ -571,6 +585,8 @@ if __name__ == "__main__":
     ignored_metrics = set()
     raw_dataset = prepare_raw_dataset()
 
+    bench_type = BenchT.NULL
+
     index = 0
     metric_file = metrics[index]
     metrics_start, illegal, ignored = parse_metric_file(metric_file)
@@ -578,19 +594,25 @@ if __name__ == "__main__":
     ignored_metrics |= ignored
     while index < len(benches):
         print(".", end="", flush=True)
-        bench_file = benches[index]
         metric_file = metrics[index + 1]
 
-        write_4KB = parse_bench_file(bench_file)
+        bench_file = benches[index]
+        write_4KB, btype = parse_bench_file(bench_file)
+        if bench_type == BenchT.NULL:
+            bench_type = btype
+        else:
+            assert(bench_type == btype)
+        writes_4KB.append(write_4KB)
+
         metrics_end, illegal, ignored = parse_metric_file(metric_file)
         illegal_metrics |= illegal
         ignored_metrics |= ignored
 
         append_raw_data(raw_dataset, metrics_start, metrics_end)
-        writes_4KB.append(write_4KB)
         index += 1
         metrics_start = metrics_end
     print()
+    print("   bench type: %s" % (bench_type))
     print("   illegal metrics: %s" % (illegal_metrics))
     print("   ignored metrics: %s" % (ignored_metrics))
     print("parse results done")
