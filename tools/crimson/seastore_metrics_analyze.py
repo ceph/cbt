@@ -129,6 +129,37 @@ def parse_metric_file(metric_file):
     data["segment_write_meta_4KB"] = 0
     data["cached_4KB"] = 0
     data["dirty_4KB"] = 0
+    data["reactor_aio_read_4KB"] = 0
+    data["reactor_aio_write_4KB"] = 0
+    data["memory_allocate_KB"] = 0
+    data["memory_free_KB"] = 0
+    data["memory_total_KB"] = 0
+    # count
+    data["segment_reads"] = 0
+    data["segment_writes"] = 0
+    data["segment_meta_writes"] = 0
+    data["reactor_aio_reads"] = 0
+    data["reactor_aio_writes"] = 0
+    data["object_data_writes"] = 0
+    data["reactor_polls_M"] = 0
+    data["reactor_tasks_pending"] = 0
+    data["reactor_tasks_processed_M"] = 0
+    data["memory_frees"] = 0
+    data["memory_mallocs"] = 0
+    data["memory_reclaims"] = 0
+    data["memory_live_objs"] = 0
+    # ratio
+    data["reactor_util"] = 0
+    # time
+    data["reactor_busytime_sec"] = 0
+    data["reactor_stealtime_sec"] = 0
+    # scheduler-group -> time
+    data["scheduler_runtime_sec"] = defaultdict(lambda: 0)
+    data["scheduler_waittime_sec"] = defaultdict(lambda: 0)
+    data["scheduler_starvetime_sec"] = defaultdict(lambda: 0)
+    # scheduler-group -> count
+    data["scheduler_queue_length"] = defaultdict(lambda: 0)
+    data["scheduler_tasks_processed_M"] = defaultdict(lambda: 0)
     # tree-type -> depth
     data["tree_depth"] = defaultdict(lambda: 0)
     # src -> count
@@ -169,6 +200,66 @@ def parse_metric_file(metric_file):
             data["cached_4KB"] += (value/4096)
         elif name == "cache_dirty_extent_bytes":
             data["dirty_4KB"] += (value/4096)
+        elif name == "reactor_aio_bytes_read":
+            data["reactor_aio_read_4KB"] += (value/4096)
+        elif name == "reactor_aio_bytes_write":
+            data["reactor_aio_write_4KB"] += (value/4096)
+        elif name == "memory_allocated_memory":
+            data["memory_allocate_KB"] += (value/1024)
+        elif name == "memory_free_memory":
+            data["memory_free_KB"] += (value/1024)
+        elif name == "memory_total_memory":
+            data["memory_total_KB"] += (value/1024)
+
+        # count
+        elif name == "segment_manager_data_read_num":
+            data["segment_reads"] += value
+        elif name == "segment_manager_data_write_num":
+            data["segment_writes"] += value
+        elif name == "segment_manager_metadata_write_num":
+            data["segment_meta_writes"] += value
+        elif name == "reactor_aio_reads":
+            data["reactor_aio_reads"] += value
+        elif name == "reactor_aio_writes":
+            data["reactor_aio_writes"] += value
+        elif name == "reactor_polls":
+            data["reactor_polls_M"] += (value/1000000)
+        elif name == "reactor_tasks_pending":
+            data["reactor_tasks_pending"] += value
+        elif name == "reactor_tasks_processed":
+            data["reactor_tasks_processed_M"] += (value/1000000)
+        elif name == "memory_free_operations":
+            data["memory_frees"] += value
+        elif name == "memory_malloc_operations":
+            data["memory_mallocs"] += value
+        elif name == "memory_reclaims_operations":
+            data["memory_reclaims"] += value
+        elif name == "memory_malloc_live_objects":
+            data["memory_live_objs"] += value
+
+        # ratio
+        elif name == "reactor_utilization":
+            data["reactor_util"] += (value/100)
+
+        # time
+        elif name == "reactor_cpu_busy_ms":
+            data["reactor_busytime_sec"] += (value/1000)
+        elif name == "reactor_cpu_steal_time_ms":
+            data["reactor_stealtime_sec"] += (value/1000)
+
+        # scheduler-group -> time
+        elif name == "scheduler_runtime_ms":
+            data["scheduler_runtime_sec"][labels["group"]] += (value/1000)
+        elif name == "scheduler_waittime_ms":
+            data["scheduler_waittime_sec"][labels["group"]] += (value/1000)
+        elif name == "scheduler_starvetime_ms":
+            data["scheduler_starvetime_sec"][labels["group"]] += (value/1000)
+
+        # scheduler-group -> count
+        elif name == "scheduler_queue_length":
+            data["scheduler_queue_length"][labels["group"]] += value
+        elif name == "scheduler_tasks_processed":
+            data["scheduler_tasks_processed_M"][labels["group"]] += (value/1000000)
 
         # tree-type -> depth
         elif name == "cache_tree_depth":
@@ -237,6 +328,11 @@ def parse_metric_file(metric_file):
             data["committed_efforts_4KB"]["READ"]["READ"] += (value/4096)
 
         # others
+        elif name == "cache_committed_extents":
+            if (labels["effort"] == "FRESH" and
+                labels["ext"] == "OBJECT_DATA_BLOCK" and
+                labels["src"] == "MUTATE"):
+                data["object_data_writes"] += value
         else:
             ignored_metrics.add(name)
 
@@ -250,6 +346,37 @@ def prepare_raw_dataset():
     data["segment_write_meta_4KB"] = []
     data["cached_4KB"] = []
     data["dirty_4KB"] = []
+    data["reactor_aio_read_4KB"] = []
+    data["reactor_aio_write_4KB"] = []
+    data["memory_allocate_KB"] = []
+    data["memory_free_KB"] = []
+    data["memory_total_KB"] = []
+    # count
+    data["segment_reads"] = []
+    data["segment_writes"] = []
+    data["segment_meta_writes"] = []
+    data["reactor_aio_reads"] = []
+    data["reactor_aio_writes"] = []
+    data["object_data_writes"] = []
+    data["reactor_polls_M"] = []
+    data["reactor_tasks_pending"] = []
+    data["reactor_tasks_processed_M"] = []
+    data["memory_frees"] = []
+    data["memory_mallocs"] = []
+    data["memory_reclaims"] = []
+    data["memory_live_objs"] = []
+    # ratio
+    data["reactor_util"] = []
+    # time
+    data["reactor_busytime_sec"] = []
+    data["reactor_stealtime_sec"] = []
+    # scheduler-group -> time
+    data["scheduler_runtime_sec"] = defaultdict(lambda: [])
+    data["scheduler_waittime_sec"] = defaultdict(lambda: [])
+    data["scheduler_starvetime_sec"] = defaultdict(lambda: [])
+    # scheduler-group -> count
+    data["scheduler_queue_length"] = defaultdict(lambda: [])
+    data["scheduler_tasks_processed_M"] = defaultdict(lambda: [])
     # tree-type -> depth
     data["tree_depth"] = defaultdict(lambda: [])
     # src -> count
@@ -274,19 +401,45 @@ def prepare_raw_dataset():
 def append_raw_data(dataset, metrics_start, metrics_end):
     def get_diff(metric_name, dataset, metrics_start, metrics_end):
         value = metrics_end[metric_name] - metrics_start[metric_name]
-        assert(value >= 0)
+        # the value can be negative for reactor_stealtime_sec
         dataset[metric_name].append(value)
     # blocks
-    get_diff("segment_read_4KB",       dataset, metrics_start, metrics_end)
-    get_diff("segment_write_4KB",      dataset, metrics_start, metrics_end)
-    get_diff("segment_write_meta_4KB", dataset, metrics_start, metrics_end)
+    get_diff("segment_read_4KB",          dataset, metrics_start, metrics_end)
+    get_diff("segment_write_4KB",         dataset, metrics_start, metrics_end)
+    get_diff("segment_write_meta_4KB",    dataset, metrics_start, metrics_end)
+    get_diff("reactor_aio_read_4KB",      dataset, metrics_start, metrics_end)
+    get_diff("reactor_aio_write_4KB",     dataset, metrics_start, metrics_end)
+    # count
+    get_diff("segment_reads",             dataset, metrics_start, metrics_end)
+    get_diff("segment_writes",            dataset, metrics_start, metrics_end)
+    get_diff("segment_meta_writes",       dataset, metrics_start, metrics_end)
+    get_diff("reactor_aio_reads",         dataset, metrics_start, metrics_end)
+    get_diff("reactor_aio_writes",        dataset, metrics_start, metrics_end)
+    get_diff("object_data_writes",        dataset, metrics_start, metrics_end)
+    get_diff("reactor_polls_M",           dataset, metrics_start, metrics_end)
+    get_diff("reactor_tasks_processed_M", dataset, metrics_start, metrics_end)
+    get_diff("memory_frees",              dataset, metrics_start, metrics_end)
+    get_diff("memory_mallocs",            dataset, metrics_start, metrics_end)
+    get_diff("memory_reclaims",           dataset, metrics_start, metrics_end)
+    # time
+    get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
+    get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
 
     # these are special: no diff
     dataset["cached_4KB"].append(metrics_end["cached_4KB"])
     dataset["dirty_4KB"].append(metrics_end["dirty_4KB"])
     for name, value in metrics_end["tree_depth"].items():
         dataset["tree_depth"][name].append(value)
+    dataset["reactor_util"].append(metrics_end["reactor_util"])
+    dataset["reactor_tasks_pending"].append(metrics_end["reactor_tasks_pending"])
+    for name, value in metrics_end["scheduler_queue_length"].items():
+        dataset["scheduler_queue_length"][name].append(value)
+    dataset["memory_allocate_KB"].append(metrics_end["memory_allocate_KB"])
+    dataset["memory_free_KB"].append(metrics_end["memory_free_KB"])
+    dataset["memory_total_KB"].append(metrics_end["memory_total_KB"])
+    dataset["memory_live_objs"].append(metrics_end["memory_live_objs"])
 
+    # src -> count
     def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
         for name, value_end in metrics_end[metric_name].items():
             value_start = metrics_start[metric_name][name]
@@ -298,6 +451,12 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
     get_diff_l1("created_trans",           dataset, metrics_start, metrics_end)
     get_diff_l1("committed_trans",         dataset, metrics_start, metrics_end)
+    # scheduler-group -> time
+    get_diff_l1("scheduler_runtime_sec",   dataset, metrics_start, metrics_end)
+    get_diff_l1("scheduler_waittime_sec",  dataset, metrics_start, metrics_end)
+    get_diff_l1("scheduler_starvetime_sec", dataset, metrics_start, metrics_end)
+    # scheduler-group -> count
+    get_diff_l1("scheduler_tasks_processed_M", dataset, metrics_start, metrics_end)
 
     def get_diff_l2(metric_name, dataset, metrics_start, metrics_end):
         for l2_name, l2_items_end in metrics_end[metric_name].items():
@@ -343,14 +502,16 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     washed_dataset = {}
 
     # 1. from cached_4KB, dirty_4KB
-    data_name = "cache_usage"
+    data_name = "cache_usage_MB"
 
     assert(len(dataset["cached_4KB"]) == dataset_size)
     assert(len(dataset["dirty_4KB"]) == dataset_size)
 
+    def block_to_MB(items):
+        return [item/256 for item in items]
     washed_dataset[data_name] = {
-        "cached_4KB": dataset["cached_4KB"],
-        "dirty_4KB": dataset["dirty_4KB"]
+        "cached": block_to_MB(dataset["cached_4KB"]),
+        "dirty": block_to_MB(dataset["dirty_4KB"])
     }
 
     # 2. from tree_depth
@@ -592,6 +753,105 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             indexes.append(current)
         return washed_dataset, indexes
 
+    #
+    # Metric-only specific graph
+    #
+
+    # 1. from writes_4KB
+    washed_dataset["writes_accumulated_MB"] = {
+        "obj_data": accumulate([write/256 for write in writes_4KB])
+    }
+
+    # 2. from reactor_util, reactor_busytime_sec, reactor_stealtime_sec
+    #         scheduler_runtime_sec, scheduler_waittime_sec, scheduler_starvetime_sec
+    washed_dataset["CPU_utilities_ratio"] = {
+        "reactor_util": dataset["reactor_util"],
+        "reactor_busy": get_ratio(dataset["reactor_busytime_sec"], times_sec),
+        "reactor_steal": get_ratio(dataset["reactor_stealtime_sec"], times_sec)
+    }
+    scheduler_runtime_ratio = get_ratio_l2_by_l1(dataset["scheduler_runtime_sec"], times_sec)
+    for group_name, ratios in scheduler_runtime_ratio.items():
+        if not any(ratios):
+            continue
+        washed_dataset["CPU_utilities_ratio"]["sched_run_" + group_name] = ratios
+    scheduler_waittime_ratio = get_ratio_l2_by_l1(dataset["scheduler_waittime_sec"], times_sec)
+    for group_name, ratios in scheduler_waittime_ratio.items():
+        if not any(ratios):
+            continue
+        washed_dataset["CPU_utilities_ratio"]["sched_wait_" + group_name] = ratios
+    scheduler_starvetime_ratio = get_ratio_l2_by_l1(dataset["scheduler_starvetime_sec"], times_sec)
+    for group_name, ratios in scheduler_starvetime_ratio.items():
+        if not any(ratios):
+            continue
+        washed_dataset["CPU_utilities_ratio"]["sched_starve_" + group_name] = ratios
+
+    # 3. from reactor_aio_read_4KB, reactor_aio_write_4KB,
+    #         segment_write_4KB, segment_write_meta_4KB, segment_read_4KB,
+    #         committed_disk_efforts_4KB
+    #         writes_4KB
+    def get_throughput_MB(rws_4KB, ts_sec):
+        assert(len(rws_4KB) == len(ts_sec))
+        return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
+    washed_dataset["throughput_MB"] = {
+        "aio_read":       get_throughput_MB(dataset["reactor_aio_reads"], times_sec),
+        "aio_write":      get_throughput_MB(dataset["reactor_aio_writes"], times_sec),
+        "device_read":    get_throughput_MB(dataset["segment_read_4KB"], times_sec),
+        "device_write":   get_throughput_MB(segment_total_write_4KB, times_sec),
+        "extent_write":   get_throughput_MB(extent_writes_4KB, times_sec),
+        "obj_data_write": get_throughput_MB(writes_4KB, times_sec)
+    }
+
+    # 4. from reactor_aio_reads, reactor_aio_writes,
+    #         segment_writes, segment_meta_writes, segment_reads,
+    #         object_data_writes
+    segment_total_writes = merge_lists([dataset["segment_writes"],
+                                        dataset["segment_meta_writes"]])
+    def get_IOPS(rws, ts_sec):
+        assert(len(rws) == len(ts_sec))
+        return [rw/t for rw, t in zip(rws, ts_sec)]
+    washed_dataset["IOPS"] = {
+        "aio_read":       get_IOPS(dataset["reactor_aio_reads"], times_sec),
+        "aio_write":      get_IOPS(dataset["reactor_aio_writes"], times_sec),
+        "device_read":    get_IOPS(dataset["segment_reads"], times_sec),
+        "device_write":   get_IOPS(segment_total_writes, times_sec),
+        "obj_data_write": get_IOPS(dataset["object_data_writes"], times_sec)
+    }
+
+    # 5. from reactor_polls_M, reactor_tasks_processed_M, scheduler_tasks_processed_M
+    washed_dataset["tasks_and_polls_M"] = {
+        "reactor_polls": dataset["reactor_polls_M"],
+        "reactor_tasks": dataset["reactor_tasks_processed_M"]
+    }
+    for group_name, tasks in dataset["scheduler_tasks_processed_M"].items():
+        if not any(tasks):
+            continue
+        washed_dataset["tasks_and_polls_M"]["scheduler_" + group_name + "_tasks"] = tasks
+
+    # 6. from reactor_tasks_pending, scheduler_queue_length
+    washed_dataset["tasks_pending"] = {
+        "reactor_tasks": dataset["reactor_tasks_pending"]
+    }
+    for group_name, tasks in dataset["scheduler_queue_length"].items():
+        if not any(tasks):
+            continue
+        washed_dataset["tasks_pending"]["scheduler_" + group_name + "_tasks"] = tasks
+
+    # 7. from memory_allocate_KB, memory_free_KB, memory_total_KB
+    def KB_to_MB(items):
+        return [item/1024 for item in items]
+    washed_dataset["memory_usage_MB"] = {
+        "allocated": KB_to_MB(dataset["memory_allocate_KB"]),
+        # "free": KB_to_MB(dataset["memory_free_KB"]),
+        # "total": KB_to_MB(dataset["memory_total_KB"])
+    }
+
+    # 8. from memory_frees, memory_mallocs, memory_reclaims, memory_live_objs
+    washed_dataset["memory_operations"] = {
+        #"frees": dataset["memory_frees"],
+        #"mallocs": dataset["memory_mallocs"],
+        #"reclaims": dataset["memory_reclaims"],
+        "live_objs": dataset["memory_live_objs"],
+    }
     # indexes
     indexes = []
     current = times_sec[0]
