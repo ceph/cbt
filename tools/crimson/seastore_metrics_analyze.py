@@ -793,8 +793,8 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         assert(len(rws_4KB) == len(ts_sec))
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
     washed_dataset["throughput_MB"] = {
-        "aio_read":       get_throughput_MB(dataset["reactor_aio_reads"], times_sec),
-        "aio_write":      get_throughput_MB(dataset["reactor_aio_writes"], times_sec),
+        "aio_read":       get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+        "aio_write":      get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
         "device_read":    get_throughput_MB(dataset["segment_read_4KB"], times_sec),
         "device_write":   get_throughput_MB(segment_total_write_4KB, times_sec),
         "extent_write":   get_throughput_MB(extent_writes_4KB, times_sec),
