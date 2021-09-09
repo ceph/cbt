@@ -759,7 +759,8 @@ def wash_dataset(dataset, writes_4KB, times_sec):
 
     # 1. from writes_4KB
     washed_dataset["writes_accumulated_MB"] = {
-        "obj_data": accumulate([write/256 for write in writes_4KB])
+        "obj_data(client)":  accumulate([write/256 for write in writes_4KB]),
+        "reactor_aio_write": accumulate([write/256 for write in dataset["reactor_aio_write_4KB"]])
     }
 
     # 2. from reactor_util, reactor_busytime_sec, reactor_stealtime_sec
@@ -793,12 +794,12 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         assert(len(rws_4KB) == len(ts_sec))
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
     washed_dataset["throughput_MB"] = {
-        "aio_read":       get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
-        "aio_write":      get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
-        "device_read":    get_throughput_MB(dataset["segment_read_4KB"], times_sec),
-        "device_write":   get_throughput_MB(segment_total_write_4KB, times_sec),
-        "extent_write":   get_throughput_MB(extent_writes_4KB, times_sec),
-        "obj_data_write": get_throughput_MB(writes_4KB, times_sec)
+        "reactor_aio_read":  get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+        "reactor_aio_write": get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+        "device_read":       get_throughput_MB(dataset["segment_read_4KB"], times_sec),
+        "device_write":      get_throughput_MB(segment_total_write_4KB, times_sec),
+        "extent_write":      get_throughput_MB(extent_writes_4KB, times_sec),
+        "obj_data_write":    get_throughput_MB(writes_4KB, times_sec)
     }
 
     # 4. from reactor_aio_reads, reactor_aio_writes,
@@ -810,11 +811,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         assert(len(rws) == len(ts_sec))
         return [rw/t for rw, t in zip(rws, ts_sec)]
     washed_dataset["IOPS"] = {
-        "aio_read":       get_IOPS(dataset["reactor_aio_reads"], times_sec),
-        "aio_write":      get_IOPS(dataset["reactor_aio_writes"], times_sec),
-        "device_read":    get_IOPS(dataset["segment_reads"], times_sec),
-        "device_write":   get_IOPS(segment_total_writes, times_sec),
-        "obj_data_write": get_IOPS(dataset["object_data_writes"], times_sec)
+        "reactor_aio_read":  get_IOPS(dataset["reactor_aio_reads"], times_sec),
+        "reactor_aio_write": get_IOPS(dataset["reactor_aio_writes"], times_sec),
+        "device_read":       get_IOPS(dataset["segment_reads"], times_sec),
+        "device_write":      get_IOPS(segment_total_writes, times_sec),
+        "obj_data_write":    get_IOPS(dataset["object_data_writes"], times_sec)
     }
 
     # 5. from reactor_polls_M, reactor_tasks_processed_M, scheduler_tasks_processed_M
@@ -825,7 +826,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     for group_name, tasks in dataset["scheduler_tasks_processed_M"].items():
         if not any(tasks):
             continue
-        washed_dataset["tasks_and_polls_M"]["scheduler_" + group_name + "_tasks"] = tasks
+        washed_dataset["tasks_and_polls_M"]["sched_" + group_name + "_tasks"] = tasks
 
     # 6. from reactor_tasks_pending, scheduler_queue_length
     washed_dataset["tasks_pending"] = {
@@ -834,7 +835,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     for group_name, tasks in dataset["scheduler_queue_length"].items():
         if not any(tasks):
             continue
-        washed_dataset["tasks_pending"]["scheduler_" + group_name + "_tasks"] = tasks
+        washed_dataset["tasks_pending"]["sched_" + group_name + "_tasks"] = tasks
 
     # 7. from memory_allocate_KB, memory_free_KB, memory_total_KB
     def KB_to_MB(items):
