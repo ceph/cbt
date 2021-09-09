@@ -22,7 +22,8 @@ Finally, run ``seastore_metrics_analyze.py`` to generate diagram from the
 collected metrics.
 
 SeaStore fio bench profiler
-=============================
+===========================
+
 We can profile SeaStore using fio bench with 1 OSD.
 
 To start the test envionment:
@@ -55,3 +56,21 @@ example rbd_write.fio:
 
   [rbd_iodepth32]
   iodepth=2
+
+SeaStore metrics profiler
+=========================
+
+This is a client-independent and non-stop way to collect metrics for profiling.
+
+Without the client providing the client IO size and number, it assumes the
+information from the metrics of committing OBJ_DATA_BLOCK extents.
+
+Since metric files are labeled with time, all the existing plots are changed to
+use time as x-axis, and the non-stop way makes it possible to include seastar
+metrics correctly.
+
+To start tests, prepare the crimson cluster correctly with seastore, generate
+the desired workload, and run ``seastore_metrics_run.sh`` to collect the
+metrics.
+
+Finally, run ``seastore_metrics_analyze.py`` to generate plots in png format.
