@@ -167,6 +167,12 @@ def parse_metric_file(metric_file):
     data["cache_hit"] = defaultdict(lambda: 0)
     data["created_trans"] = defaultdict(lambda: 0)
     data["committed_trans"] = defaultdict(lambda: 0)
+    data["invalidated_ool_records"] = defaultdict(lambda: 0)
+    data["committed_ool_records"] = defaultdict(lambda: 0)
+    # src -> blocks
+    data["invalidated_ool_record_overhead_4KB"] = defaultdict(lambda: 0)
+    data["committed_ool_record_overhead_4KB"] = defaultdict(lambda: 0)
+    data["committed_inline_record_overhead_4KB"] = defaultdict(lambda: 0)
     # src -> tree-type -> count
     data["tree_erases_committed"] = defaultdict(lambda: defaultdict(lambda: 0))
     data["tree_erases_invalidated"] = defaultdict(lambda: defaultdict(lambda: 0))
@@ -277,6 +283,23 @@ def parse_metric_file(metric_file):
             data["committed_trans"][labels["src"]] += value
         elif name == "cache_trans_read_successful":
             data["committed_trans"]["READ"] += value
+        elif name == "cache_invalidated_ool_records":
+            assert(labels["src"] != "READ")
+            data["invalidated_ool_records"][labels["src"]] += value
+        elif name == "cache_committed_ool_records":
+            assert(labels["src"] != "READ")
+            data["committed_ool_records"][labels["src"]] += value
+
+        # src -> blocks
+        elif name == "cache_invalidated_ool_record_overhead_bytes":
+            assert(labels["src"] != "READ")
+            data["invalidated_ool_record_overhead_4KB"][labels["src"]] += (value/4096)
+        elif name == "cache_committed_ool_record_overhead_bytes":
+            assert(labels["src"] != "READ")
+            data["committed_ool_record_overhead_4KB"][labels["src"]] += (value/4096)
+        elif name == "cache_committed_inline_record_overhead_bytes":
+            assert(labels["src"] != "READ")
+            data["committed_inline_record_overhead_4KB"][labels["src"]] += (value/4096)
 
         # src -> tree-type -> count
         elif name == "cache_tree_erases_committed":
@@ -317,19 +340,29 @@ def parse_metric_file(metric_file):
         # src -> extent-type -> effort-type -> blocks
         elif name == "cache_committed_extent_bytes":
             assert(labels["src"] != "READ")
-            data["committed_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
-            if labels["effort"] == "FRESH":
-                data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]]["FRESH"] += (value/4096)
+            effort_name = labels["effort"]
+            if (effort_name == "FRESH_INVALID" or
+                effort_name == "FRESH_INLINE" or
+                effort_name == "FRESH_OOL"):
+                data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]][effort_name] += (value/4096)
+                # match cache_invalidated_extent_bytes FRESH, FRESH_OOL_WRITTEN
+                data["committed_efforts_4KB"][labels["src"]]["FRESH"] += (value/4096)
+                if effort_name == "FRESH_OOL":
+                    data["committed_efforts_4KB"][labels["src"]]["FRESH_OOL_WRITTEN"] += (value/4096)
+            else:
+                data["committed_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
         elif name == "cache_committed_delta_bytes":
             assert(labels["src"] != "READ")
-            data["committed_efforts_4KB"][labels["src"]]["MUTATE_DELTA"] += (value/4096)
-            data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]]["MUTATE_DELTA"] += (value/4096)
+            effort_name = "MUTATE_DELTA"
+            data["committed_efforts_4KB"][labels["src"]][effort_name] += (value/4096)
+            data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]][effort_name] += (value/4096)
         elif name == "cache_successful_read_extent_bytes":
             data["committed_efforts_4KB"]["READ"]["READ"] += (value/4096)
 
         # others
         elif name == "cache_committed_extents":
-            if (labels["effort"] == "FRESH" and
+            if ((labels["effort"] == "FRESH_INLINE" or
+                 labels["effort"] == "FRESH_OOL") and
                 labels["ext"] == "OBJECT_DATA_BLOCK" and
                 labels["src"] == "MUTATE"):
                 data["object_data_writes"] += value
@@ -384,6 +417,12 @@ def prepare_raw_dataset():
     data["cache_hit"] = defaultdict(lambda: [])
     data["created_trans"] = defaultdict(lambda: [])
     data["committed_trans"] = defaultdict(lambda: [])
+    data["invalidated_ool_records"] = defaultdict(lambda: [])
+    data["committed_ool_records"] = defaultdict(lambda: [])
+    # src -> blocks
+    data["invalidated_ool_record_overhead_4KB"] = defaultdict(lambda: [])
+    data["committed_ool_record_overhead_4KB"] = defaultdict(lambda: [])
+    data["committed_inline_record_overhead_4KB"] = defaultdict(lambda: [])
     # src -> tree-type -> count
     data["tree_erases_committed"] = defaultdict(lambda: defaultdict(lambda: []))
     data["tree_erases_invalidated"] = defaultdict(lambda: defaultdict(lambda: []))
@@ -451,6 +490,12 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
     get_diff_l1("created_trans",           dataset, metrics_start, metrics_end)
     get_diff_l1("committed_trans",         dataset, metrics_start, metrics_end)
+    get_diff_l1("invalidated_ool_records", dataset, metrics_start, metrics_end)
+    get_diff_l1("committed_ool_records",   dataset, metrics_start, metrics_end)
+    # src -> blocks
+    get_diff_l1("invalidated_ool_record_overhead_4KB",  dataset, metrics_start, metrics_end)
+    get_diff_l1("committed_ool_record_overhead_4KB",    dataset, metrics_start, metrics_end)
+    get_diff_l1("committed_inline_record_overhead_4KB", dataset, metrics_start, metrics_end)
     # scheduler-group -> time
     get_diff_l1("scheduler_runtime_sec",   dataset, metrics_start, metrics_end)
     get_diff_l1("scheduler_waittime_sec",  dataset, metrics_start, metrics_end)
@@ -488,13 +533,25 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
 def wash_dataset(dataset, writes_4KB, times_sec):
+    def merge_lists(lists):
+        assert(len(lists))
+        length = 0
+        for _list in lists:
+            if length == 0:
+                length = len(_list)
+                assert(length)
+            else:
+                assert(length == len(_list))
+        return [sum(values) for values in zip(*lists)]
+
     if len(times_sec) > 0:
         assert(len(writes_4KB) == 0)
         print("WARN: no bench file available, guess writes_4KB from committed OBJECT_DATA_BLOCK!")
         writes_by_mutate = dataset["committed_disk_efforts_4KB"]["MUTATE"]
         writes_by_odb = writes_by_mutate["OBJECT_DATA_BLOCK"]
         assert(all(blocks == 0 for blocks in writes_by_odb["MUTATE_DELTA"]))
-        writes_4KB = writes_by_odb["FRESH"]
+        writes_4KB = merge_lists([writes_by_odb["FRESH_INLINE"],
+                                  writes_by_odb["FRESH_OOL"]])
         assert(len(writes_4KB) == len(times_sec))
 
     INVALID_RATIO = -0.1
@@ -509,9 +566,13 @@ def wash_dataset(dataset, writes_4KB, times_sec):
 
     def block_to_MB(items):
         return [item/256 for item in items]
+    cached_MB = block_to_MB(dataset["cached_4KB"])
+    dirty_MB = block_to_MB(dataset["dirty_4KB"])
+    cached_clean_MB = [cache - dirty for cache, dirty in zip(cached_MB, dirty_MB)]
     washed_dataset[data_name] = {
-        "cached": block_to_MB(dataset["cached_4KB"]),
-        "dirty": block_to_MB(dataset["dirty_4KB"])
+        "cached": cached_MB,
+        "dirty": dirty_MB,
+        "cached_clean": cached_clean_MB,
     }
 
     # 2. from tree_depth
@@ -523,16 +584,6 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     # 3. from tree_erases_committed, tree_inserts_committed
     data_name = "tree_operations"
 
-    def merge_lists(lists):
-        assert(len(lists))
-        length = 0
-        for _list in lists:
-            if length == 0:
-                length = len(_list)
-                assert(length)
-            else:
-                assert(length == len(_list))
-        return [sum(values) for values in zip(*lists)]
     def merge_lists_l1_by_l2(l3_items):
         l2_ret = {}
         for l2_name, l2_items in l3_items.items():
@@ -702,7 +753,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
                 for l2_name, l2_items in l3_items.items()
                 if any([any(items) for name, items in l2_items.items()])}
 
-    extent_writes_list = []
+    commit_srcs = []
+    fresh_ool_4KB = {}
+    fresh_inline_4KB = {}
+    fresh_invalid_4KB = {}
+    mutate_delta_4KB = {}
     for src, committed_disk_efforts in dataset["committed_disk_efforts_4KB"].items():
         data_name = "write_amplification_by_extent---" + src
 
@@ -714,33 +769,102 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             print(data_name + " is empty!")
             continue
 
-        committed_disk_efforts_merged = {}
+        fresh_ool = []
+        fresh_inline = []
+        fresh_invalid = []
+        mutate_delta = []
+        total_committed_disk_efforts = {}
         for ext_name, items_by_effort in non_empty_committed_disk_efforts.items():
-            assert(len(items_by_effort) == 2)
-            disk_writes = merge_lists([items_by_effort["FRESH"],
-                                       items_by_effort["MUTATE_DELTA"]])
-            extent_writes_list.append(disk_writes)
-            committed_disk_efforts_merged[ext_name] = disk_writes
+            assert(len(items_by_effort) == 4)
 
-        data = get_ratio_l2_by_l1(committed_disk_efforts_merged, writes_4KB)
+            fresh_ool.append(items_by_effort["FRESH_OOL"])
+            fresh_inline.append(items_by_effort["FRESH_INLINE"])
+            fresh_invalid.append(items_by_effort["FRESH_INVALID"])
+            mutate_delta.append(items_by_effort["MUTATE_DELTA"])
+
+            total_disk_writes = merge_lists([items_by_effort["FRESH_INLINE"],
+                                             items_by_effort["FRESH_OOL"],
+                                             items_by_effort["MUTATE_DELTA"]])
+            total_committed_disk_efforts[ext_name] = total_disk_writes
+
+        commit_srcs.append(src)
+        fresh_ool_4KB[src] = merge_lists(fresh_ool)
+        fresh_inline_4KB[src] = merge_lists(fresh_inline)
+        fresh_invalid_4KB[src] = merge_lists(fresh_invalid)
+        mutate_delta_4KB[src] = merge_lists(mutate_delta)
+        data = get_ratio_l2_by_l1(total_committed_disk_efforts, writes_4KB)
         washed_dataset[data_name] = data
 
-    # 9. from writes_4KB, committed_disk_efforts_4KB,
-    #         segment_read_4KB, segment_write_4KB, segment_write_meta_4KB
+    # 9.x write_amplification_detail
+    valid_extent_write_4K = {}
+    write_overhead_4K = {}
+    accounted_write_4K = {}
+    for src in commit_srcs:
+        data_name = "write_amplification_detail---" + src
+        ool_invalidated = dataset["invalidated_efforts_4KB"][src]["FRESH_OOL_WRITTEN"]
+        ool_committed = fresh_ool_4KB[src]
+        inline_valid = [total - retired for total, retired
+                        in zip(fresh_inline_4KB[src], fresh_invalid_4KB[src])]
+        inline_retired = fresh_invalid_4KB[src]
+        mutate_delta = mutate_delta_4KB[src]
+        ool_record_overhead = merge_lists([dataset["invalidated_ool_record_overhead_4KB"][src],
+                                           dataset["committed_ool_record_overhead_4KB"][src]])
+        inline_record_overhead = dataset["committed_inline_record_overhead_4KB"][src]
+        output_4KB = {
+            "OOL_INVALIDATED":        ool_invalidated,
+            "OOL_COMMITTED":          ool_committed,
+            "INLINE_VALID":           inline_valid,
+            "INLINE_RETIRED":         inline_retired,
+            "MUTATE_DELTA":           mutate_delta,
+            "INLINE_RECORD_OVERHEAD": inline_record_overhead,
+            "OOL_RECORD_OVERHEAD":    ool_record_overhead,
+        }
+        output_ratio = get_ratio_l2_by_l1(output_4KB, writes_4KB)
+        washed_dataset[data_name] = output_ratio
+
+        valid_extent_write = merge_lists([ool_committed,
+                                          inline_valid,
+                                          mutate_delta])
+        valid_extent_write_4K[src] = valid_extent_write
+        write_overhead = merge_lists([ool_invalidated,
+                                      inline_retired,
+                                      inline_record_overhead,
+                                      ool_record_overhead])
+        write_overhead_4K[src] = write_overhead
+        accounted_write = merge_lists([valid_extent_write,
+                                       write_overhead])
+        accounted_write_4K[src] = accounted_write
+
+    # 10. write_amplification_by_src
+    data_name = "write_amplification_by_src"
+    data_10 = {}
+    mutate_trans_extent_write = []
+    for src in commit_srcs:
+        name = "VALID_WRITRE_" + src
+        data_10[name] = valid_extent_write_4K[src]
+        name = "WRITE_OVERHEAD_" + src
+        data_10[name] = write_overhead_4K[src]
+        if src == "MUTATE":
+            mutate_trans_extent_write = valid_extent_write_4K[src]
+    data_10_ratio = get_ratio_l2_by_l1(data_10, writes_4KB)
+    washed_dataset[data_name] = data_10_ratio
+
+    # 11. write_amplification_overall
     data_name = "write_amplification_overall"
-
-    segment_read_amp = get_ratio(dataset["segment_read_4KB"], writes_4KB)
-    segment_total_write_4KB = merge_lists([dataset["segment_write_4KB"],
-                                           dataset["segment_write_meta_4KB"]])
-    segment_write_amp = get_ratio(segment_total_write_4KB, writes_4KB)
-    extent_writes_4KB = merge_lists(extent_writes_list)
-    extent_level_amp = get_ratio(extent_writes_4KB, writes_4KB)
-
-    washed_dataset[data_name] = {
-        "FRESH_EXTENTS+DELTA": extent_level_amp,
-        "SEGMENTED_WRITE": segment_write_amp,
-        "SEGMENTED_READ": segment_read_amp
+    segmented_read = dataset["segment_read_4KB"]
+    segmented_write = merge_lists([dataset["segment_write_4KB"],
+                                   dataset["segment_write_meta_4KB"]])
+    accounted_write = merge_lists(accounted_write_4K.values())
+    valid_extent_write = merge_lists(valid_extent_write_4K.values())
+    data_11 = {
+        "SEGMENTED_READ":     segmented_read,
+        "SEGMENTED_WRITE":    segmented_write,
+        "ACCOUNTED_WRITE":    accounted_write,
+        "VALID_EXTENT_WRITE": valid_extent_write,
+        "MUTATE_TRANS_EXTENT_WRITE": mutate_trans_extent_write,
     }
+    data_11_ratio = get_ratio_l2_by_l1(data_11, writes_4KB)
+    washed_dataset[data_name] = data_11_ratio
 
     if len(times_sec) == 0:
         # indexes
@@ -794,29 +918,58 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         assert(len(rws_4KB) == len(ts_sec))
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
     washed_dataset["throughput_MB"] = {
-        "reactor_aio_read":  get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
-        "reactor_aio_write": get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
-        "device_read":       get_throughput_MB(dataset["segment_read_4KB"], times_sec),
-        "device_write":      get_throughput_MB(segment_total_write_4KB, times_sec),
-        "extent_write":      get_throughput_MB(extent_writes_4KB, times_sec),
-        "obj_data_write":    get_throughput_MB(writes_4KB, times_sec)
+        "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+        "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+        "device_read":        get_throughput_MB(segmented_read, times_sec),
+        "device_write":       get_throughput_MB(segmented_write, times_sec),
+        "accounted_write":    get_throughput_MB(accounted_write, times_sec),
+        "valid_extent_write": get_throughput_MB(valid_extent_write, times_sec),
+        "commit_trans_extent_write": get_throughput_MB(mutate_trans_extent_write, times_sec),
+        "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
     }
 
-    # 4. from reactor_aio_reads, reactor_aio_writes,
-    #         segment_writes, segment_meta_writes, segment_reads,
-    #         object_data_writes
-    segment_total_writes = merge_lists([dataset["segment_writes"],
-                                        dataset["segment_meta_writes"]])
+    # 4.x IOPS_by_src, IOPS_overall
     def get_IOPS(rws, ts_sec):
         assert(len(rws) == len(ts_sec))
         return [rw/t for rw, t in zip(rws, ts_sec)]
-    washed_dataset["IOPS"] = {
-        "reactor_aio_read":  get_IOPS(dataset["reactor_aio_reads"], times_sec),
-        "reactor_aio_write": get_IOPS(dataset["reactor_aio_writes"], times_sec),
-        "device_read":       get_IOPS(dataset["segment_reads"], times_sec),
-        "device_write":      get_IOPS(segment_total_writes, times_sec),
-        "obj_data_write":    get_IOPS(dataset["object_data_writes"], times_sec)
+    def get_IOPS_l2(l2_rws, ts_sec):
+        ret = {}
+        for name, data in l2_rws.items():
+            iops = get_IOPS(data, ts_sec)
+            ret[name] = iops
+        return ret
+    data_IOPS_detail = {}
+    read_trans = []
+    commit_trans = []
+    for src, items in dataset["committed_trans"].items():
+        if src == "READ":
+            read_trans = items
+        else:
+            commit_trans.append(items)
+        name = "committed_trans_" + src
+        data_IOPS_detail[name] = items
+    ool_records = []
+    for src, invalidated_ool in dataset["invalidated_ool_records"].items():
+        name = "ool_records_" + src
+        ool = merge_lists([invalidated_ool,
+                           dataset["committed_ool_records"][src]])
+        ool_records.append(ool)
+        data_IOPS_detail[name] = ool;
+    washed_dataset["IOPS_by_src"] = get_IOPS_l2(data_IOPS_detail, times_sec)
+
+    segmented_writes = merge_lists([dataset["segment_writes"],
+                                    dataset["segment_meta_writes"]])
+    data_IOPS = {
+        "reactor_aio_read":  dataset["reactor_aio_reads"],
+        "reactor_aio_write": dataset["reactor_aio_writes"],
+        "device_read":       dataset["segment_reads"],
+        "device_write":      segmented_writes,
+        "obj_data_write":    dataset["object_data_writes"],
+        "committed_trans":   merge_lists(commit_trans),
+        "read_trans":        read_trans,
+        "ool_records":       merge_lists(ool_records),
     }
+    washed_dataset["IOPS"] = get_IOPS_l2(data_IOPS, times_sec)
 
     # 5. from reactor_polls_M, reactor_tasks_processed_M, scheduler_tasks_processed_M
     washed_dataset["tasks_and_polls_M"] = {
