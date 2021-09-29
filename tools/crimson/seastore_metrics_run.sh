@@ -6,7 +6,7 @@ TOP_DIR=$(cd $(dirname "$0") && pwd)
 RESULT_DIR="$TOP_DIR/results"
 BUILD_DIR="~/ceph/build/"
 TOTAL_ROUND=10
-BENCH_SECONDS=1
+ROUND_SECONDS=1
 
 # Note: currently only support single OSD to measure write amplification
 # correctly.
