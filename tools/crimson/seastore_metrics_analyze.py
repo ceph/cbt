@@ -183,6 +183,9 @@ def parse_metric_file(metric_file):
     # src-> effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
     data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
+    # src-> record-type -> bytes
+    data["record_header_filled_B"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["record_header_total_B"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
@@ -359,6 +362,14 @@ def parse_metric_file(metric_file):
         elif name == "cache_successful_read_extent_bytes":
             data["committed_efforts_4KB"]["READ"]["READ"] += (value/4096)
 
+        # src-> record-type -> bytes
+        elif name == "cache_record_header_filled_bytes":
+            assert(labels["src"] != "READ")
+            data["record_header_filled_B"][labels["src"]][labels["record_type"]] += value
+        elif name == "cache_record_header_total_bytes":
+            assert(labels["src"] != "READ")
+            data["record_header_total_B"][labels["src"]][labels["record_type"]] += value
+
         # others
         elif name == "cache_committed_extents":
             if ((labels["effort"] == "FRESH_INLINE" or
@@ -433,6 +444,9 @@ def prepare_raw_dataset():
     # src -> effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
     data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
+    # src-> record-type -> bytes
+    data["record_header_filled_B"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["record_header_total_B"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [])))
     return data
@@ -520,6 +534,9 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # src -> effort-type -> blocks
     get_diff_l2("invalidated_efforts_4KB",  dataset, metrics_start, metrics_end)
     get_diff_l2("committed_efforts_4KB",    dataset, metrics_start, metrics_end)
+    # src-> record-type -> bytes
+    get_diff_l2("record_header_filled_B",   dataset, metrics_start, metrics_end)
+    get_diff_l2("record_header_total_B",    dataset, metrics_start, metrics_end)
 
     def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
         for l3_name, l3_items_end in metrics_end[metric_name].items():
@@ -865,6 +882,24 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     }
     data_11_ratio = get_ratio_l2_by_l1(data_11, writes_4KB)
     washed_dataset[data_name] = data_11_ratio
+
+    # 12. record_header_fullness
+    data_name = "record_header_fullness"
+    def get_ratio_l3(l3_numerators, l3_denominators, expected_size):
+        l3_ret = {}
+        for name, l2_denominators in l3_denominators.items():
+            l2_numerators = l3_numerators[name]
+            l2_ratios = get_ratio_l2(l2_numerators, l2_denominators, expected_size)
+            l3_ret[name] = l2_ratios
+        return l3_ret
+    data_12_ratio_raw = get_ratio_l3(dataset["record_header_filled_B"],
+                                     dataset["record_header_total_B"],
+                                     dataset_size)
+    data_12_ratio = {}
+    for src, ratio_by_type in data_12_ratio_raw.items():
+        for typename, ratio in ratio_by_type.items():
+            data_12_ratio[src + "_" + typename] = ratio
+    washed_dataset[data_name] = filter_out_invalid_ratio_l2(data_12_ratio)
 
     if len(times_sec) == 0:
         # indexes
