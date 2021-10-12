@@ -45,3 +45,6 @@ class ClientEndpoints(object):
 
     def create_recovery_image(self):
         pass
+
+    def create_scrubbing_image(self):
+        pass

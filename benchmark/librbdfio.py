@@ -46,6 +46,8 @@ class LibrbdFio(Benchmark):
         self.use_existing_volumes = config.get('use_existing_volumes', False)
         self.pool_name = config.get("poolname", "cbt-librbdfio")
         self.recov_pool_name = config.get("recov_pool_name", "cbt-librbdfio-recov")
+        self.scrub_pool_name = config.get("scrub_pool_name", "cbt-librbdfio-scrub")
+        self.scrub_pool_profile = config.get("scrub_pool_profile", "default")
         self.rbdname = config.get('rbdname', '')
 
         self.total_procs = self.procs_per_volume * self.volumes_per_client * len(settings.getnodes('clients').split(','))
@@ -80,9 +82,17 @@ class LibrbdFio(Benchmark):
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
+        if 'scrubbing_test' in self.cluster.config:
+            self.mkscrubimage()
+
         # Create the recovery image based on test type requested
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
             self.mkrecovimage()
+
+        if 'scrub_recov_test' in self.cluster.config:
+            self.mkrecovimage()
+            self.mkscrubimage()
+
         self.mkimages()
         # populate the fio files
         ps = []
@@ -128,6 +138,17 @@ class LibrbdFio(Benchmark):
             # Wait for a signal from the recovery thread to initiate client IO
             self.cluster.wait_start_io()
 
+        if 'scrubbing_test' in self.cluster.config:
+            scrubbing_callback = self.scrubbing_callback
+            self.cluster.create_scrubbing_test(self.run_dir, scrubbing_callback)
+            self.cluster.wait_start_io()
+
+        if 'scrub_recov_test' in self.cluster.config:
+            scrub_recov_callback = self.scrub_recov_callback
+            self.cluster.create_scrub_recovery_test(self.run_dir, scrub_recov_callback)
+            self.cluster.wait_start_io()
+
+
         monitoring.start(self.run_dir)
 
         logger.info('Running rbd fio %s test.', self.mode)
@@ -141,6 +162,9 @@ class LibrbdFio(Benchmark):
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
+
+        if 'scrub_recov_test' in self.cluster.config:
+            self.cluster.wait_scrub_recovery_done()
 
         monitoring.stop(self.run_dir)
 
@@ -210,6 +234,18 @@ class LibrbdFio(Benchmark):
                   self.cluster.mkimage('cbt-librbdfio-recov-%s-%d' % (node,volnum), self.vol_size, self.recov_pool_name, self.data_pool, self.vol_object_size)
         monitoring.stop()
 
+    def mkscrubimage(self):
+        logger.info('Creating scrubbing image...')
+        monitoring.start("%s/scrub_pool_monitoring" % self.run_dir)
+        if (self.use_existing_volumes == False):
+            self.cluster.rmpool(self.scrub_pool_name, self.scrub_pool_profile)
+            self.cluster.mkpool(self.scrub_pool_name, self.scrub_pool_profile, 'rbd')
+            for node in common.get_fqdn_list('clients'):
+                for volnum in range(0, self.volumes_per_client):
+                    node = node.rpartition("@")[2]
+                    self.cluster.mkimage('cbt-librbdfio-scrub-%s-%d' % (node,volnum), self.vol_size, self.scrub_pool_name, self.data_pool, self.vol_object_size)
+        monitoring.stop()
+
     def mkimages(self):
         monitoring.start("%s/pool_monitoring" % self.run_dir)
         if (self.use_existing_volumes == False):
@@ -230,6 +266,9 @@ class LibrbdFio(Benchmark):
 
     def recovery_callback_background(self):
         logger.info('Recovery thread completed!')
+
+    def scrubbing_callback(self):
+        logger.info('Scrubbing thread completed!')
 
     def parse(self, out_dir):
         for client in settings.getnodes('clients').split(','):
