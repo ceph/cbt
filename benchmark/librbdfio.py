@@ -83,19 +83,18 @@ class LibrbdFio(Benchmark):
         # Create the recovery image based on test type requested
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
             self.mkrecovimage()
-        else:
-            self.mkimages()
-            # populate the fio files
-            ps = []
-            logger.info('Attempting to populating fio files...')
-            if (self.use_existing_volumes == False):
-                for volnum in range(self.volumes_per_client):
-                    rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
-                    pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
-                    p = common.pdsh(settings.getnodes('clients'), pre_cmd)
-                    ps.append(p)
-                for p in ps:
-                    p.wait()
+        self.mkimages()
+        # populate the fio files
+        ps = []
+        logger.info('Attempting to populating fio files...')
+        if (self.use_existing_volumes == False):
+            for volnum in range(self.volumes_per_client):
+                rbd_name = 'cbt-librbdfio-`%s`-%d' % (common.get_fqdn_cmd(), volnum)
+                pre_cmd = 'sudo %s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0  --rw=write --numjobs=%s --bs=4M --size %dM %s --output-format=%s > /dev/null' % (self.cmd_path, self.pool_name, rbd_name, self.numjobs, self.vol_size, self.names, self.fio_out_format)
+                p = common.pdsh(settings.getnodes('clients'), pre_cmd)
+                ps.append(p)
+            for p in ps:
+                p.wait()
 
     def run(self):
         super(LibrbdFio, self).run()
@@ -126,9 +125,8 @@ class LibrbdFio(Benchmark):
             self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
 
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
-            # Create the image to run client IO
+            # Wait for a signal from the recovery thread to initiate client IO
             self.cluster.wait_start_io()
-            self.mkimages()
 
         monitoring.start(self.run_dir)
 
@@ -201,6 +199,7 @@ class LibrbdFio(Benchmark):
         return fio_cmd
 
     def mkrecovimage(self):
+        logger.info('Creating recovery image...')
         monitoring.start("%s/recovery_pool_monitoring" % self.run_dir)
         if (self.use_existing_volumes == False):
           self.cluster.rmpool(self.recov_pool_name, self.recov_pool_profile)

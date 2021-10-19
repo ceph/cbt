@@ -10,11 +10,12 @@ Broadly speaking, the new recovery test uses two pools - one for running recover
 The following outlines the new recovery test steps:
 
  1. At the start of the test, the cluster is brought up with specified number of osds.
- 2. Create a pool to populate recovery data (recovery pool).
- 3. Create the recovery thread and mark an osd down and out.
- 4. After the cluster handles the osd down event, data is prefilled into the recovery pool using the `pool_profile` options.
- 5. After the prefill stage is completed, the downed osd is brought up and in. The rebalancing and backfill phase starts at this point. During this phase, the test captures the total number of misplaced objects and the number of misplaced objects recovered.
- 6. At the same point the backfill/rebalancing stage starts, the test proceeds to initiate client IO (fio) on the IO pool using client(s) as mentioned in the cbt yaml file. Statistics related to the client latency and bandwidth are captured as usual by fio during this phase.
+ 2. Create a pool for client data (client pool) and prefill it with data.
+ 3. Create a pool to populate recovery data (recovery pool).
+ 4. Create the recovery thread and mark an osd down and out.
+ 5. After the cluster handles the osd down event, data is prefilled into the recovery pool using the `pool_profile` options.
+ 6. After the prefill stage is completed, the downed osd is brought up and in. The rebalancing and backfill phase starts at this point. During this phase, the test captures the total number of misplaced objects and the number of misplaced objects recovered.
+ 7. At the same point the backfill/rebalancing stage starts, the test proceeds to initiate client IO (fio) on the client pool using client(s) as mentioned in the cbt yaml file. Statistics related to the client latency and bandwidth are captured as usual by fio during this phase.
 
 To summarize, the steps above creates 2 pools during the test. Recovery is triggered on one pool and client IO is triggered on the other. Statistics during each of the phases is captured and is discussed below.
 
@@ -27,8 +28,10 @@ The following example yaml file creates a single node cluster and uses the `fio`
 > NOTE: The recovery pool regardless of the driver being tested is a rbd based pool and populated with objects using radosbench.
 
 The following options must be set on the recovery pool to differentiate it from a normal pool,
+
 1. Set `recov_pool` to `True` to designate the pool as recovery pool.
-2. Set the `prefill_recov_time`, `prefill_recov_objects` and `prefill_recov_object_size` to the desired values. Prefill of objects is done using radosbench tool as usual.
+2. Set the `prefill_recov_time`, `prefill_recov_objects` and `prefill_recov_object_size` to the
+   desired values. Prefill of objects is done using radosbench tool as usual.
 
 In addition to the above, set the `recov_test_type` to the recovery test type to run. Until now there was only one type of recovery test and this is designated as `blocking`. By default `recov_test_type` is set to `blocking` by CBT unless overridden by the option shown in the example below i.e. set to the new recovery test type - `background`.
 
@@ -155,7 +158,7 @@ The associated ceph config file sample is shown below with various settings used
 ...
 ```
 
-The benchmark suite can be launched with:
+The benchmark test can be launched with:
 
 ```bash
 cbt.py --archive=<archive dir> --conf=./ceph.conf ./mytests.yaml
@@ -163,5 +166,9 @@ cbt.py --archive=<archive dir> --conf=./ceph.conf ./mytests.yaml
 
 ## CONCLUSION & NEXT STEPS
 
-The new recovery test was used extensively to test the impact of mclock options on both recovery IO and client IO. The same test was also used to compare statistics across schedulers for e.g. 'WPQ'. The recovery test can currently be invoked using the `librbdfio` and `fio` benchmarks. Depending on the need other existing or upcoming  benchmarks can implement the test as the next logical step.
-
+The new recovery test was used extensively to understand the effect of background recoveries/backfill
+operations on client IOs. This test was created to test the effectiveness of `mclock` scheduler on
+providing QoS to background recovery IO and client IO. The same test was run with the existing `WPQ`
+scheduler. Statictics from the runs with both the schedulers were collected and compared. The recovery
+test can currently be invoked using both the `librbdfio` and `fio` benchmarks. Any new upcoming
+benchmark may leverage this test in the future.
