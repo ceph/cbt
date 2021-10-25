@@ -40,55 +40,53 @@ def main(argv):
     ctx = parse_args(argv)
     settings.initialize(ctx)
 
-    iteration = 0
     logger.debug("Settings.cluster:\n    %s",
                  pprint.pformat(settings.cluster).replace("\n", "\n    "))
 
     global_init = collections.OrderedDict()
+    rebuild_every_test = settings.cluster.get('rebuild_every_test', False)
+    archive_dir = settings.cluster.get('archive_dir')
+
 
     # FIXME: Create ClusterFactory and parametrically match benchmarks and clusters.
     cluster = Ceph(settings.cluster)
 
-    # E_OK
-    return_code = 0
+    # Only initialize and prefill upfront if we aren't rebuilding for each test.
+    if not rebuild_every_test:
+        cluster.initialize();
+        for iteration in range(settings.cluster.get("iterations", 0)):
+            benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
+            for b in benchmarks:
+                if b.exists():
+                    continue
+                if b.getclass() not in global_init:
+                    b.initialize()
+                    b.initialize_endpoints()
+                    b.prefill()
+                    b.cleanup()
+                # Only initialize once per class.
+                global_init[b.getclass()] = b
 
+    # Run the benchmarks
+    return_code = 0
     try:
         for iteration in range(settings.cluster.get("iterations", 0)):
-            archive_dir = settings.cluster.get('archive_dir')
             benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             for b in benchmarks:
                 if b.exists():
                     continue
 
-                # Tell the benchmark to initialize unless it's in the skip list.
-                if b.getclass() not in global_init:
+                if rebuild_every_test:
+                    cluster.initialize()
                     b.initialize()
-
-                    # Skip future initializations unless rebuild requested.
-                    if not settings.cluster.get('rebuild_every_test', False):
-                        global_init[b.getclass()] = b
-
-                # always try to initialize endpoints.
+                # Always try to initialize endpoints before running the test
                 b.initialize_endpoints()
-
-                try:
-                    b.run()
-                finally:
-                    if b.getclass() not in global_init:
-                        b.cleanup()
+                b.run()
     except:
         return_code = 1  # FAIL
         logger.exception("During tests")
-    finally:
-        for k, b in list(global_init.items()):
-            try:
-                b.cleanup()
-            except:
-                logger.exception("During %s cleanup", k)
-                return_code = 1  # FAIL
 
     return return_code
-
 
 if __name__ == '__main__':
     exit(main(sys.argv))

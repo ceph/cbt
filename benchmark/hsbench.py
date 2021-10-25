@@ -30,6 +30,8 @@ class Hsbench(Benchmark):
         self.size = config.get('size', None)
         self.out_dir = self.archive_dir
         self.client_endpoints = config.get("client_endpoints", None)
+        self.prefill_flag = config.get('prefill', False)
+        self.prefill_modes = config.get('prefill_modes', 'cxip')
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -63,11 +65,11 @@ class Hsbench(Benchmark):
             cred = "export ST_AUTH=%s\\nexport ST_USER=%s\\nexport ST_KEY=%s" % (self.auth_urls[i], self.subuser, self.key)
             common.pdsh(settings.getnodes('clients'), 'echo -e "%s" > %s/gw%02d.cred' % (cred, self.run_dir, i)).communicate()
 
-    def run_command(self, ep_num):
+    def run_command(self, ep_num, cmd, prefill):
         out_csv = '%s/output.%d.csv' % (self.run_dir, ep_num)
         out_json = '%s/output.%d.json' % (self.run_dir, ep_num)
 
-        cmd = 'sudo %s' % self.cmd_path_full
+        cmd = 'sudo %s' % cmd
         if self.buckets:
             cmd += ' -b %d' % self.buckets
         if self.bucket_prefix:
@@ -76,7 +78,9 @@ class Hsbench(Benchmark):
             cmd += ' -d %d' % self.duration
         if self.loop:
             cmd += ' -l %d' % self.loop
-        if self.modes:
+        if prefill:
+            cmd += ' -m %s' % self.prefill_modes
+        elif self.modes:
             cmd += ' -m %s' % self.modes
         if self.max_keys:
             cmd += ' -mk %d' % self.max_keys
@@ -93,12 +97,28 @@ class Hsbench(Benchmark):
         if self.size:
             cmd += ' -z %s' % self.size
         cmd += ' -o %s' % out_csv
+        if prefill:
+            cmd += '.prefill'
         cmd += ' -j %s' % out_json
+        if prefill:
+            cmd += '.prefill'
         cmd += ' -s %s' % self.endpoints[ep_num % len(self.endpoints)]["secret_key"]
         cmd += ' -a %s' % self.endpoints[ep_num % len(self.endpoints)]["access_key"]
         cmd += ' -u %s' % self.endpoints[ep_num % len(self.endpoints)]["url"]
 
         return cmd
+
+    def prefill(self):
+        super(Hsbench, self).prefill()
+        if not self.prefill_flag:
+            return
+        logger.info('Attempting to prefill hsbench objects...')
+        ps = []
+        for i in range(self.endpoints_per_client):
+            p = common.pdsh(settings.getnodes('clients'), self.run_command(i, self.cmd_path, True))
+            ps.append(p)
+        for p in ps:
+            p.wait()
 
     def run(self):
         super(Hsbench, self).run()
@@ -118,7 +138,7 @@ class Hsbench(Benchmark):
         logger.info('Running hsbench %s test.' % self.modes)
         ps = []
         for i in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes('clients'), self.run_command(i))
+            p = common.pdsh(settings.getnodes('clients'), self.run_command(i, self.cmd_path_full, False))
             ps.append(p)
         for p in ps:
             p.wait()
