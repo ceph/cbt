@@ -26,7 +26,7 @@ def sshtarget(user, host):
 
 
 class OsdThread(threading.Thread):
-    def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir, tmp_dir):
+    def __init__(self, cl_obj, devnumstr, osdnum, clusterid, host, osduuid, osddir, tmp_dir, crimson_cpuset):
         threading.Thread.__init__(self, name='OsdThread-%d' % osdnum)
         self.start_time = time.time()
         self.response_time = -1.0
@@ -38,11 +38,16 @@ class OsdThread(threading.Thread):
         self.osduuid = osduuid
         self.osddir = osddir
         self.tmp_dir = tmp_dir
+        self.crimson_cpuset = crimson_cpuset;
         self.exc = None
 
     def run(self):
         try:
             ceph_conf = self.cl_obj.tmp_conf
+            ceph_osd_cmd = self.cl_obj.ceph_osd_cmd
+            # if crimson is being used, optionally set a per-osd cpuset
+            if self.crimson_cpuset:
+                ceph_osd_cmd = "%s --cpuset %s" % (ceph_osd_cmd, self.crimson_cpuset)
             phost = sshtarget(settings.cluster.get('user'), self.host)
 
             # Setup the keyring directory
@@ -55,12 +60,12 @@ class OsdThread(threading.Thread):
             common.pdsh(phost, 'sudo %s auth get-or-create osd.%s mon \'allow rwx\' osd \'allow *\' -o %s' % (self.cl_obj.ceph_cmd, self.osdnum, key_fn)).communicate()
 
             common.pdsh(phost, 'sudo %s -c %s osd crush add osd.%d 1.0 host=%s rack=localrack root=default' % (self.cl_obj.ceph_cmd, ceph_conf, self.osdnum, self.host)).communicate()
-            cmd = 'ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --osd-uuid %s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
+            cmd = 'ulimit -n 16384 && ulimit -c unlimited && exec %s -c %s -i %d --mkfs --osd-uuid %s' % (ceph_osd_cmd, ceph_conf, self.osdnum, self.osduuid)
             common.pdsh(phost, 'sudo sh -c "%s"' % cmd).communicate()
 
             # Start the OSD
             pidfile = "%s/ceph-osd.%d.pid" % (self.cl_obj.pid_dir, self.osdnum)
-            cmd = '%s -c %s -i %d --pid-file=%s' % (self.cl_obj.ceph_osd_cmd, ceph_conf, self.osdnum, pidfile)
+            cmd = '%s -c %s -i %d --pid-file=%s' % (ceph_osd_cmd, ceph_conf, self.osdnum, pidfile)
             if self.cl_obj.osd_valgrind:
                 cmd = common.setup_valgrind(self.cl_obj.osd_valgrind, 'osd.%d' % self.osdnum, self.cl_obj.tmp_dir) + ' ' + cmd
             else:
@@ -141,6 +146,7 @@ class Ceph(Cluster):
         self.urls = []
         self.auth_urls = []
         self.osd_count = config.get('osds_per_node') * len(settings.getnodes('osds'))
+        self.crimson_cpusets = config.get('crimson_cpusets', [])
 
         # Recovery objects prefill info
         self.prefill_recov_objects = 0
@@ -402,6 +408,7 @@ class Ceph(Cluster):
         for host in osdhosts:
             for devnumstr in range(0, settings.cluster.get('osds_per_node')):
                 pdshhost = sshtarget(user, host)
+                crimson_cpuset = self.crimson_cpusets[devnumstr] if devnumstr < len(self.crimson_cpusets) else None
                 # Build the OSD
                 osduuid = str(uuid.uuid4())
 #                osddir='/var/lib/ceph/osd/%s-%d'%(clusterid, osdnum)
@@ -409,7 +416,7 @@ class Ceph(Cluster):
                 # create the OSD first, so we know what number it has been assigned.
                 common.pdsh(pdshhost, 'sudo %s -c %s osd create %s' % (self.ceph_cmd, self.tmp_conf, osduuid)).communicate()
                 # bring the OSD online in background while continuing to create OSDs in foreground
-                thrd = OsdThread(self, devnumstr, osdnum, clusterid, host, osduuid, osddir, self.tmp_dir)
+                thrd = OsdThread(self, devnumstr, osdnum, clusterid, host, osduuid, osddir, self.tmp_dir, crimson_cpuset)
                 logger.info('starting creation of OSD %d ' % osdnum)
                 thrd.start()
                 thread_list.append(thrd)
