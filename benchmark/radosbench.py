@@ -4,6 +4,7 @@ import monitoring
 import os
 import time
 import logging
+import pathlib
 import re
 import json
 
@@ -215,8 +216,13 @@ class Radosbench(Benchmark):
                 self.cluster.rmpool('rados-bench-cbt', self.pool_profile)
                 self.cluster.mkpool('rados-bench-cbt', self.pool_profile, 'radosbench')
 
+
+    def cleanup(self):
+        cmd_name = pathlib.PurePath(self.cmd_path).name
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 %s' % cmd_name).communicate()
+
     def recovery_callback(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 rados').communicate()
+        cleanup();
 
     def parse(self, out_dir):
         for client in settings.getnodes('clients').split(','):

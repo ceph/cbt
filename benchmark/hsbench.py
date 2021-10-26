@@ -3,6 +3,7 @@ import settings
 import monitoring
 import os
 import logging
+import pathlib
 import client_endpoints_factory
 
 from .benchmark import Benchmark
@@ -140,7 +141,8 @@ class Hsbench(Benchmark):
         self.cleanup()
 
     def cleanup(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 hsbench').communicate()
+        cmd_name = pathlib.PurePath(self.cmd_path).name
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 %s' % cmd_name).communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Hsbench, self).__str__())
