@@ -148,6 +148,10 @@ def parse_metric_file(metric_file):
     data["memory_mallocs"] = 0
     data["memory_reclaims"] = 0
     data["memory_live_objs"] = 0
+    data["journal_record_num"] = 0
+    data["journal_record_batch_num"] = 0
+    data["journal_io_num"] = 0
+    data["journal_io_depth_num"] = 0
     # ratio
     data["reactor_util"] = 0
     # time
@@ -245,6 +249,14 @@ def parse_metric_file(metric_file):
             data["memory_reclaims"] += value
         elif name == "memory_malloc_live_objects":
             data["memory_live_objs"] += value
+        elif name == "journal_record_num":
+            data["journal_record_num"] += value
+        elif name == "journal_record_batch_num":
+            data["journal_record_batch_num"] += value
+        elif name == "journal_io_num":
+            data["journal_io_num"] += value
+        elif name == "journal_io_depth_num":
+            data["journal_io_depth_num"] += value
 
         # ratio
         elif name == "reactor_utilization":
@@ -409,6 +421,10 @@ def prepare_raw_dataset():
     data["memory_mallocs"] = []
     data["memory_reclaims"] = []
     data["memory_live_objs"] = []
+    data["journal_record_num"] = []
+    data["journal_record_batch_num"] = []
+    data["journal_io_num"] = []
+    data["journal_io_depth_num"] = []
     # ratio
     data["reactor_util"] = []
     # time
@@ -474,6 +490,10 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff("memory_frees",              dataset, metrics_start, metrics_end)
     get_diff("memory_mallocs",            dataset, metrics_start, metrics_end)
     get_diff("memory_reclaims",           dataset, metrics_start, metrics_end)
+    get_diff("journal_record_num",        dataset, metrics_start, metrics_end)
+    get_diff("journal_record_batch_num",  dataset, metrics_start, metrics_end)
+    get_diff("journal_io_num",            dataset, metrics_start, metrics_end)
+    get_diff("journal_io_depth_num",      dataset, metrics_start, metrics_end)
     # time
     get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
     get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
@@ -900,6 +920,17 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         for typename, ratio in ratio_by_type.items():
             data_12_ratio[src + "_" + typename] = ratio
     washed_dataset[data_name] = filter_out_invalid_ratio_l2(data_12_ratio)
+
+    # 13. journal io
+    data_name = "journal_io"
+    journal_io_depth = get_ratio(dataset["journal_io_depth_num"],
+                                 dataset["journal_io_num"])
+    journal_record_batching = get_ratio(dataset["journal_record_batch_num"],
+                                        dataset["journal_record_num"])
+    washed_dataset[data_name] = {
+        "io_depth": journal_io_depth,
+        "record_batching": journal_record_batching,
+    }
 
     if len(times_sec) == 0:
         # indexes
