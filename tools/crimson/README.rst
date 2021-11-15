@@ -78,45 +78,36 @@ Finally, run ``seastore_metrics_analyze.py`` to generate plots in png format.
 Rados bench stress tool
 =======================
 
-This is a rados bench stress tool for single client or multiple client crimson
+This is a rados bench stress tool for multiple clients and multiple threads 
 osd writing test to understand how to stress crimson osd. User can set the 
 number of clients and threads, which processors will bench threads execute 
-on(to avoid test threads influence the result), test time, block size, etc.,
-to run the test case. Then the tool will integrate IOPS, Bandwidth, Latency 
-and seastar reactor utilization to help user analyze cimson osd performance.
+on(to avoid test threads influencing the result), test time, block size, etc.
+, to run the test case. Then the tool will integrate IOPS, Bandwidth, Latency 
+seastar reactor utilization or other targets to help user analyze crimson 
+osd performance.
 
-To use this tool, prepare the python3 environment, crimson cluster and a test 
+To use this tool, prepare the python3 environment, osd cluster and a test 
 pool. Put this tool in the ceph build directory. Since we will decide which 
 processors the bench threads execute on, sudo is needed.
 
 Run ``./rados_bench_tools.py --help`` to get the detail parameter information.
 
-Example of single client stress test:
+Example:
 
 .. code-block:: console
     
-    sudo ./rados_bench_tools.py --clean-up=True --client=1 --thread-list=[4,6,8,10,12,14,16,18,20,22,24,26,28,30,32] --time=300
+    sudo ./rados_bench_tools.py --thread-list 1 2 --client-list 2 4 6 --taskset=16-31 --reactor-utilization=True --time=300
 
-The tool will serially run test case with 1 client and 4 threads, 6 threads, 
-8 threads, etc. In every test case, threads run parallel but different cases 
-run serially. 
-
-Example of multiple client stress test:
-
-.. code-block:: console
-
-    sudo ./rados_bench_tools.py --clean-up=True --taskset=16-31 --client-list=[4,6,8,10,12,14,16,18,20,22,24,26,28,30,32] --thread=2
-
-The tool will run test case with 2 threads and 4 clients(parallel), 6 clients, 
-etc. and the test thread will run in processors 16~31. In every test case, 
-clients and threads in every client run parallel.
-In consideration of SeaStore starts in processor 0 by default, please avoid 
-setting --taskset to 0.
+The tool will run test case with the combination of 1 or 2 clients and 2, 4 or
+6 threads. Meanwhile, it will collect the reactor utilization, which is the 
+utilization of the cpu from seastar. The test thread will run in processors 
+16~31. In consideration of SeaStore starts in processor 0 by default, please 
+avoid setting --taskset to 0.
 
 Example of result:
 
 .. code-block:: console
-    
-    CLIENTS  THREADS  IOPS  BANDWIDTCH  LATENCY REACTOR_UTILIZATION
-    3         1        2580.75    10.0838    0.0003851295    12.74903761999997
-    5         1        1728.6666666666667    6.754173333333333    0.0005760875    92.36707335999996
+
+   bandwidth                iops             latency reactor_utilization          thread_num          client_num
+   0.5301985               135.5           0.0073715   2.370669279999993                   1                   2
+   0.4831115               123.5          0.01609335  27.892383860000024                   2                   2
