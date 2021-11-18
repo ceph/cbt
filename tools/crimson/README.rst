@@ -79,16 +79,20 @@ Rados bench stress tool
 =======================
 
 This is a rados bench stress tool for multiple clients and multiple threads 
-osd writing test to understand how to stress crimson osd. User can set the 
+osd writing test to understand how to stress crimson osd. Users can set the 
 number of clients and threads, which processors will bench threads execute 
 on(to avoid test threads influencing the result), test time, block size, etc.
-, to run the test case. Then the tool will integrate IOPS, Bandwidth, Latency 
-seastar reactor utilization or other targets to help user analyze crimson 
-osd performance.
+Meanwhile, users can set the basic test cases and the clients ratio of each 
+type of test case threads running in the same time, for example, 75% of the 
+write clients and 25% of the read clients.
+Then the tool will integrate IOPS, Bandwidth, Latency, seastar reactor 
+utilization, cpu cycle, and other targets to help user analyze 
+crimson osd performance.
 
-To use this tool, prepare the python3 environment, osd cluster and a test 
-pool. Put this tool in the ceph build directory. Since we will decide which 
-processors the bench threads execute on, sudo is needed.
+To use this tool, prepare the python3 environment. You don't need to start a 
+ceph cluster because the tool will do that. Put this tool in the ceph build 
+directory. Since we will decide which processors the bench threads execute on
+, sudo is needed.
 
 Run ``./rados_bench_tools.py --help`` to get the detail parameter information.
 
@@ -96,18 +100,37 @@ Example:
 
 .. code-block:: console
     
-    sudo ./rados_bench_tools.py --thread-list 1 2 --client-list 2 4 6 --taskset=16-31 --reactor-utilization=True --time=300
+    sudo ./rados_bench_tools.py \ 
+        --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 300 \ 
+        --write 0.75 \
+        --rand-read 0.25 \ 
+        --reactor-utilization True \
+        --perf True \
+        --scenario crimson-seastore
 
-The tool will run test case with the combination of 1 or 2 clients and 2, 4 or
-6 threads. Meanwhile, it will collect the reactor utilization, which is the 
-utilization of the cpu from seastar. The test thread will run in processors 
-16~31. In consideration of SeaStore starts in processor 0 by default, please 
-avoid setting --taskset to 0.
+The tool will run rados bench write and read test case with the combination 
+of 4 or 8 clients and 2, 4 or 6 threads. In Every test case, there will be 75% of
+write clients in all clients and the read clients will be 25%. Also, you can set
+read clients ratio to 0 to do the write only tests, vive versa.
+Meanwhile, it will collect the reactor cpu utilization, and the perf information. 
+The test thread will run in processors 16~31. In consideration of SeaStore starts 
+in processor 0 by default, please avoid setting --taskset to 0.
+The tests will run in crimson seastore.
 
 Example of result:
 
 .. code-block:: console
-
-   bandwidth                iops             latency reactor_utilization          thread_num          client_num
-   0.5301985               135.5           0.0073715   2.370669279999993                   1                   2
-   0.4831115               123.5          0.01609335  27.892383860000024                   2                   2
+    
+    write_bandwidth     3.10453               3.541689             3.5182199999999995   2.51662
+    write_iops          793.0                 903.0                900.0                642.0
+    write_latency       0.0037714466666666662 0.006630723333333334 0.006629473333333333 0.0186881
+    read_bandwidth      2.84725               2.68286              3.05852              1.471667
+    read_iops           728.0                 686.0                782.0                376.0
+    read_latency        0.00136141            0.002904295000000000 0.00254781           0.01060875
+    reactor_utilization 51.76855957999997     63.44185818000002    62.81135658000002    57.04136848000001
+    context-switches    21343                 20060                20770                18164
+    cpu_cycle           4617829192            4504157482           4539431704           4732829464
+    instructions        7146125116            7342745221           7228392400           7705910181
+    branches            1305636128            1332912452           1316155264           1385922457
+    thread_num          1                     1                    2                    2
+    client_num          4                     8                    4                    8 
