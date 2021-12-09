@@ -157,6 +157,8 @@ def parse_metric_file(metric_file):
     # time
     data["reactor_busytime_sec"] = 0
     data["reactor_stealtime_sec"] = 0
+    # srcs -> count
+    data["trans_srcs_invalidated"] = defaultdict(lambda: 0)
     # scheduler-group -> time
     data["scheduler_runtime_sec"] = defaultdict(lambda: 0)
     data["scheduler_waittime_sec"] = defaultdict(lambda: 0)
@@ -267,6 +269,10 @@ def parse_metric_file(metric_file):
             data["reactor_busytime_sec"] += (value/1000)
         elif name == "reactor_cpu_steal_time_ms":
             data["reactor_stealtime_sec"] += (value/1000)
+
+        # srcs -> count
+        elif name == "cache_trans_srcs_invalidated":
+            data["trans_srcs_invalidated"][labels["srcs"]] += value
 
         # scheduler-group -> time
         elif name == "scheduler_runtime_ms":
@@ -430,6 +436,8 @@ def prepare_raw_dataset():
     # time
     data["reactor_busytime_sec"] = []
     data["reactor_stealtime_sec"] = []
+    # srcs -> count
+    data["trans_srcs_invalidated"] = defaultdict(lambda: [])
     # scheduler-group -> time
     data["scheduler_runtime_sec"] = defaultdict(lambda: [])
     data["scheduler_waittime_sec"] = defaultdict(lambda: [])
@@ -512,13 +520,14 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     dataset["memory_total_KB"].append(metrics_end["memory_total_KB"])
     dataset["memory_live_objs"].append(metrics_end["memory_live_objs"])
 
-    # src -> count
     def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
         for name, value_end in metrics_end[metric_name].items():
             value_start = metrics_start[metric_name][name]
             value = value_end - value_start
             assert(value >= 0)
             dataset[metric_name][name].append(value)
+    # srcs -> count
+    get_diff_l1("trans_srcs_invalidated",  dataset, metrics_start, metrics_end)
     # src -> count
     get_diff_l1("cache_access",            dataset, metrics_start, metrics_end)
     get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
@@ -931,6 +940,13 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         "io_depth": journal_io_depth,
         "record_batching": journal_record_batching,
     }
+
+    # 14. trans_srcs_invalidated
+    data_name = "trans_srcs_invalidated_ratio"
+    committed_trans_all = merge_lists(dataset["committed_trans"].values())
+    non_empty_trans_srcs_invalidated = filter_out_empty_l2(dataset["trans_srcs_invalidated"])
+    washed_dataset[data_name] = get_ratio_l2_by_l1(non_empty_trans_srcs_invalidated,
+                                                   committed_trans_all)
 
     if len(times_sec) == 0:
         # indexes
