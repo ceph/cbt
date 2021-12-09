@@ -78,10 +78,11 @@ Finally, run ``seastore_metrics_analyze.py`` to generate plots in png format.
 Rados bench stress tool
 =======================
 
-This is a rados bench stress tool for multiple clients and multiple threads 
+This is a crimson stress tool for multiple clients and multiple threads 
 osd writing test to understand how to stress crimson osd. Users can set the 
-number of clients and threads, which processors will bench threads execute 
-on(to avoid test threads influencing the result), test time, block size, etc.
+number of clients and threads, which kind of test to run (eg. rados bench or 
+fio), which processors will bench threads execute on(to avoid test threads 
+influencing the result), test time, block size, etc.
 Meanwhile, users can set the basic test cases and the clients ratio of each 
 type of test case threads running in the same time, for example, 75% of the 
 write clients and 25% of the read clients.
