@@ -75,13 +75,14 @@ metrics.
 
 Finally, run ``seastore_metrics_analyze.py`` to generate plots in png format.
 
-Rados bench stress tool
+Crimson stress tool
 =======================
 
-This is a rados bench stress tool for multiple clients and multiple threads 
+This is a crimson stress tool for multiple clients and multiple threads 
 osd writing test to understand how to stress crimson osd. Users can set the 
-number of clients and threads, which processors will bench threads execute 
-on(to avoid test threads influencing the result), test time, block size, etc.
+number of clients and threads, which kind of test to run (eg. rados bench or 
+fio), which processors will bench threads execute on(to avoid test threads 
+influencing the result), test time, block size, etc.
 Meanwhile, users can set the basic test cases and the clients ratio of each 
 type of test case threads running in the same time, for example, 75% of the 
 write clients and 25% of the read clients.
@@ -94,13 +95,13 @@ ceph cluster because the tool will do that. Put this tool in the ceph build
 directory. Since we will decide which processors the bench threads execute on
 , sudo is needed.
 
-Run ``./rados_bench_tools.py --help`` to get the detail parameter information.
+Run ``./crimson_stress_tool.py --help`` to get the detail parameter information.
 
 Example:
 
 .. code-block:: console
     
-    sudo ./rados_bench_tools.py \ 
+    sudo ./crimson_stress_tool.py \ 
         --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 300 \ 
         --write 0.75 \
         --rand-read 0.25 \ 
