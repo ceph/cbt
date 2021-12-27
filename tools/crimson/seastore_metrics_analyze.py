@@ -197,6 +197,100 @@ def parse_metric_file(metric_file):
     # src-> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
+    expected_data = data.keys()
+    found_data = set()
+    def set_value(name, value, labels=[], data=data, found_data=found_data):
+        found_data.add(name)
+        setter = data
+        _labels=labels[:]
+        _labels.insert(0, name)
+        while len(_labels) > 1:
+            setter = setter[_labels[0]]
+            _labels.pop(0)
+        setter[_labels[0]] += value
+
+    found_metrics = set()
+    expected_metrics = {
+        # 4KB
+        "segment_manager_data_read_bytes",
+        "segment_manager_data_write_bytes",
+        "segment_manager_metadata_write_bytes",
+        "cache_cached_extent_bytes",
+        "cache_dirty_extent_bytes",
+        "reactor_aio_bytes_read",
+        "reactor_aio_bytes_write",
+        "memory_allocated_memory",
+        "memory_free_memory",
+        "memory_total_memory",
+        "journal_record_group_padding_bytes",
+        "journal_record_group_metadata_bytes",
+        "journal_record_group_data_bytes",
+        # count
+        "segment_manager_data_read_num",
+        "segment_manager_data_write_num",
+        "segment_manager_metadata_write_num",
+        "reactor_aio_reads",
+        "reactor_aio_writes",
+        "reactor_polls",
+        "reactor_tasks_pending",
+        "reactor_tasks_processed",
+        "memory_free_operations",
+        "memory_malloc_operations",
+        "memory_reclaims_operations",
+        "memory_malloc_live_objects",
+        "journal_record_num",
+        "journal_record_batch_num",
+        "journal_io_num",
+        "journal_io_depth_num",
+        # ratio
+        "reactor_utilization",
+        # time
+        "reactor_cpu_busy_ms",
+        "reactor_cpu_steal_time_ms",
+        # srcs -> count
+        "cache_trans_srcs_invalidated",
+        # scheduler-group -> time
+        "scheduler_runtime_ms",
+        "scheduler_waittime_ms",
+        "scheduler_starvetime_ms",
+        # scheduler-group -> count
+        "scheduler_queue_length",
+        "scheduler_tasks_processed",
+        # tree-type -> depth
+        "cache_tree_depth",
+        # src -> count
+        "cache_cache_access",
+        "cache_cache_hit",
+        "cache_trans_created",
+        "cache_trans_committed",
+        "cache_trans_read_successful",
+        "cache_invalidated_ool_records",
+        "cache_committed_ool_records",
+        # src -> blocks
+        "cache_invalidated_ool_record_bytes",
+        "cache_committed_ool_record_padding_bytes",
+        "cache_committed_ool_record_metadata_bytes",
+        "cache_committed_ool_record_data_bytes",
+        "cache_committed_inline_record_metadata_bytes",
+        # src -> tree-type -> count
+        "cache_tree_erases_committed",
+        "cache_tree_erases_invalidated",
+        "cache_tree_inserts_committed",
+        "cache_tree_inserts_invalidated",
+        # src -> extent-type -> count
+        "cache_trans_invalidated",
+        # src -> effort-type -> blocks
+        "cache_invalidated_extent_bytes",
+        "cache_invalidated_delta_bytes",
+        # src -> effort-type -> blocks
+        # src -> extent-type -> effort-type -> blocks
+        "cache_committed_extent_bytes",
+        "cache_committed_delta_bytes",
+        "cache_successful_read_extent_bytes",
+        # others
+        "cache_committed_extents"
+    }
+
     illegal_metrics = set()
     ignored_metrics = set()
     json_items = _load_json(metric_file)
@@ -208,168 +302,168 @@ def parse_metric_file(metric_file):
 
         # 4KB
         if   name == "segment_manager_data_read_bytes":
-            data["segment_read_4KB"] += (value/4096)
+            set_value("segment_read_4KB", value/4096)
         elif name == "segment_manager_data_write_bytes":
-            data["segment_write_4KB"] += (value/4096)
+            set_value("segment_write_4KB", value/4096)
         elif name == "segment_manager_metadata_write_bytes":
-            data["segment_write_meta_4KB"] += (value/4096)
+            set_value("segment_write_meta_4KB", value/4096)
         elif name == "cache_cached_extent_bytes":
-            data["cached_4KB"] += (value/4096)
+            set_value("cached_4KB", value/4096)
         elif name == "cache_dirty_extent_bytes":
-            data["dirty_4KB"] += (value/4096)
+            set_value("dirty_4KB", value/4096)
         elif name == "reactor_aio_bytes_read":
-            data["reactor_aio_read_4KB"] += (value/4096)
+            set_value("reactor_aio_read_4KB", value/4096)
         elif name == "reactor_aio_bytes_write":
-            data["reactor_aio_write_4KB"] += (value/4096)
+            set_value("reactor_aio_write_4KB", value/4096)
         elif name == "memory_allocated_memory":
-            data["memory_allocate_KB"] += (value/1024)
+            set_value("memory_allocate_KB", value/1024)
         elif name == "memory_free_memory":
-            data["memory_free_KB"] += (value/1024)
+            set_value("memory_free_KB", value/1024)
         elif name == "memory_total_memory":
-            data["memory_total_KB"] += (value/1024)
+            set_value("memory_total_KB", value/1024)
         elif name == "journal_record_group_padding_bytes":
-            data["journal_padding_4KB"] += (value/4096)
+            set_value("journal_padding_4KB", value/4096)
         elif name == "journal_record_group_metadata_bytes":
-            data["journal_metadata_4KB"] += (value/4096)
+            set_value("journal_metadata_4KB", value/4096)
         elif name == "journal_record_group_data_bytes":
-            data["journal_data_4KB"] += (value/4096)
+            set_value("journal_data_4KB", value/4096)
 
         # count
         elif name == "segment_manager_data_read_num":
-            data["segment_reads"] += value
+            set_value("segment_reads", value)
         elif name == "segment_manager_data_write_num":
-            data["segment_writes"] += value
+            set_value("segment_writes", value)
         elif name == "segment_manager_metadata_write_num":
-            data["segment_meta_writes"] += value
+            set_value("segment_meta_writes", value)
         elif name == "reactor_aio_reads":
-            data["reactor_aio_reads"] += value
+            set_value("reactor_aio_reads", value)
         elif name == "reactor_aio_writes":
-            data["reactor_aio_writes"] += value
+            set_value("reactor_aio_writes", value)
         elif name == "reactor_polls":
-            data["reactor_polls_M"] += (value/1000000)
+            set_value("reactor_polls_M", value/1000000)
         elif name == "reactor_tasks_pending":
-            data["reactor_tasks_pending"] += value
+            set_value("reactor_tasks_pending", value)
         elif name == "reactor_tasks_processed":
-            data["reactor_tasks_processed_M"] += (value/1000000)
+            set_value("reactor_tasks_processed_M", value/1000000)
         elif name == "memory_free_operations":
-            data["memory_frees"] += value
+            set_value("memory_frees", value)
         elif name == "memory_malloc_operations":
-            data["memory_mallocs"] += value
+            set_value("memory_mallocs", value)
         elif name == "memory_reclaims_operations":
-            data["memory_reclaims"] += value
+            set_value("memory_reclaims", value)
         elif name == "memory_malloc_live_objects":
-            data["memory_live_objs"] += value
+            set_value("memory_live_objs", value)
         elif name == "journal_record_num":
-            data["journal_record_num"] += value
+            set_value("journal_record_num", value)
         elif name == "journal_record_batch_num":
-            data["journal_record_batch_num"] += value
+            set_value("journal_record_batch_num", value)
         elif name == "journal_io_num":
-            data["journal_io_num"] += value
+            set_value("journal_io_num", value)
         elif name == "journal_io_depth_num":
-            data["journal_io_depth_num"] += value
+            set_value("journal_io_depth_num", value)
 
         # ratio
         elif name == "reactor_utilization":
-            data["reactor_util"] += (value/100)
+            set_value("reactor_util", value/100)
 
         # time
         elif name == "reactor_cpu_busy_ms":
-            data["reactor_busytime_sec"] += (value/1000)
+            set_value("reactor_busytime_sec", value/1000)
         elif name == "reactor_cpu_steal_time_ms":
-            data["reactor_stealtime_sec"] += (value/1000)
+            set_value("reactor_stealtime_sec", value/1000)
 
         # srcs -> count
         elif name == "cache_trans_srcs_invalidated":
-            data["trans_srcs_invalidated"][labels["srcs"]] += value
+            set_value("trans_srcs_invalidated", value, [labels["srcs"]])
 
         # scheduler-group -> time
         elif name == "scheduler_runtime_ms":
-            data["scheduler_runtime_sec"][labels["group"]] += (value/1000)
+            set_value("scheduler_runtime_sec", value/1000, [labels["group"]])
         elif name == "scheduler_waittime_ms":
-            data["scheduler_waittime_sec"][labels["group"]] += (value/1000)
+            set_value("scheduler_waittime_sec", value/1000, [labels["group"]])
         elif name == "scheduler_starvetime_ms":
-            data["scheduler_starvetime_sec"][labels["group"]] += (value/1000)
+            set_value("scheduler_starvetime_sec", value/1000, [labels["group"]])
 
         # scheduler-group -> count
         elif name == "scheduler_queue_length":
-            data["scheduler_queue_length"][labels["group"]] += value
+            set_value("scheduler_queue_length", value, [labels["group"]])
         elif name == "scheduler_tasks_processed":
-            data["scheduler_tasks_processed_M"][labels["group"]] += (value/1000000)
+            set_value("scheduler_tasks_processed_M", value/1000000, [labels["group"]])
 
         # tree-type -> depth
         elif name == "cache_tree_depth":
-            data["tree_depth"][labels["tree"]] += value
+            set_value("tree_depth", value, [labels["tree"]])
 
         # src -> count
         elif name == "cache_cache_access":
-            data["cache_access"][labels["src"]] += value
+            set_value("cache_access", value, [labels["src"]])
         elif name == "cache_cache_hit":
-            data["cache_hit"][labels["src"]] += value
+            set_value("cache_hit", value, [labels["src"]])
         elif name == "cache_trans_created":
-            data["created_trans"][labels["src"]] += value
+            set_value("created_trans", value, [labels["src"]])
         elif name == "cache_trans_committed":
             assert(labels["src"] != "READ")
-            data["committed_trans"][labels["src"]] += value
+            set_value("committed_trans", value, [labels["src"]])
         elif name == "cache_trans_read_successful":
-            data["committed_trans"]["READ"] += value
+            set_value("committed_trans", value, ["READ"])
         elif name == "cache_invalidated_ool_records":
             assert(labels["src"] != "READ")
-            data["invalidated_ool_records"][labels["src"]] += value
+            set_value("invalidated_ool_records", value, [labels["src"]])
         elif name == "cache_committed_ool_records":
             assert(labels["src"] != "READ")
-            data["committed_ool_records"][labels["src"]] += value
+            set_value("committed_ool_records", value, [labels["src"]])
 
         # src -> blocks
         elif name == "cache_invalidated_ool_record_bytes":
             assert(labels["src"] != "READ")
-            data["invalidated_ool_record_4KB"][labels["src"]] += (value/4096)
+            set_value("invalidated_ool_record_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_padding_bytes":
             assert(labels["src"] != "READ")
-            data["committed_ool_record_padding_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_ool_record_padding_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_metadata_bytes":
             assert(labels["src"] != "READ")
-            data["committed_ool_record_metadata_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_ool_record_metadata_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_data_bytes":
             assert(labels["src"] != "READ")
-            data["committed_ool_record_data_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_ool_record_data_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_inline_record_metadata_bytes":
             assert(labels["src"] != "READ")
-            data["committed_inline_record_metadata_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_inline_record_metadata_4KB", value/4096, [labels["src"]])
 
         # src -> tree-type -> count
         elif name == "cache_tree_erases_committed":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_erases_committed"][labels["src"]][labels["tree"]] += value
+            set_value("tree_erases_committed", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_erases_invalidated":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_erases_invalidated"][labels["src"]][labels["tree"]] += value
+            set_value("tree_erases_invalidated", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_inserts_committed":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_inserts_committed"][labels["src"]][labels["tree"]] += value
+            set_value("tree_inserts_committed", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_inserts_invalidated":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_inserts_invalidated"][labels["src"]][labels["tree"]] += value
+            set_value("tree_inserts_invalidated", value, [labels["src"], labels["tree"]])
 
         # src -> extent-type -> count
         elif name == "cache_trans_invalidated":
-            data["invalidated_trans"][labels["src"]][labels["ext"]] += value
+            set_value("invalidated_trans", value, [labels["src"], labels["ext"]])
 
         # src -> effort-type -> blocks
         elif name == "cache_invalidated_extent_bytes":
             if labels["src"] == "READ":
                 assert(labels["effort"] == "READ")
-            data["invalidated_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
+            set_value("invalidated_efforts_4KB", value/4096, [labels["src"], labels["effort"]])
         elif name == "cache_invalidated_delta_bytes":
             assert(labels["src"] != "READ")
-            data["invalidated_efforts_4KB"][labels["src"]]["MUTATE_DELTA"] += (value/4096)
+            set_value("invalidated_efforts_4KB", value/4096, [labels["src"], "MUTATE_DELTA"])
 
         # src -> effort-type -> blocks
         # src -> extent-type -> effort-type -> blocks
@@ -379,20 +473,26 @@ def parse_metric_file(metric_file):
             if (effort_name == "FRESH_INVALID" or
                 effort_name == "FRESH_INLINE" or
                 effort_name == "FRESH_OOL"):
-                data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]][effort_name] += (value/4096)
+                set_value("committed_disk_efforts_4KB", value/4096,
+                          [labels["src"], labels["ext"], effort_name])
                 # match cache_invalidated_extent_bytes FRESH, FRESH_OOL_WRITTEN
-                data["committed_efforts_4KB"][labels["src"]]["FRESH"] += (value/4096)
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], "FRESH"])
                 if effort_name == "FRESH_OOL":
-                    data["committed_efforts_4KB"][labels["src"]]["FRESH_OOL_WRITTEN"] += (value/4096)
+                    set_value("committed_efforts_4KB", value/4096,
+                              [labels["src"], "FRESH_OOL_WRITTEN"])
             else:
-                data["committed_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], labels["effort"]])
         elif name == "cache_committed_delta_bytes":
             assert(labels["src"] != "READ")
             effort_name = "MUTATE_DELTA"
-            data["committed_efforts_4KB"][labels["src"]][effort_name] += (value/4096)
-            data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]][effort_name] += (value/4096)
+            set_value("committed_efforts_4KB", value/4096,
+                      [labels["src"], effort_name])
+            set_value("committed_disk_efforts_4KB", value/4096,
+                      [labels["src"], labels["ext"], effort_name])
         elif name == "cache_successful_read_extent_bytes":
-            data["committed_efforts_4KB"]["READ"]["READ"] += (value/4096)
+            set_value("committed_efforts_4KB", value/4096, ["READ", "READ"])
 
         # others
         elif name == "cache_committed_extents":
@@ -400,9 +500,23 @@ def parse_metric_file(metric_file):
                  labels["effort"] == "FRESH_OOL") and
                 labels["ext"] == "OBJECT_DATA_BLOCK" and
                 labels["src"] == "MUTATE"):
-                data["object_data_writes"] += value
+                set_value("object_data_writes", value)
         else:
             ignored_metrics.add(name)
+        if name not in ignored_metrics:
+            found_metrics.add(name)
+
+    assert(found_metrics.issubset(expected_metrics))
+    missing_metrics = expected_metrics - found_metrics
+    assert(found_data.issubset(expected_data))
+    missing_data = expected_data - found_data
+    if missing_metrics or missing_data:
+        print()
+        print("error, missing metrics:")
+        print(missing_metrics)
+        print("error, missing data:")
+        print(missing_data)
+        assert(False)
 
     return data, illegal_metrics, ignored_metrics
 
