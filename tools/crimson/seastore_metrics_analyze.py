@@ -702,7 +702,7 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # src -> extent-type -> effort-type -> blocks
     get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
-def wash_dataset(dataset, writes_4KB, times_sec):
+def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     def merge_lists(lists):
         assert(len(lists))
         length = 0
@@ -929,7 +929,10 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     fresh_invalid_4KB = {}
     mutate_delta_4KB = {}
     for src, committed_disk_efforts in dataset["committed_disk_efforts_4KB"].items():
-        data_name = "write_amplification_by_extent---" + src
+        if absolute:
+            data_name = "write_4KB_by_extent---" + src
+        else:
+            data_name = "write_amplification_by_extent---" + src
 
         inplace_merge_l2_from_l3("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", committed_disk_efforts)
         inplace_merge_l2_from_l3("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     committed_disk_efforts)
@@ -943,7 +946,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         fresh_inline = []
         fresh_invalid = []
         mutate_delta = []
-        total_committed_disk_efforts = {}
+        output = {}
         for ext_name, items_by_effort in non_empty_committed_disk_efforts.items():
             assert(len(items_by_effort) == 4)
 
@@ -955,15 +958,18 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             total_disk_writes = merge_lists([items_by_effort["FRESH_INLINE"],
                                              items_by_effort["FRESH_OOL"],
                                              items_by_effort["MUTATE_DELTA"]])
-            total_committed_disk_efforts[ext_name] = total_disk_writes
+            output[ext_name] = total_disk_writes
 
         commit_srcs.append(src)
         fresh_ool_4KB[src] = merge_lists(fresh_ool)
         fresh_inline_4KB[src] = merge_lists(fresh_inline)
         fresh_invalid_4KB[src] = merge_lists(fresh_invalid)
         mutate_delta_4KB[src] = merge_lists(mutate_delta)
-        data = get_ratio_l2_by_l1(total_committed_disk_efforts, writes_4KB)
-        washed_dataset[data_name] = data
+        if absolute:
+            output["writes_4KB"] = writes_4KB
+        else:
+            output = get_ratio_l2_by_l1(output, writes_4KB)
+        washed_dataset[data_name] = output
 
     # 9.x write_amplification_detail
     valid_data_4K = {}
@@ -971,7 +977,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     valid_ool_padding_4K = {}
     invalid_write_4K = {}
     for src in commit_srcs:
-        data_name = "write_amplification_detail---" + src
+        if absolute:
+            data_name = "write_4KB_detail---" + src
+        else:
+            data_name = "write_amplification_detail---" + src
+
         invalid_ool = dataset["invalidated_ool_record_4KB"][src]
         valid_ool_data = dataset["committed_ool_record_data_4KB"][src]
         assert(fresh_ool_4KB[src] == valid_ool_data)
@@ -982,7 +992,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         inline_retired_data = fresh_invalid_4KB[src]
         inline_delta_data = mutate_delta_4KB[src]
         inline_metadata = dataset["committed_inline_record_metadata_4KB"][src]
-        output_4KB = {
+        output = {
             "INVALID_OOL":            invalid_ool,
             "VALID_OOL_DATA":         valid_ool_data,
             "VALID_OOL_METADATA":     valid_ool_metadata,
@@ -992,8 +1002,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             "INLINE_DELTA_DATA":      inline_delta_data,
             "INLINE_METADATA":        inline_metadata,
         }
-        output_ratio = get_ratio_l2_by_l1(output_4KB, writes_4KB)
-        washed_dataset[data_name] = output_ratio
+        if absolute:
+            output["writes_4KB"] = writes_4KB
+        else:
+            output = get_ratio_l2_by_l1(output, writes_4KB)
+        washed_dataset[data_name] = output
 
         valid_data = merge_lists([valid_ool_data,
                                   inline_fresh_data,
@@ -1008,7 +1021,10 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         invalid_write_4K[src] = invalid_write
 
     # 10. write_amplification_by_src
-    data_name = "write_amplification_by_src"
+    if absolute:
+        data_name = "write_4KB_by_src"
+    else:
+        data_name = "write_amplification_by_src"
     data_10 = {}
     mutate_trans_data_write = []
     for src in commit_srcs:
@@ -1023,15 +1039,21 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         if src == "MUTATE":
             mutate_trans_data_write = valid_data_4K[src]
     if commit_srcs:
-        data_10_ratio = get_ratio_l2_by_l1(data_10, writes_4KB)
-        washed_dataset[data_name] = data_10_ratio
+        if absolute:
+            data_10["writes_4KB"] = writes_4KB
+        else:
+            data_10 = get_ratio_l2_by_l1(data_10, writes_4KB)
+        washed_dataset[data_name] = data_10
 
     # 11. write_amplification_overall
     segmented_read = dataset["segment_read_4KB"]
     segmented_write = merge_lists([dataset["segment_write_4KB"],
                                    dataset["segment_write_meta_4KB"]])
     if commit_srcs:
-        data_name = "write_amplification_overall"
+        if absolute:
+            data_name = "write_4KB_overall"
+        else:
+            data_name = "write_amplification_overall"
 
         account1 = merge_lists(dataset["invalidated_ool_record_4KB"].values())
         account2 = merge_lists(dataset["committed_ool_record_padding_4KB"].values())
@@ -1078,8 +1100,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             "AW_ELSE":            aw_else,
             "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
         }
-        data_11_ratio = get_ratio_l2_by_l1(data_11, writes_4KB)
-        washed_dataset[data_name] = data_11_ratio
+        if absolute:
+            data_11["writes_4KB"] = writes_4KB
+        else:
+            data_11 = get_ratio_l2_by_l1(data_11, writes_4KB)
+        washed_dataset[data_name] = data_11
 
     # 12. record_fullness
     data_name = "record_fullness"
@@ -1309,6 +1334,9 @@ if __name__ == "__main__":
     parser.add_argument(
             "-d", "--directory", type=str,
             help="result directory to evaluate", default="results")
+    parser.add_argument(
+            "--absolute", action='store_true',
+            help="no write amplification")
     args = parser.parse_args()
 
     print("loading dir %s ..." % (args.directory))
@@ -1360,8 +1388,9 @@ if __name__ == "__main__":
     print("parse results done")
     print()
 
-    print("wash results ...")
-    dataset, indexes = wash_dataset(raw_dataset, writes_4KB, times)
+    print("wash results (absolute=%s) ..." % (args.absolute))
+    dataset, indexes = wash_dataset(
+        raw_dataset, writes_4KB, times, args.absolute)
     print("wash results done")
     print()
 
