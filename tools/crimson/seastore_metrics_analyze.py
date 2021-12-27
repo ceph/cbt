@@ -1022,62 +1022,64 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         data_10[name] = valid_ool_padding_4K[src]
         if src == "MUTATE":
             mutate_trans_data_write = valid_data_4K[src]
-    data_10_ratio = get_ratio_l2_by_l1(data_10, writes_4KB)
-    washed_dataset[data_name] = data_10_ratio
+    if commit_srcs:
+        data_10_ratio = get_ratio_l2_by_l1(data_10, writes_4KB)
+        washed_dataset[data_name] = data_10_ratio
 
     # 11. write_amplification_overall
-    data_name = "write_amplification_overall"
     segmented_read = dataset["segment_read_4KB"]
     segmented_write = merge_lists([dataset["segment_write_4KB"],
                                    dataset["segment_write_meta_4KB"]])
+    if commit_srcs:
+        data_name = "write_amplification_overall"
 
-    account1 = merge_lists(dataset["invalidated_ool_record_4KB"].values())
-    account2 = merge_lists(dataset["committed_ool_record_padding_4KB"].values())
-    account3 = merge_lists(dataset["committed_ool_record_metadata_4KB"].values())
-    account4 = merge_lists(dataset["committed_ool_record_data_4KB"].values())
-    accounted_write = merge_lists([dataset["journal_padding_4KB"],
-                                   dataset["journal_metadata_4KB"],
-                                   dataset["journal_data_4KB"],
-                                   account1,
-                                   account2,
-                                   account3,
-                                   account4])
+        account1 = merge_lists(dataset["invalidated_ool_record_4KB"].values())
+        account2 = merge_lists(dataset["committed_ool_record_padding_4KB"].values())
+        account3 = merge_lists(dataset["committed_ool_record_metadata_4KB"].values())
+        account4 = merge_lists(dataset["committed_ool_record_data_4KB"].values())
+        accounted_write = merge_lists([dataset["journal_padding_4KB"],
+                                       dataset["journal_metadata_4KB"],
+                                       dataset["journal_data_4KB"],
+                                       account1,
+                                       account2,
+                                       account3,
+                                       account4])
 
-    aw_valid_data = merge_lists(valid_data_4K.values())
-    aw_valid_metadata = merge_lists(valid_metadata_4K.values())
-    aw_invalid = merge_lists(invalid_write_4K.values())
-    aw_padding = merge_lists(valid_ool_padding_4K.values())
-    aw_padding = merge_lists([aw_padding,
-                              dataset["journal_padding_4KB"]])
+        aw_valid_data = merge_lists(valid_data_4K.values())
+        aw_valid_metadata = merge_lists(valid_metadata_4K.values())
+        aw_invalid = merge_lists(invalid_write_4K.values())
+        aw_padding = merge_lists(valid_ool_padding_4K.values())
+        aw_padding = merge_lists([aw_padding,
+                                  dataset["journal_padding_4KB"]])
 
-    deltas_4KB = merge_lists(mutate_delta_4KB.values())
-    mds_4KB = merge_lists(dataset["committed_inline_record_metadata_4KB"].values())
-    aw_else = [md_all - md - delta
-               for md_all, md, delta
-               in zip(dataset["journal_metadata_4KB"],
-                      mds_4KB,
-                      deltas_4KB)]
+        deltas_4KB = merge_lists(mutate_delta_4KB.values())
+        mds_4KB = merge_lists(dataset["committed_inline_record_metadata_4KB"].values())
+        aw_else = [md_all - md - delta
+                   for md_all, md, delta
+                   in zip(dataset["journal_metadata_4KB"],
+                          mds_4KB,
+                          deltas_4KB)]
 
-    expected_accounted_write = merge_lists([aw_valid_data,
-                                            aw_valid_metadata,
-                                            aw_invalid,
-                                            aw_padding,
-                                            aw_else])
+        expected_accounted_write = merge_lists([aw_valid_data,
+                                                aw_valid_metadata,
+                                                aw_invalid,
+                                                aw_padding,
+                                                aw_else])
 
-    # assert(expected_accounted_write == accounted_write)
-    data_11 = {
-        "SEGMENTED_READ":     segmented_read,
-        "SEGMENTED_WRITE":    segmented_write,
-        "ACCOUNTED_WRITE":    accounted_write,
-        "AW_VALID_DATA":      aw_valid_data,
-        "AW_VALID_METADATA":  aw_valid_metadata,
-        "AW_INVALID":         aw_invalid,
-        "AW_PADDING":         aw_padding,
-        "AW_ELSE":            aw_else,
-        "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
-    }
-    data_11_ratio = get_ratio_l2_by_l1(data_11, writes_4KB)
-    washed_dataset[data_name] = data_11_ratio
+        # assert(expected_accounted_write == accounted_write)
+        data_11 = {
+            "SEGMENTED_READ":     segmented_read,
+            "SEGMENTED_WRITE":    segmented_write,
+            "ACCOUNTED_WRITE":    accounted_write,
+            "AW_VALID_DATA":      aw_valid_data,
+            "AW_VALID_METADATA":  aw_valid_metadata,
+            "AW_INVALID":         aw_invalid,
+            "AW_PADDING":         aw_padding,
+            "AW_ELSE":            aw_else,
+            "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
+        }
+        data_11_ratio = get_ratio_l2_by_l1(data_11, writes_4KB)
+        washed_dataset[data_name] = data_11_ratio
 
     # 12. record_fullness
     data_name = "record_fullness"
@@ -1121,8 +1123,10 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     data_name = "trans_srcs_invalidated_ratio"
     committed_trans_all = merge_lists(dataset["committed_trans"].values())
     non_empty_trans_srcs_invalidated = filter_out_empty_l2(dataset["trans_srcs_invalidated"])
-    washed_dataset[data_name] = get_ratio_l2_by_l1(non_empty_trans_srcs_invalidated,
-                                                   committed_trans_all)
+    if non_empty_trans_srcs_invalidated:
+        washed_dataset[data_name] = get_ratio_l2_by_l1(
+            non_empty_trans_srcs_invalidated,
+            committed_trans_all)
 
     if len(times_sec) == 0:
         # indexes
@@ -1175,16 +1179,25 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     def get_throughput_MB(rws_4KB, ts_sec):
         assert(len(rws_4KB) == len(ts_sec))
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
-    washed_dataset["throughput_MB"] = {
-        "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
-        "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
-        "device_read":        get_throughput_MB(segmented_read, times_sec),
-        "device_write":       get_throughput_MB(segmented_write, times_sec),
-        "accounted_write":    get_throughput_MB(accounted_write, times_sec),
-        "valid_extent_write": get_throughput_MB(aw_valid_data, times_sec),
-        "commit_trans_data_write": get_throughput_MB(mutate_trans_data_write, times_sec),
-        "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
-    }
+    if commit_srcs:
+        washed_dataset["throughput_MB"] = {
+            "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+            "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+            "device_read":        get_throughput_MB(segmented_read, times_sec),
+            "device_write":       get_throughput_MB(segmented_write, times_sec),
+            "accounted_write":    get_throughput_MB(accounted_write, times_sec),
+            "valid_extent_write": get_throughput_MB(aw_valid_data, times_sec),
+            "commit_trans_data_write": get_throughput_MB(mutate_trans_data_write, times_sec),
+            "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
+        }
+    else:
+        washed_dataset["throughput_MB"] = {
+            "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+            "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+            "device_read":        get_throughput_MB(segmented_read, times_sec),
+            "device_write":       get_throughput_MB(segmented_write, times_sec),
+            "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
+        }
 
     # 4.x IOPS_by_src, IOPS_overall
     def get_IOPS(rws, ts_sec):
