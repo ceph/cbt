@@ -1098,7 +1098,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         ool = merge_lists([invalidated_ool,
                            dataset["committed_ool_records"][src]])
         ool_records.append(ool)
-        data_IOPS_detail[name] = ool;
+        data_IOPS_detail[name] = ool
     washed_dataset["IOPS_by_src"] = get_IOPS_l2(data_IOPS_detail, times_sec)
 
     segmented_writes = merge_lists([dataset["segment_writes"],
@@ -1186,7 +1186,7 @@ if __name__ == "__main__":
 
     print("loading dir %s ..." % (args.directory))
     benches, metrics, times = load_dir(args.directory)
-    print("loaded %d rounds" % (len(benches)))
+    print("loaded %d metrics" % (len(metrics)))
     print()
 
     print("parse results ...")
@@ -1201,11 +1201,12 @@ if __name__ == "__main__":
 
     index = 0
     metric_file = metrics[index]
+    print(index, end=" ", flush=True)
     metrics_start, illegal, ignored = parse_metric_file(metric_file)
     illegal_metrics |= illegal
     ignored_metrics |= ignored
     while index < (len(metrics) - 1):
-        print(".", end="", flush=True)
+        print(index + 1, end=" ", flush=True)
         metric_file = metrics[index + 1]
 
         if bench_type != BenchT.METRICS:
@@ -1239,7 +1240,7 @@ if __name__ == "__main__":
 
     print("generate figures ...")
     for name, data in dataset.items():
-        print(".", end="", flush=True)
+        print("figure " + name + "...")
         ylim = None
         relplot_data(args.directory, bench_type, name, data, indexes, ylim)
     print()
