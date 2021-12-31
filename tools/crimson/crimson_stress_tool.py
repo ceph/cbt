@@ -118,6 +118,16 @@ class RadosSeqWriteThread(RadosRandWriteThread):
         return rados_bench_write
 
     @staticmethod
+    def pre_process(env):
+        warm_up_time = "30"
+        env_write_command = "sudo bin/rados bench -p " + env.pool \
+            + " " + warm_up_time + " write -t 10" \
+            + " -b " + env.args.block_size \
+            + " --no-cleanup"
+        os.system(env_write_command + " >/dev/null")
+        print('ceph osd warmed up.')
+
+    @staticmethod
     def post_process(env, test_case_result):
         ratio = env.testclient_threadclass_ratio_map[RadosSeqWriteThread]
         test_case_result["sw_iops"] *= \
@@ -253,6 +263,7 @@ class FioRBDRandWriteThread(Task):
     @staticmethod
     def pre_process(env):  
         image_name_prefix = "fio_test_rbd_"
+        warm_up_time = "30"
         # must be client_num here.
         for i in range(env.client_num):
             image_name = image_name_prefix + str(i)
@@ -263,6 +274,13 @@ class FioRBDRandWriteThread(Task):
             command += " 2>/dev/null"
             os.system(command)
             env.images.append(image_name)
+        print('all fio rbd images created.')
+        env_write_command = "sudo bin/rados bench -p " + env.pool \
+            + " " + warm_up_time + " write -t 10" \
+            + " -b " + env.args.block_size \
+            + " --no-cleanup"
+        os.system(env_write_command + " >/dev/null")
+        print('ceph osd warmed up.')
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -705,7 +723,6 @@ if __name__ == "__main__":
             help = 'path of all output result after integrating')
     parser.add_argument('--output-horizontal',
             action = 'store_true',
-            default = False,
             help = 'all results of one test case will be in one line')
     parser.add_argument('--scenario',
             type = str,
@@ -714,8 +731,7 @@ if __name__ == "__main__":
                     classic-memstore or classic-bluestore')
     parser.add_argument('--single-core',
             action = 'store_true',
-            default = False,
-            help = 'do not run osds in single core')
+            help = 'run osds in single core')
 
     # test case based thread param 
     parser.add_argument('--rand-write',
@@ -746,19 +762,15 @@ if __name__ == "__main__":
     # time point based thread param
     parser.add_argument('--reactor-utilization',
             action = 'store_true',
-            default = False,
             help = 'collect the reactor utilization')
     parser.add_argument('--perf',
             action = 'store_true',
-            default = False,
             help = 'collect perf information')
     parser.add_argument('--iostat',
             action = 'store_true',
-            default = False,
             help = 'collect iostat information')
     parser.add_argument('--freq',
             action = 'store_true',
-            default = False,
             help = 'collect cpu frequency information')
     args = parser.parse_args()
 
