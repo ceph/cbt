@@ -105,8 +105,8 @@ Example:
         --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 300 \ 
         --rand-write 0.75 \
         --rand-read 0.25 \ 
-        --reactor-utilization True \
-        --perf True \
+        --reactor-utilization \
+        --perf \
         --scenario crimson-seastore
 
 The tool will run rados bench write and read test case with the combination 
