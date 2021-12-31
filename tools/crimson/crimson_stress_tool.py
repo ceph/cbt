@@ -53,16 +53,16 @@ class Task(threading.Thread):
         pass
 
 
-class RadosWriteThread(Task):
+class RadosRandWriteThread(Task):
     def __init__(self, env):
         super().__init__(env)
         self.task_set = env.args.taskset
         self.block_size = env.args.block_size
         self.time = env.args.time
         self.pool = env.pool
-        self.iops_key = "write_iops"
-        self.latency_key = "write_latency"
-        self.bandwidth_key = "write_bandwidth"
+        self.iops_key = "rw_iops"
+        self.latency_key = "rw_latency"
+        self.bandwidth_key = "rw_bandwidth"
     
     def create_command(self):
         rados_bench_write = "sudo taskset -c " + self.task_set \
@@ -91,19 +91,41 @@ class RadosWriteThread(Task):
     
     @staticmethod
     def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosWriteThread]
-        test_case_result["write_iops"] *= \
+        ratio = env.testclient_threadclass_ratio_map[RadosRandWriteThread]
+        test_case_result["rw_iops"] *= \
                 int(test_case_result['client_num'] * ratio)
-        test_case_result["write_bandwidth"] *= \
+        test_case_result["rw_bandwidth"] *= \
                 int(test_case_result['client_num'] * ratio)
 
 
-class RadosRandReadThread(RadosWriteThread):
+class RadosSeqWriteThread(RadosRandWriteThread):
     def __init__(self, env):
         super().__init__(env)
-        self.iops_key = "read_iops"
-        self.latency_key = "read_latency"
-        self.bandwidth_key = "read_bandwidth"
+        self.iops_key = "sw_iops"
+        self.latency_key = "sw_latency"
+        self.bandwidth_key = "sw_bandwidth"
+    def create_command(self):
+        rados_bench_write = "sudo taskset -c " + self.task_set \
+            + " bin/rados bench -p " + self.pool + " " \
+            + self.time + " write -t " \
+            + str(self.thread_num) +  " " \
+            + "--no-cleanup"
+        return rados_bench_write
+    @staticmethod
+    def post_process(env, test_case_result):
+        ratio = env.testclient_threadclass_ratio_map[RadosSeqWriteThread]
+        test_case_result["sw_iops"] *= \
+                int(test_case_result['client_num'] * ratio)
+        test_case_result["sw_bandwidth"] *= \
+                int(test_case_result['client_num'] * ratio)
+
+
+class RadosRandReadThread(RadosRandWriteThread):
+    def __init__(self, env):
+        super().__init__(env)
+        self.iops_key = "rr_iops"
+        self.latency_key = "rr_latency"
+        self.bandwidth_key = "rr_bandwidth"
     
     def create_command(self):
         rados_bench_rand_read = "sudo taskset -c " + self.task_set \
@@ -125,11 +147,43 @@ class RadosRandReadThread(RadosWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         ratio = env.testclient_threadclass_ratio_map[RadosRandReadThread]
-        test_case_result["read_iops"] *= \
+        test_case_result["rr_iops"] *= \
                 int(test_case_result['client_num'] * ratio)
-        test_case_result["read_bandwidth"] *= \
+        test_case_result["rr_bandwidth"] *= \
                 int(test_case_result['client_num'] * ratio)
 
+
+class RadosSeqReadThread(RadosRandWriteThread):
+    def __init__(self, env):
+        super().__init__(env)
+        self.iops_key = "sr_iops"
+        self.latency_key = "sr_latency"
+        self.bandwidth_key = "sr_bandwidth"
+    
+    def create_command(self):
+        rados_bench_seq_read = "sudo taskset -c " + self.task_set \
+            + " bin/rados bench -p " + self.pool + " " \
+            + self.time + " seq -t " \
+            + str(self.thread_num) \
+            + " --no-cleanup"
+        return rados_bench_seq_read
+    
+    @staticmethod
+    def pre_process(env):
+        env_write_command = "sudo bin/rados bench -p " + env.pool + " " \
+            + " 60 write -t " \
+            + str(300) + " " \
+            + "--no-cleanup"
+        os.system(env_write_command + " >/dev/null")
+        print('rados seq read test environment OK')
+    
+    @staticmethod
+    def post_process(env, test_case_result):
+        ratio = env.testclient_threadclass_ratio_map[RadosSeqReadThread]
+        test_case_result["sr_iops"] *= \
+                int(test_case_result['client_num'] * ratio)
+        test_case_result["sr_bandwidth"] *= \
+                int(test_case_result['client_num'] * ratio)
 
 class FioRBDRandWriteThread(Task):
     def __init__(self, env):
@@ -219,7 +273,7 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
         self.lat = 'fio_rr_lat'
         self.bw = 'fio_rr_bw'
         self.iops = 'fio_rr_iops'
-    
+  
     @staticmethod
     def post_process(env, test_case_result):
         env.images = []
@@ -236,6 +290,7 @@ class ReactorUtilizationCollectorThread(Task):
         super().__init__(env)
         self.start_time = int(env.args.time)/2
         self.osd = "osd.0"
+        self.task_set = env.args.taskset
     
     def create_command(self):
         command = "sudo bin/ceph tell " \
@@ -469,19 +524,25 @@ class Environment():
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
-        if self.args.write:
-            self.testclient_threadclass_ratio_map[RadosWriteThread] = \
-                    self.args.write
+        if self.args.rand_write:
+            self.testclient_threadclass_ratio_map[RadosRandWriteThread] = \
+                    self.args.rand_write
         if self.args.rand_read:
             self.testclient_threadclass_ratio_map[RadosRandReadThread] = \
                     self.args.rand_read
+        if self.args.seq_write:
+            self.testclient_threadclass_ratio_map[RadosSeqWriteThread] = \
+                    self.args.seq_write
+        if self.args.seq_read:
+            self.testclient_threadclass_ratio_map[RadosSeqReadThread] = \
+                    self.args.seq_read
         if self.args.fio_rbd_rand_write:
             self.testclient_threadclass_ratio_map[FioRBDRandWriteThread] = \
                     self.args.fio_rbd_rand_write
         if self.args.fio_rbd_rand_read:
             self.testclient_threadclass_ratio_map[FioRBDRandReadThread] = \
                     self.args.fio_rbd_rand_read
-        
+
         if not self.testclient_threadclass_ratio_map:
             raise Exception("Please set at least one base test.")
         
@@ -644,16 +705,24 @@ if __name__ == "__main__":
             type = bool,
             default = True,
             help = 'run osds in single core')
-    
+
     # test case based thread param 
-    parser.add_argument('--write',
+    parser.add_argument('--rand-write',
             type = float,
             default = 0,
-            help = 'ratio of rados bench write clients')
+            help = 'ratio of rados bench rand write clients')
     parser.add_argument('--rand-read',
             type = float,
             default = 0,
             help = 'ratio of rados bench rand read clients')
+    parser.add_argument('--seq-write',
+            type = float,
+            default = 0,
+            help = 'ratio of rados bench seq write clients')
+    parser.add_argument('--seq-read',
+            type = float,
+            default = 0,
+            help = 'ratio of rados bench seq read clients')
     parser.add_argument('--fio-rbd-rand-write',
             type = float,
             default = 0,
