@@ -103,10 +103,10 @@ Example:
     
     sudo ./crimson_stress_tool.py \ 
         --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 300 \ 
-        --write 0.75 \
+        --rand-write 0.75 \
         --rand-read 0.25 \ 
-        --reactor-utilization True \
-        --perf True \
+        --reactor-utilization \
+        --perf \
         --scenario crimson-seastore
 
 The tool will run rados bench write and read test case with the combination 
@@ -122,12 +122,12 @@ Example of result:
 
 .. code-block:: console
     
-    write_bandwidth     3.10453               3.541689             3.5182199999999995   2.51662
-    write_iops          793.0                 903.0                900.0                642.0
-    write_latency       0.0037714466666666662 0.006630723333333334 0.006629473333333333 0.0186881
-    read_bandwidth      2.84725               2.68286              3.05852              1.471667
-    read_iops           728.0                 686.0                782.0                376.0
-    read_latency        0.00136141            0.002904295000000000 0.00254781           0.01060875
+    rw_bandwidth        3.10453               3.541689             3.5182199999999995   2.51662
+    rw_iops             793.0                 903.0                900.0                642.0
+    rw_latency          0.0037714466666666662 0.006630723333333334 0.006629473333333333 0.0186881
+    rr_bandwidth        2.84725               2.68286              3.05852              1.471667
+    rr_iops             728.0                 686.0                782.0                376.0
+    rr_latency          0.00136141            0.002904295000000000 0.00254781           0.01060875
     reactor_utilization 51.76855957999997     63.44185818000002    62.81135658000002    57.04136848000001
     context-switches    21343                 20060                20770                18164
     cpu_cycle           4617829192            4504157482           4539431704           4732829464
