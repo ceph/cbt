@@ -197,6 +197,100 @@ def parse_metric_file(metric_file):
     # src-> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
+    expected_data = data.keys()
+    found_data = set()
+    def set_value(name, value, labels=[], data=data, found_data=found_data):
+        found_data.add(name)
+        setter = data
+        _labels=labels[:]
+        _labels.insert(0, name)
+        while len(_labels) > 1:
+            setter = setter[_labels[0]]
+            _labels.pop(0)
+        setter[_labels[0]] += value
+
+    found_metrics = set()
+    expected_metrics = {
+        # 4KB
+        "segment_manager_data_read_bytes",
+        "segment_manager_data_write_bytes",
+        "segment_manager_metadata_write_bytes",
+        "cache_cached_extent_bytes",
+        "cache_dirty_extent_bytes",
+        "reactor_aio_bytes_read",
+        "reactor_aio_bytes_write",
+        "memory_allocated_memory",
+        "memory_free_memory",
+        "memory_total_memory",
+        "journal_record_group_padding_bytes",
+        "journal_record_group_metadata_bytes",
+        "journal_record_group_data_bytes",
+        # count
+        "segment_manager_data_read_num",
+        "segment_manager_data_write_num",
+        "segment_manager_metadata_write_num",
+        "reactor_aio_reads",
+        "reactor_aio_writes",
+        "reactor_polls",
+        "reactor_tasks_pending",
+        "reactor_tasks_processed",
+        "memory_free_operations",
+        "memory_malloc_operations",
+        "memory_reclaims_operations",
+        "memory_malloc_live_objects",
+        "journal_record_num",
+        "journal_record_batch_num",
+        "journal_io_num",
+        "journal_io_depth_num",
+        # ratio
+        "reactor_utilization",
+        # time
+        "reactor_cpu_busy_ms",
+        "reactor_cpu_steal_time_ms",
+        # srcs -> count
+        "cache_trans_srcs_invalidated",
+        # scheduler-group -> time
+        "scheduler_runtime_ms",
+        "scheduler_waittime_ms",
+        "scheduler_starvetime_ms",
+        # scheduler-group -> count
+        "scheduler_queue_length",
+        "scheduler_tasks_processed",
+        # tree-type -> depth
+        "cache_tree_depth",
+        # src -> count
+        "cache_cache_access",
+        "cache_cache_hit",
+        "cache_trans_created",
+        "cache_trans_committed",
+        "cache_trans_read_successful",
+        "cache_invalidated_ool_records",
+        "cache_committed_ool_records",
+        # src -> blocks
+        "cache_invalidated_ool_record_bytes",
+        "cache_committed_ool_record_padding_bytes",
+        "cache_committed_ool_record_metadata_bytes",
+        "cache_committed_ool_record_data_bytes",
+        "cache_committed_inline_record_metadata_bytes",
+        # src -> tree-type -> count
+        "cache_tree_erases_committed",
+        "cache_tree_erases_invalidated",
+        "cache_tree_inserts_committed",
+        "cache_tree_inserts_invalidated",
+        # src -> extent-type -> count
+        "cache_trans_invalidated",
+        # src -> effort-type -> blocks
+        "cache_invalidated_extent_bytes",
+        "cache_invalidated_delta_bytes",
+        # src -> effort-type -> blocks
+        # src -> extent-type -> effort-type -> blocks
+        "cache_committed_extent_bytes",
+        "cache_committed_delta_bytes",
+        "cache_successful_read_extent_bytes",
+        # others
+        "cache_committed_extents"
+    }
+
     illegal_metrics = set()
     ignored_metrics = set()
     json_items = _load_json(metric_file)
@@ -208,168 +302,168 @@ def parse_metric_file(metric_file):
 
         # 4KB
         if   name == "segment_manager_data_read_bytes":
-            data["segment_read_4KB"] += (value/4096)
+            set_value("segment_read_4KB", value/4096)
         elif name == "segment_manager_data_write_bytes":
-            data["segment_write_4KB"] += (value/4096)
+            set_value("segment_write_4KB", value/4096)
         elif name == "segment_manager_metadata_write_bytes":
-            data["segment_write_meta_4KB"] += (value/4096)
+            set_value("segment_write_meta_4KB", value/4096)
         elif name == "cache_cached_extent_bytes":
-            data["cached_4KB"] += (value/4096)
+            set_value("cached_4KB", value/4096)
         elif name == "cache_dirty_extent_bytes":
-            data["dirty_4KB"] += (value/4096)
+            set_value("dirty_4KB", value/4096)
         elif name == "reactor_aio_bytes_read":
-            data["reactor_aio_read_4KB"] += (value/4096)
+            set_value("reactor_aio_read_4KB", value/4096)
         elif name == "reactor_aio_bytes_write":
-            data["reactor_aio_write_4KB"] += (value/4096)
+            set_value("reactor_aio_write_4KB", value/4096)
         elif name == "memory_allocated_memory":
-            data["memory_allocate_KB"] += (value/1024)
+            set_value("memory_allocate_KB", value/1024)
         elif name == "memory_free_memory":
-            data["memory_free_KB"] += (value/1024)
+            set_value("memory_free_KB", value/1024)
         elif name == "memory_total_memory":
-            data["memory_total_KB"] += (value/1024)
+            set_value("memory_total_KB", value/1024)
         elif name == "journal_record_group_padding_bytes":
-            data["journal_padding_4KB"] += (value/4096)
+            set_value("journal_padding_4KB", value/4096)
         elif name == "journal_record_group_metadata_bytes":
-            data["journal_metadata_4KB"] += (value/4096)
+            set_value("journal_metadata_4KB", value/4096)
         elif name == "journal_record_group_data_bytes":
-            data["journal_data_4KB"] += (value/4096)
+            set_value("journal_data_4KB", value/4096)
 
         # count
         elif name == "segment_manager_data_read_num":
-            data["segment_reads"] += value
+            set_value("segment_reads", value)
         elif name == "segment_manager_data_write_num":
-            data["segment_writes"] += value
+            set_value("segment_writes", value)
         elif name == "segment_manager_metadata_write_num":
-            data["segment_meta_writes"] += value
+            set_value("segment_meta_writes", value)
         elif name == "reactor_aio_reads":
-            data["reactor_aio_reads"] += value
+            set_value("reactor_aio_reads", value)
         elif name == "reactor_aio_writes":
-            data["reactor_aio_writes"] += value
+            set_value("reactor_aio_writes", value)
         elif name == "reactor_polls":
-            data["reactor_polls_M"] += (value/1000000)
+            set_value("reactor_polls_M", value/1000000)
         elif name == "reactor_tasks_pending":
-            data["reactor_tasks_pending"] += value
+            set_value("reactor_tasks_pending", value)
         elif name == "reactor_tasks_processed":
-            data["reactor_tasks_processed_M"] += (value/1000000)
+            set_value("reactor_tasks_processed_M", value/1000000)
         elif name == "memory_free_operations":
-            data["memory_frees"] += value
+            set_value("memory_frees", value)
         elif name == "memory_malloc_operations":
-            data["memory_mallocs"] += value
+            set_value("memory_mallocs", value)
         elif name == "memory_reclaims_operations":
-            data["memory_reclaims"] += value
+            set_value("memory_reclaims", value)
         elif name == "memory_malloc_live_objects":
-            data["memory_live_objs"] += value
+            set_value("memory_live_objs", value)
         elif name == "journal_record_num":
-            data["journal_record_num"] += value
+            set_value("journal_record_num", value)
         elif name == "journal_record_batch_num":
-            data["journal_record_batch_num"] += value
+            set_value("journal_record_batch_num", value)
         elif name == "journal_io_num":
-            data["journal_io_num"] += value
+            set_value("journal_io_num", value)
         elif name == "journal_io_depth_num":
-            data["journal_io_depth_num"] += value
+            set_value("journal_io_depth_num", value)
 
         # ratio
         elif name == "reactor_utilization":
-            data["reactor_util"] += (value/100)
+            set_value("reactor_util", value/100)
 
         # time
         elif name == "reactor_cpu_busy_ms":
-            data["reactor_busytime_sec"] += (value/1000)
+            set_value("reactor_busytime_sec", value/1000)
         elif name == "reactor_cpu_steal_time_ms":
-            data["reactor_stealtime_sec"] += (value/1000)
+            set_value("reactor_stealtime_sec", value/1000)
 
         # srcs -> count
         elif name == "cache_trans_srcs_invalidated":
-            data["trans_srcs_invalidated"][labels["srcs"]] += value
+            set_value("trans_srcs_invalidated", value, [labels["srcs"]])
 
         # scheduler-group -> time
         elif name == "scheduler_runtime_ms":
-            data["scheduler_runtime_sec"][labels["group"]] += (value/1000)
+            set_value("scheduler_runtime_sec", value/1000, [labels["group"]])
         elif name == "scheduler_waittime_ms":
-            data["scheduler_waittime_sec"][labels["group"]] += (value/1000)
+            set_value("scheduler_waittime_sec", value/1000, [labels["group"]])
         elif name == "scheduler_starvetime_ms":
-            data["scheduler_starvetime_sec"][labels["group"]] += (value/1000)
+            set_value("scheduler_starvetime_sec", value/1000, [labels["group"]])
 
         # scheduler-group -> count
         elif name == "scheduler_queue_length":
-            data["scheduler_queue_length"][labels["group"]] += value
+            set_value("scheduler_queue_length", value, [labels["group"]])
         elif name == "scheduler_tasks_processed":
-            data["scheduler_tasks_processed_M"][labels["group"]] += (value/1000000)
+            set_value("scheduler_tasks_processed_M", value/1000000, [labels["group"]])
 
         # tree-type -> depth
         elif name == "cache_tree_depth":
-            data["tree_depth"][labels["tree"]] += value
+            set_value("tree_depth", value, [labels["tree"]])
 
         # src -> count
         elif name == "cache_cache_access":
-            data["cache_access"][labels["src"]] += value
+            set_value("cache_access", value, [labels["src"]])
         elif name == "cache_cache_hit":
-            data["cache_hit"][labels["src"]] += value
+            set_value("cache_hit", value, [labels["src"]])
         elif name == "cache_trans_created":
-            data["created_trans"][labels["src"]] += value
+            set_value("created_trans", value, [labels["src"]])
         elif name == "cache_trans_committed":
             assert(labels["src"] != "READ")
-            data["committed_trans"][labels["src"]] += value
+            set_value("committed_trans", value, [labels["src"]])
         elif name == "cache_trans_read_successful":
-            data["committed_trans"]["READ"] += value
+            set_value("committed_trans", value, ["READ"])
         elif name == "cache_invalidated_ool_records":
             assert(labels["src"] != "READ")
-            data["invalidated_ool_records"][labels["src"]] += value
+            set_value("invalidated_ool_records", value, [labels["src"]])
         elif name == "cache_committed_ool_records":
             assert(labels["src"] != "READ")
-            data["committed_ool_records"][labels["src"]] += value
+            set_value("committed_ool_records", value, [labels["src"]])
 
         # src -> blocks
         elif name == "cache_invalidated_ool_record_bytes":
             assert(labels["src"] != "READ")
-            data["invalidated_ool_record_4KB"][labels["src"]] += (value/4096)
+            set_value("invalidated_ool_record_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_padding_bytes":
             assert(labels["src"] != "READ")
-            data["committed_ool_record_padding_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_ool_record_padding_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_metadata_bytes":
             assert(labels["src"] != "READ")
-            data["committed_ool_record_metadata_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_ool_record_metadata_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_data_bytes":
             assert(labels["src"] != "READ")
-            data["committed_ool_record_data_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_ool_record_data_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_inline_record_metadata_bytes":
             assert(labels["src"] != "READ")
-            data["committed_inline_record_metadata_4KB"][labels["src"]] += (value/4096)
+            set_value("committed_inline_record_metadata_4KB", value/4096, [labels["src"]])
 
         # src -> tree-type -> count
         elif name == "cache_tree_erases_committed":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_erases_committed"][labels["src"]][labels["tree"]] += value
+            set_value("tree_erases_committed", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_erases_invalidated":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_erases_invalidated"][labels["src"]][labels["tree"]] += value
+            set_value("tree_erases_invalidated", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_inserts_committed":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_inserts_committed"][labels["src"]][labels["tree"]] += value
+            set_value("tree_inserts_committed", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_inserts_invalidated":
             assert(labels["src"] != "READ")
             if labels["src"] == "CLEANER":
                 assert(labels["tree"] != "ONODE")
-            data["tree_inserts_invalidated"][labels["src"]][labels["tree"]] += value
+            set_value("tree_inserts_invalidated", value, [labels["src"], labels["tree"]])
 
         # src -> extent-type -> count
         elif name == "cache_trans_invalidated":
-            data["invalidated_trans"][labels["src"]][labels["ext"]] += value
+            set_value("invalidated_trans", value, [labels["src"], labels["ext"]])
 
         # src -> effort-type -> blocks
         elif name == "cache_invalidated_extent_bytes":
             if labels["src"] == "READ":
                 assert(labels["effort"] == "READ")
-            data["invalidated_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
+            set_value("invalidated_efforts_4KB", value/4096, [labels["src"], labels["effort"]])
         elif name == "cache_invalidated_delta_bytes":
             assert(labels["src"] != "READ")
-            data["invalidated_efforts_4KB"][labels["src"]]["MUTATE_DELTA"] += (value/4096)
+            set_value("invalidated_efforts_4KB", value/4096, [labels["src"], "MUTATE_DELTA"])
 
         # src -> effort-type -> blocks
         # src -> extent-type -> effort-type -> blocks
@@ -379,20 +473,26 @@ def parse_metric_file(metric_file):
             if (effort_name == "FRESH_INVALID" or
                 effort_name == "FRESH_INLINE" or
                 effort_name == "FRESH_OOL"):
-                data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]][effort_name] += (value/4096)
+                set_value("committed_disk_efforts_4KB", value/4096,
+                          [labels["src"], labels["ext"], effort_name])
                 # match cache_invalidated_extent_bytes FRESH, FRESH_OOL_WRITTEN
-                data["committed_efforts_4KB"][labels["src"]]["FRESH"] += (value/4096)
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], "FRESH"])
                 if effort_name == "FRESH_OOL":
-                    data["committed_efforts_4KB"][labels["src"]]["FRESH_OOL_WRITTEN"] += (value/4096)
+                    set_value("committed_efforts_4KB", value/4096,
+                              [labels["src"], "FRESH_OOL_WRITTEN"])
             else:
-                data["committed_efforts_4KB"][labels["src"]][labels["effort"]] += (value/4096)
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], labels["effort"]])
         elif name == "cache_committed_delta_bytes":
             assert(labels["src"] != "READ")
             effort_name = "MUTATE_DELTA"
-            data["committed_efforts_4KB"][labels["src"]][effort_name] += (value/4096)
-            data["committed_disk_efforts_4KB"][labels["src"]][labels["ext"]][effort_name] += (value/4096)
+            set_value("committed_efforts_4KB", value/4096,
+                      [labels["src"], effort_name])
+            set_value("committed_disk_efforts_4KB", value/4096,
+                      [labels["src"], labels["ext"], effort_name])
         elif name == "cache_successful_read_extent_bytes":
-            data["committed_efforts_4KB"]["READ"]["READ"] += (value/4096)
+            set_value("committed_efforts_4KB", value/4096, ["READ", "READ"])
 
         # others
         elif name == "cache_committed_extents":
@@ -400,9 +500,23 @@ def parse_metric_file(metric_file):
                  labels["effort"] == "FRESH_OOL") and
                 labels["ext"] == "OBJECT_DATA_BLOCK" and
                 labels["src"] == "MUTATE"):
-                data["object_data_writes"] += value
+                set_value("object_data_writes", value)
         else:
             ignored_metrics.add(name)
+        if name not in ignored_metrics:
+            found_metrics.add(name)
+
+    assert(found_metrics.issubset(expected_metrics))
+    missing_metrics = expected_metrics - found_metrics
+    assert(found_data.issubset(expected_data))
+    missing_data = expected_data - found_data
+    if missing_metrics or missing_data:
+        print()
+        print("error, missing metrics:")
+        print(missing_metrics)
+        print("error, missing data:")
+        print(missing_data)
+        assert(False)
 
     return data, illegal_metrics, ignored_metrics
 
@@ -588,7 +702,7 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # src -> extent-type -> effort-type -> blocks
     get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
-def wash_dataset(dataset, writes_4KB, times_sec):
+def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     def merge_lists(lists):
         assert(len(lists))
         length = 0
@@ -815,7 +929,10 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     fresh_invalid_4KB = {}
     mutate_delta_4KB = {}
     for src, committed_disk_efforts in dataset["committed_disk_efforts_4KB"].items():
-        data_name = "write_amplification_by_extent---" + src
+        if absolute:
+            data_name = "write_4KB_by_extent---" + src
+        else:
+            data_name = "write_amplification_by_extent---" + src
 
         inplace_merge_l2_from_l3("LADDR", "LADDR_LEAF", "LADDR_INTERNAL", committed_disk_efforts)
         inplace_merge_l2_from_l3("OMAP",  "OMAP_LEAF",  "OMAP_INNER",     committed_disk_efforts)
@@ -829,7 +946,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         fresh_inline = []
         fresh_invalid = []
         mutate_delta = []
-        total_committed_disk_efforts = {}
+        output = {}
         for ext_name, items_by_effort in non_empty_committed_disk_efforts.items():
             assert(len(items_by_effort) == 4)
 
@@ -841,15 +958,18 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             total_disk_writes = merge_lists([items_by_effort["FRESH_INLINE"],
                                              items_by_effort["FRESH_OOL"],
                                              items_by_effort["MUTATE_DELTA"]])
-            total_committed_disk_efforts[ext_name] = total_disk_writes
+            output[ext_name] = total_disk_writes
 
         commit_srcs.append(src)
         fresh_ool_4KB[src] = merge_lists(fresh_ool)
         fresh_inline_4KB[src] = merge_lists(fresh_inline)
         fresh_invalid_4KB[src] = merge_lists(fresh_invalid)
         mutate_delta_4KB[src] = merge_lists(mutate_delta)
-        data = get_ratio_l2_by_l1(total_committed_disk_efforts, writes_4KB)
-        washed_dataset[data_name] = data
+        if absolute:
+            output["writes_4KB"] = writes_4KB
+        else:
+            output = get_ratio_l2_by_l1(output, writes_4KB)
+        washed_dataset[data_name] = output
 
     # 9.x write_amplification_detail
     valid_data_4K = {}
@@ -857,7 +977,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     valid_ool_padding_4K = {}
     invalid_write_4K = {}
     for src in commit_srcs:
-        data_name = "write_amplification_detail---" + src
+        if absolute:
+            data_name = "write_4KB_detail---" + src
+        else:
+            data_name = "write_amplification_detail---" + src
+
         invalid_ool = dataset["invalidated_ool_record_4KB"][src]
         valid_ool_data = dataset["committed_ool_record_data_4KB"][src]
         assert(fresh_ool_4KB[src] == valid_ool_data)
@@ -868,7 +992,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         inline_retired_data = fresh_invalid_4KB[src]
         inline_delta_data = mutate_delta_4KB[src]
         inline_metadata = dataset["committed_inline_record_metadata_4KB"][src]
-        output_4KB = {
+        output = {
             "INVALID_OOL":            invalid_ool,
             "VALID_OOL_DATA":         valid_ool_data,
             "VALID_OOL_METADATA":     valid_ool_metadata,
@@ -878,8 +1002,11 @@ def wash_dataset(dataset, writes_4KB, times_sec):
             "INLINE_DELTA_DATA":      inline_delta_data,
             "INLINE_METADATA":        inline_metadata,
         }
-        output_ratio = get_ratio_l2_by_l1(output_4KB, writes_4KB)
-        washed_dataset[data_name] = output_ratio
+        if absolute:
+            output["writes_4KB"] = writes_4KB
+        else:
+            output = get_ratio_l2_by_l1(output, writes_4KB)
+        washed_dataset[data_name] = output
 
         valid_data = merge_lists([valid_ool_data,
                                   inline_fresh_data,
@@ -894,7 +1021,10 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         invalid_write_4K[src] = invalid_write
 
     # 10. write_amplification_by_src
-    data_name = "write_amplification_by_src"
+    if absolute:
+        data_name = "write_4KB_by_src"
+    else:
+        data_name = "write_amplification_by_src"
     data_10 = {}
     mutate_trans_data_write = []
     for src in commit_srcs:
@@ -908,62 +1038,73 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         data_10[name] = valid_ool_padding_4K[src]
         if src == "MUTATE":
             mutate_trans_data_write = valid_data_4K[src]
-    data_10_ratio = get_ratio_l2_by_l1(data_10, writes_4KB)
-    washed_dataset[data_name] = data_10_ratio
+    if commit_srcs:
+        if absolute:
+            data_10["writes_4KB"] = writes_4KB
+        else:
+            data_10 = get_ratio_l2_by_l1(data_10, writes_4KB)
+        washed_dataset[data_name] = data_10
 
     # 11. write_amplification_overall
-    data_name = "write_amplification_overall"
     segmented_read = dataset["segment_read_4KB"]
     segmented_write = merge_lists([dataset["segment_write_4KB"],
                                    dataset["segment_write_meta_4KB"]])
+    if commit_srcs:
+        if absolute:
+            data_name = "write_4KB_overall"
+        else:
+            data_name = "write_amplification_overall"
 
-    account1 = merge_lists(dataset["invalidated_ool_record_4KB"].values())
-    account2 = merge_lists(dataset["committed_ool_record_padding_4KB"].values())
-    account3 = merge_lists(dataset["committed_ool_record_metadata_4KB"].values())
-    account4 = merge_lists(dataset["committed_ool_record_data_4KB"].values())
-    accounted_write = merge_lists([dataset["journal_padding_4KB"],
-                                   dataset["journal_metadata_4KB"],
-                                   dataset["journal_data_4KB"],
-                                   account1,
-                                   account2,
-                                   account3,
-                                   account4])
+        account1 = merge_lists(dataset["invalidated_ool_record_4KB"].values())
+        account2 = merge_lists(dataset["committed_ool_record_padding_4KB"].values())
+        account3 = merge_lists(dataset["committed_ool_record_metadata_4KB"].values())
+        account4 = merge_lists(dataset["committed_ool_record_data_4KB"].values())
+        accounted_write = merge_lists([dataset["journal_padding_4KB"],
+                                       dataset["journal_metadata_4KB"],
+                                       dataset["journal_data_4KB"],
+                                       account1,
+                                       account2,
+                                       account3,
+                                       account4])
 
-    aw_valid_data = merge_lists(valid_data_4K.values())
-    aw_valid_metadata = merge_lists(valid_metadata_4K.values())
-    aw_invalid = merge_lists(invalid_write_4K.values())
-    aw_padding = merge_lists(valid_ool_padding_4K.values())
-    aw_padding = merge_lists([aw_padding,
-                              dataset["journal_padding_4KB"]])
+        aw_valid_data = merge_lists(valid_data_4K.values())
+        aw_valid_metadata = merge_lists(valid_metadata_4K.values())
+        aw_invalid = merge_lists(invalid_write_4K.values())
+        aw_padding = merge_lists(valid_ool_padding_4K.values())
+        aw_padding = merge_lists([aw_padding,
+                                  dataset["journal_padding_4KB"]])
 
-    deltas_4KB = merge_lists(mutate_delta_4KB.values())
-    mds_4KB = merge_lists(dataset["committed_inline_record_metadata_4KB"].values())
-    aw_else = [md_all - md - delta
-               for md_all, md, delta
-               in zip(dataset["journal_metadata_4KB"],
-                      mds_4KB,
-                      deltas_4KB)]
+        deltas_4KB = merge_lists(mutate_delta_4KB.values())
+        mds_4KB = merge_lists(dataset["committed_inline_record_metadata_4KB"].values())
+        aw_else = [md_all - md - delta
+                   for md_all, md, delta
+                   in zip(dataset["journal_metadata_4KB"],
+                          mds_4KB,
+                          deltas_4KB)]
 
-    expected_accounted_write = merge_lists([aw_valid_data,
-                                            aw_valid_metadata,
-                                            aw_invalid,
-                                            aw_padding,
-                                            aw_else])
+        expected_accounted_write = merge_lists([aw_valid_data,
+                                                aw_valid_metadata,
+                                                aw_invalid,
+                                                aw_padding,
+                                                aw_else])
 
-    # assert(expected_accounted_write == accounted_write)
-    data_11 = {
-        "SEGMENTED_READ":     segmented_read,
-        "SEGMENTED_WRITE":    segmented_write,
-        "ACCOUNTED_WRITE":    accounted_write,
-        "AW_VALID_DATA":      aw_valid_data,
-        "AW_VALID_METADATA":  aw_valid_metadata,
-        "AW_INVALID":         aw_invalid,
-        "AW_PADDING":         aw_padding,
-        "AW_ELSE":            aw_else,
-        "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
-    }
-    data_11_ratio = get_ratio_l2_by_l1(data_11, writes_4KB)
-    washed_dataset[data_name] = data_11_ratio
+        # assert(expected_accounted_write == accounted_write)
+        data_11 = {
+            "SEGMENTED_READ":     segmented_read,
+            "SEGMENTED_WRITE":    segmented_write,
+            "ACCOUNTED_WRITE":    accounted_write,
+            "AW_VALID_DATA":      aw_valid_data,
+            "AW_VALID_METADATA":  aw_valid_metadata,
+            "AW_INVALID":         aw_invalid,
+            "AW_PADDING":         aw_padding,
+            "AW_ELSE":            aw_else,
+            "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
+        }
+        if absolute:
+            data_11["writes_4KB"] = writes_4KB
+        else:
+            data_11 = get_ratio_l2_by_l1(data_11, writes_4KB)
+        washed_dataset[data_name] = data_11
 
     # 12. record_fullness
     data_name = "record_fullness"
@@ -1007,8 +1148,10 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     data_name = "trans_srcs_invalidated_ratio"
     committed_trans_all = merge_lists(dataset["committed_trans"].values())
     non_empty_trans_srcs_invalidated = filter_out_empty_l2(dataset["trans_srcs_invalidated"])
-    washed_dataset[data_name] = get_ratio_l2_by_l1(non_empty_trans_srcs_invalidated,
-                                                   committed_trans_all)
+    if non_empty_trans_srcs_invalidated:
+        washed_dataset[data_name] = get_ratio_l2_by_l1(
+            non_empty_trans_srcs_invalidated,
+            committed_trans_all)
 
     if len(times_sec) == 0:
         # indexes
@@ -1061,16 +1204,25 @@ def wash_dataset(dataset, writes_4KB, times_sec):
     def get_throughput_MB(rws_4KB, ts_sec):
         assert(len(rws_4KB) == len(ts_sec))
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
-    washed_dataset["throughput_MB"] = {
-        "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
-        "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
-        "device_read":        get_throughput_MB(segmented_read, times_sec),
-        "device_write":       get_throughput_MB(segmented_write, times_sec),
-        "accounted_write":    get_throughput_MB(accounted_write, times_sec),
-        "valid_extent_write": get_throughput_MB(aw_valid_data, times_sec),
-        "commit_trans_data_write": get_throughput_MB(mutate_trans_data_write, times_sec),
-        "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
-    }
+    if commit_srcs:
+        washed_dataset["throughput_MB"] = {
+            "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+            "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+            "device_read":        get_throughput_MB(segmented_read, times_sec),
+            "device_write":       get_throughput_MB(segmented_write, times_sec),
+            "accounted_write":    get_throughput_MB(accounted_write, times_sec),
+            "valid_extent_write": get_throughput_MB(aw_valid_data, times_sec),
+            "commit_trans_data_write": get_throughput_MB(mutate_trans_data_write, times_sec),
+            "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
+        }
+    else:
+        washed_dataset["throughput_MB"] = {
+            "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+            "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+            "device_read":        get_throughput_MB(segmented_read, times_sec),
+            "device_write":       get_throughput_MB(segmented_write, times_sec),
+            "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
+        }
 
     # 4.x IOPS_by_src, IOPS_overall
     def get_IOPS(rws, ts_sec):
@@ -1098,7 +1250,7 @@ def wash_dataset(dataset, writes_4KB, times_sec):
         ool = merge_lists([invalidated_ool,
                            dataset["committed_ool_records"][src]])
         ool_records.append(ool)
-        data_IOPS_detail[name] = ool;
+        data_IOPS_detail[name] = ool
     washed_dataset["IOPS_by_src"] = get_IOPS_l2(data_IOPS_detail, times_sec)
 
     segmented_writes = merge_lists([dataset["segment_writes"],
@@ -1182,11 +1334,14 @@ if __name__ == "__main__":
     parser.add_argument(
             "-d", "--directory", type=str,
             help="result directory to evaluate", default="results")
+    parser.add_argument(
+            "--absolute", action='store_true',
+            help="no write amplification")
     args = parser.parse_args()
 
     print("loading dir %s ..." % (args.directory))
     benches, metrics, times = load_dir(args.directory)
-    print("loaded %d rounds" % (len(benches)))
+    print("loaded %d metrics" % (len(metrics)))
     print()
 
     print("parse results ...")
@@ -1201,11 +1356,12 @@ if __name__ == "__main__":
 
     index = 0
     metric_file = metrics[index]
+    print(index, end=" ", flush=True)
     metrics_start, illegal, ignored = parse_metric_file(metric_file)
     illegal_metrics |= illegal
     ignored_metrics |= ignored
     while index < (len(metrics) - 1):
-        print(".", end="", flush=True)
+        print(index + 1, end=" ", flush=True)
         metric_file = metrics[index + 1]
 
         if bench_type != BenchT.METRICS:
@@ -1232,14 +1388,15 @@ if __name__ == "__main__":
     print("parse results done")
     print()
 
-    print("wash results ...")
-    dataset, indexes = wash_dataset(raw_dataset, writes_4KB, times)
+    print("wash results (absolute=%s) ..." % (args.absolute))
+    dataset, indexes = wash_dataset(
+        raw_dataset, writes_4KB, times, args.absolute)
     print("wash results done")
     print()
 
     print("generate figures ...")
     for name, data in dataset.items():
-        print(".", end="", flush=True)
+        print("figure " + name + "...")
         ylim = None
         relplot_data(args.directory, bench_type, name, data, indexes, ylim)
     print()
