@@ -145,4 +145,71 @@ Example of result:
           Cache-Misses(%)          4.727         5.631         5.750         5.277         5.484         5.641
             CPU_Freq(GHz)          3.605         3.637         3.695          3.63         3.659         3.632
                Thread_num              2             4             6             2             4             6
-               Client_num              4             4             4             8             8             8 
+               Client_num              4             4             4             8             8             8
+
+Crimson stress visualizer
+=========================
+
+This is a drawing tool for turn data into visualizations conveniently after
+you finish test using stress tool. Common tasks are also supported after
+customize the script according to your own needs.
+
+The tool will load data in csv format to Dataframe and will concatenate
+the results automatically. Considering data in different scenarios, we
+use the args ``--divide`` to distinguish them using the Cartesian Product
+of given types.For example, given Block_size(4K, 4M) and OPtype(read, write),
+you will get 4 figures with each combination.
+
+Third-party drawing libraries Seaborn and Matplotlib are called in this tool.
+pandas.Dataframe is also used to operate data.If you want to change plotting
+settings in more detail, go to these websites for more help.
+
+* https://seaborn.pydata.org/
+* https://matplotlib.org/
+* https://pandas.pydata.org/
+
+Before use, prepare the python3 environment, install the dependencies and see
+the help information to start.
+
+* Run ``./crimson_stress_visualizer --help`` to get the detail parameter information.
+* Run ``./crimson_stress_visualizer --show-available`` to get the existing tasks and figure types.
+* Run ``./crimson_stress_visualizer --task-info`` to get the detail task information.
+
+Existing task:
+
+* "ceph":Common ceph drawing task to compare osd's performance.
+* "ceph-bandwidth":Combine client bandwidth and device bandwidth.
+* "crimson-utilization":Combine cpu-utilization and reactor-utilization.
+
+Currently, these tasks only support result data with single type of read or write.
+Simultaneous different types of operations by stress_tool are not supported.
+
+Example:
+
+.. code-block:: console
+
+    ./crimson_stress_tool.py \
+        --thread-list  1 2 4 8 16 32 64 --client-list 1 \
+        --taskset=16-31 --block-size 4K --time=60 \
+        --rand-write 1 \
+        --store bluestore \
+        --output classic_randwrite_4K \
+        --perf --iostat --freq
+
+    ./crimson_stress_visualizer.py \
+        --data classic_randwrite_4K.csv \
+        classic_single_randwrite_4K.csv \
+        crimson_randwrite_4K.csv \
+        --task ceph \
+        --fig-type line
+
+After using stress tool, the visualizer will read these three csv outcomes.
+The ceph task will generate a figure that indicates the latency in different
+threads with the crimson and classic osd. You can add args to ``--task-args``
+to change the X, Y, Z variable.
+
+Example of result:
+
+.. image:: ./example_picture.png
+    :scale: 50 %
+    :alt: example picture
