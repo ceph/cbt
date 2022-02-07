@@ -53,7 +53,8 @@ def main(argv):
 
     # Only initialize and prefill upfront if we aren't rebuilding for each test.
     if not rebuild_every_test:
-        cluster.initialize();
+        if not cluster.use_existing:
+            cluster.initialize();
         for iteration in range(settings.cluster.get("iterations", 0)):
             benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             for b in benchmarks:
