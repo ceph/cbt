@@ -30,7 +30,10 @@ class Fio(Benchmark):
         self.logging = config.get('logging', True)
         self.log_avg_msec = config.get('log_avg_msec', None)
         self.ioengine = config.get('ioengine', 'libaio')
-        self.op_size = config.get('op_size', 4194304)
+        self.bssplit = config.get('bssplit', None)
+        self.bsrange = config.get('bsrange', None)
+        self.bs = config.get('bs', None)
+        self.op_size = config.get('op_size', 4194304) # Deprecated, please use bs
         self.size = config.get('size', 4096)
         self.procs_per_endpoint = config.get('procs_per_endpoint', 1)
         self.random_distribution = config.get('random_distribution', None)
@@ -145,7 +148,15 @@ class Fio(Benchmark):
         # IO options
         cmd += ' --ioengine=%s' % self.ioengine
         cmd += ' --direct=%s' % self.direct
-        cmd += ' --bs=%dB' % self.op_size
+        if self.bssplit is not None:
+            cmd += ' --bssplit=%s' % self.bssplit
+        if self.bsrange is not None:
+            cmd += ' --bsrange=%s' % self.bsrange
+        if self.bs is not None:
+            cmd += ' --bs=%s' % self.bs
+        elif self.op_size is not None:
+            logger.warn('op_size is deprecated, please use bs in the future')
+            cmd += ' --bs=%s' % self.op_size
         cmd += ' --iodepth=%d' % self.iodepth
         cmd += ' --end_fsync=%d' % self.end_fsync
         cmd += ' --rw=%s' % self.mode
