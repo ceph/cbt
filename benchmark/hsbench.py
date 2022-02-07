@@ -24,6 +24,7 @@ class Hsbench(Benchmark):
         self.max_keys = config.get('max_keys', None)
         self.objects = config.get('objects', None)
         self.object_prefix = config.get('object_prefix', None)
+        self.per_client_object_prefix = config.get('per_client_object_prefix', True)
         self.region = config.get('region', None)
         self.report_intervals = config.get('report_intervals', None)
         self.threads = config.get('threads', None)
@@ -83,7 +84,12 @@ class Hsbench(Benchmark):
         if self.objects:
             cmd += ' -n %d' % self.objects
         if self.object_prefix:
-            cmd += ' -op %s' % self.object_prefix
+            object_prefix = self.object_prefix
+            if self.per_client_object_prefix:
+                object_prefix += '-`%s`-%s-' % (common.get_fqdn_cmd(), ep_num)
+            cmd += ' -op %s' % object_prefix
+        elif self.per_client_object_prefix:
+            cmd += ' -op `%s`-%s-' % (common.get_fqdn_cmd(), ep_num)
         if self.region:
             cmd += ' -r %s' % self.region
         if self.report_intervals:
