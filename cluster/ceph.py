@@ -145,7 +145,6 @@ class Ceph(Cluster):
 
         self.urls = []
         self.auth_urls = []
-        self.osd_count = config.get('osds_per_node') * len(settings.getnodes('osds'))
         self.crimson_cpusets = config.get('crimson_cpusets', [])
 
         # Recovery objects prefill info
