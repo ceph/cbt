@@ -25,6 +25,7 @@ class Fio(Benchmark):
         self.iodepth = config.get('iodepth', 16)
         self.prefill_iodepth = config.get('prefill_iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
+        self.sync = config.get('sync', None)
         self.end_fsync = config.get('end_fsync', 0)
         self.mode = config.get('mode', 'write')
         self.rwmixread = config.get('rwmixread', 50)
@@ -161,6 +162,8 @@ class Fio(Benchmark):
             logger.warn('op_size is deprecated, please use bs in the future')
             cmd += ' --bs=%s' % self.op_size
         cmd += ' --iodepth=%d' % self.iodepth
+        if self.sync is not None:
+            cmd += ' --sync=%s' % self.sync
         cmd += ' --end_fsync=%d' % self.end_fsync
         cmd += ' --rw=%s' % self.mode
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
