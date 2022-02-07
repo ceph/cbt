@@ -4,6 +4,7 @@ import monitoring
 import os
 import time
 import logging
+import pathlib
 import client_endpoints_factory
 
 from .benchmark import Benchmark
@@ -246,8 +247,12 @@ class Fio(Benchmark):
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
         self.analyze(self.out_dir)
 
+    def cleanup(self):
+        cmd_name = pathlib.PurePath(self.cmd_path).name
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -2 %s' % cmd_name).communicate()
+
     def recovery_callback_blocking(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
+        self.cleanup()
 
     def recovery_callback_background(self):
         logger.info('Recovery thread completed!')

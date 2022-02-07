@@ -4,6 +4,7 @@ import monitoring
 import os
 import time
 import logging
+import pathlib
 
 from .benchmark import Benchmark
 
@@ -147,7 +148,8 @@ class Getput(Benchmark):
         self.cleanup()
 
     def cleanup(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 getput').communicate()
+        cmd_name = pathlib.PurePath(self.cmd_path).name
+        common.pdsh(settings.getnodes('clients'), 'sudo killall -9 %s' % cmd_name).communicate()
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Getput, self).__str__())
