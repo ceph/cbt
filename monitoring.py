@@ -3,7 +3,9 @@ import glob
 import os.path
 import common
 import settings
+import logging
 
+logger = logging.getLogger("cbt")
 
 class Monitoring(object):
     def __init__(self, mconfig):
@@ -51,6 +53,7 @@ class PerfMonitoring(Monitoring):
     def __init__(self, mconfig):
         super(PerfMonitoring, self).__init__(mconfig)
         self.pid_dir = settings.cluster.get('pid_dir')
+        self.pid_glob = mconfig.get('pid_glob', 'osd.*.pid')
         self.user = settings.cluster.get('user')
         self.args_template = mconfig.get('args')
         self.perf_runners = []
@@ -61,19 +64,23 @@ class PerfMonitoring(Monitoring):
         self.perf_dir = perf_dir
         common.pdsh(self.nodes, 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
 
-        perf_template = 'perf {} &'.format(self.args_template)
+        perf_template = 'sudo perf {} &'.format(self.args_template)
         local_node = common.get_localnode(self.nodes)
         if local_node:
-            for pid_path in glob.glob(os.path.join(self.pid_dir, 'osd.*.pid')):
+            logger.debug("PerfMonitoring: in local_node");
+            logger.debug("pid_dir: %s" % self.pid_dir);
+            for pid_path in glob.glob(os.path.join(self.pid_dir, self.pid_glob)):
+                logger.debug("PerfMonitoring pid_path: %s" % pid_path);
                 with open(pid_path) as pidfile:
                     pid = pidfile.read().strip()
                     perf_cmd = perf_template.format(perf_dir=perf_dir, pid=pid)
                     runner = common.sh(local_node, perf_cmd)
                     self.perf_runners.append(runner)
         else:
+            logger.debug("PerfMonitoring: remote_node");
             # ${pid} will be handled by remote's sh
             perf_cmd = perf_template.format(perf_dir=perf_dir, pid='${pid}')
-            common.pdsh(self.nodes, ['for pid in `cat %s/osd.*.pid`;' % self.pid_dir,
+            common.pdsh(self.nodes, ['for pid in `cat %s/%s`;' % (self.pid_dir, self.pid_glob),
                                      'do', perf_cmd,
                                      'done'])
 
