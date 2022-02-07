@@ -22,6 +22,7 @@ class Fio(Benchmark):
         self.time_based = bool(config.get('time_based', False))
         self.ramp = config.get('ramp', None)
         self.iodepth = config.get('iodepth', 16)
+        self.prefill_iodepth = config.get('prefill_iodepth', 16)
         self.numjobs = config.get('numjobs', 1)
         self.end_fsync = config.get('end_fsync', 0)
         self.mode = config.get('mode', 'write')
@@ -124,6 +125,7 @@ class Fio(Benchmark):
         cmd += ' --rw=write'
         cmd += ' --numjobs=%d' % self.numjobs
         cmd += ' --bs=4M'
+        cmd += ' --iodepth=%d' % self.prefill_iodepth
         cmd += ' --size %dM' % self.size
         cmd += ' --output-format=%s' % self.fio_out_format
         cmd += self.fio_command_extra(ep_num)
