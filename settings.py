@@ -8,6 +8,7 @@ import logging
 
 logger = logging.getLogger("cbt")
 
+common = {}
 cluster = {}
 client_endpoints = {}
 benchmarks = {}
@@ -25,7 +26,7 @@ def _handle_monitoring_legacy():
 
 
 def initialize(ctx):
-    global cluster, client_endpoints, benchmarks, monitoring_profiles
+    global common, cluster, client_endpoints, benchmarks, monitoring_profiles
 
     config = {}
     try:
@@ -34,6 +35,7 @@ def initialize(ctx):
     except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 
+    common = config.get('common', {})
     cluster = config.get('cluster', {})
     client_endpoints = config.get('client_endpoints', {})
     benchmarks = config.get('benchmarks', {})

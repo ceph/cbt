@@ -23,10 +23,11 @@ class CheckedPopen(object):
     UNINIT = -720
     OK = 0
 
-    def __init__(self, args, continue_if_error=False, shell=False):
+    def __init__(self, args, continue_if_error=False, shell=False, env_vars={}):
         logger.debug('CheckedPopen continue_if_error=%s, shell=%s args=%s'
                      % (str(continue_if_error), str(shell), join_nostr(args)))
         env = dict(os.environ)
+        env.update(env_vars)
         env['LC_ALL'] = 'C'
         self.args = args[:]
         self.myrtncode = self.UNINIT
@@ -136,11 +137,16 @@ def pdsh(nodes, command, continue_if_error=True):
     if local_node:
         return sh(local_node, command, continue_if_error=continue_if_error)
     else:
-        args = ['pdsh', '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, join_nostr(command)]
+        pdsh_cmd = settings.common.get("pdsh_cmd", "pdsh")
+        pdsh_ssh_args = settings.common.get("pdsh_ssh_args", None)
+        env = {}
+        if pdsh_ssh_args:
+            env = {'PDSH_SSH_ARGS':pdsh_ssh_args}
+        args = [pdsh_cmd, '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, join_nostr(command)]
         # -S means pdsh fails if any host fails
         if not continue_if_error:
             args.insert(1, '-S')
-        return CheckedPopen(args, continue_if_error=continue_if_error)
+        return CheckedPopen(args, continue_if_error=continue_if_error, env_vars=env)
 
 
 def pdcp(nodes, flags, localfile, remotefile):
@@ -148,11 +154,16 @@ def pdcp(nodes, flags, localfile, remotefile):
     if local_node:
         return sh(local_node, ['cp', flags, localfile, remotefile], continue_if_error=False)
     else:
-        args = ['pdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+        pdcp_cmd = settings.common.get("pdcp_cmd", "pdcp")
+        pdsh_ssh_args = settings.common.get("pdsh_ssh_args", None)
+        env = {}
+        if pdsh_ssh_args:
+            env = {'PDSH_SSH_ARGS':pdsh_ssh_args}
+        args = [pdcp_cmd, '-f', '10', '-R', 'ssh', '-w', nodes]
         if flags:
             args += [flags]
         return CheckedPopen(args + [localfile, remotefile],
-                            continue_if_error=False)
+                            continue_if_error=False, env_vars=env)
 
 
 def rpdcp(nodes, flags, remotefile, localdir):
@@ -164,11 +175,16 @@ def rpdcp(nodes, flags, remotefile, localdir):
                                'done'],
                   continue_if_error=False)
     else:
-        args = ['rpdcp', '-f', '10', '-R', 'ssh', '-w', nodes]
+        rpdcp_cmd = settings.common.get("rpdcp_cmd", "rpdcp")
+        pdsh_ssh_args = settings.common.get("pdsh_ssh_args", None)
+        env = {}
+        if pdsh_ssh_args:
+            env = {'PDSH_SSH_ARGS':pdsh_ssh_args}
+        args = [rpdcp_cmd, '-f', '10', '-R', 'ssh', '-w', nodes]
         if flags:
             args += [flags]
         return CheckedPopen(args + [remotefile, localdir],
-                            continue_if_error=False)
+                            continue_if_error=False, env_vars=env)
 
 
 def scp(node, localfile, remotefile):
