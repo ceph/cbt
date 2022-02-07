@@ -42,7 +42,7 @@ class Fio(Benchmark):
         self.random_distribution = config.get('random_distribution', None)
         self.rate_iops = config.get('rate_iops', None)
         self.fio_out_format = "json,normal"
-        self.prefill = config.get('prefill', True)
+        self.prefill_flag = config.get('prefill', True)
         self.norandommap = config.get("norandommap", False)
         self.out_dir = self.archive_dir
         self.client_endpoints = config.get("client_endpoints", None)
@@ -75,7 +75,6 @@ class Fio(Benchmark):
         self.create_endpoints()
 
     def create_endpoints(self):
-        new_ep = False
         if not self.client_endpoints_object.get_initialized():
             self.client_endpoints_object.initialize()
             new_ep = True
@@ -96,10 +95,6 @@ class Fio(Benchmark):
         if self.endpoint_type == 'rbd' and self.direct != '1':
             logger.warn('rbd endpoints must use O_DIRECT. Setting direct=1')
             self.direct = '1'
-
-        # Prefill Data
-        if new_ep and self.prefill:
-            self.prefill_data()
 
     def fio_command_extra(self, ep_num):
         cmd = ''
@@ -133,10 +128,13 @@ class Fio(Benchmark):
         cmd += self.fio_command_extra(ep_num)
         return cmd
 
-    def prefill_data(self):
+    def prefill(self):
+        super(Fio, self).prefill()
+        if not self.prefill_flag:
+            return
         # populate the fio files
         ps = []
-        logger.info('Attempting to populating fio files...')
+        logger.info('Attempting to prefill fio files...')
         for ep_num in range(self.endpoints_per_client):
             p = common.pdsh(settings.getnodes('clients'), self.prefill_command(ep_num))
             ps.append(p)

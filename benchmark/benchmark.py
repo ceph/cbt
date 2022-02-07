@@ -116,13 +116,12 @@ class Benchmark(object):
         return self.__class__.__name__
 
     def initialize(self):
-        self.cluster.cleanup()
-        use_existing = settings.cluster.get('use_existing', True)
-        if not use_existing:
-            self.cluster.initialize()
-        self.cleanup()
+        pass
 
     def initialize_endpoints(self):
+        pass
+
+    def prefill(self):
         pass
 
     def run(self):
