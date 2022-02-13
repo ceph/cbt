@@ -536,31 +536,39 @@ class TesterExecutor():
         return self.result_list
 
     def output(self, output, horizontal, filters):
-        f_result = open(output, "w")
+        output = output + ".csv"
+        f_result = open(output,"w")
         if horizontal:
             for key in self.result_list[0]:
                 if key not in filters:
-                    print('%25s ' % (key), end='')
-                    f_result.write('%20s ' % (key))
+                    print('%25s '%(key), end ='')
             print()
-            f_result.write('\n')
             for result in self.result_list:
                 for key in result:
                     if key not in filters:
-                        print('%25s ' % (str(result[key])), end='')
-                        f_result.write('%20s ' % (str(result[key])))
+                        print('%25s '%(str(result[key])), end = '')
                 print()
-                f_result.write('\n')
         else:
             for key in self.result_list[0]:
                 if key not in filters:
-                    print('%25s ' % (key), end='')
-                    f_result.write('%20s ' % (key))
+                    print('%25s '%(key), end ='')
                     for result in self.result_list:
-                        print('%14.13s' % (str(result[key])), end='')
-                        f_result.write('%14.13s' % (str(result[key])))
+                        print('%14.13s'%(str(result[key])), end ='')
                     print()
-                    f_result.write('\n')
+                    
+        keylist = list(self.result_list[0].keys())
+        keylen = len(keylist)
+        for i in range(keylen):
+            if i > 0:
+                f_result.write(",")
+            f_result.write(keylist[i])
+        for result in self.result_list:
+            f_result.write('\n')
+            for i in range(keylen):
+                if keylist[i] not in filters:
+                    if i > 0:
+                        f_result.write(",")
+                    f_result.write(str(result[keylist[i]])) 
         f_result.close()
 
 
