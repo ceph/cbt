@@ -350,6 +350,8 @@ class PerfThread(Task):
 
     def create_command(self):
         command = "sudo perf stat --timeout " + str(self.last_time)
+        command += " -e cpu-clock,cs,migrations,faults,cycles,instructions" + \
+                ",branches,branch-misses,cache-misses,cache-references"
         if self.pid_list:
             command += " -p "
             command += str(self.pid_list[0])
@@ -389,6 +391,8 @@ class PerfThread(Task):
                     result_dic[index_name] = value
                 if temp_lis[1] == "branch-misses":
                     result_dic['Branch-Misses'] = temp_lis[3]
+                if temp_lis[1] == "cache-misses":
+                    result_dic['Cache-Misses(%)'] = temp_lis[3]
             line = self.result.readline()
         self.result.close()
         return result_dic
@@ -576,6 +580,7 @@ class Environment():
         self.base_result['Block_size'] = args.block_size
         self.base_result['Time'] = args.time
         self.base_result['Tool'] = ""
+        self.base_result['Version'] = None
         self.base_result['OPtype'] = "Mixed"
         self.backend_list = ['seastore', 'bluestore', 'memstore', 'cyanstore']
         self.store = ""
@@ -638,6 +643,13 @@ class Environment():
         os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
                 crimson-osd rados node")
         os.system("sudo rm -rf ./dev/* ./out/*")
+
+        # get ceph version
+        version = self.get_version()
+        if version:
+            self.base_result['Version'] = version
+        else:
+            raise Exception("Can not read git log from ..")
 
         # vstart. change the command here if you want to set other start params
         command = "sudo MGR=1 MON=1 OSD=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
@@ -743,6 +755,23 @@ class Environment():
                 last = ll[0]
             line = lsblk.readline()
         return par
+
+    def get_version(self):
+        month_dic={
+            "Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04",
+            "May":"05", "Jun":"06", "Jul":"07", "Aug":"08",
+            "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12",
+        }
+        gitlog = os.popen("git log ..")
+        line = gitlog.readline()
+        version = None
+        while line:
+            ll = line.split()
+            if ll[0] == "Date:":
+                version = ll[5] + month_dic[ll[2]] + ll[3]
+                break
+            line = gitlog.readline()
+        return version
 
 
 if __name__ == "__main__":
