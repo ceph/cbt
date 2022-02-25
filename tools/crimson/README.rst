@@ -102,12 +102,13 @@ Example:
 .. code-block:: console
     
     sudo ./crimson_stress_tool.py \ 
-        --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 300 \ 
+        --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 60 \
+        --crimson --store seastore --dev /dev/nvme4n1 \
         --rand-write 0.75 \
-        --rand-read 0.25 \ 
+        --rand-read 0.25 \
         --reactor-utilization \
         --perf \
-        --scenario crimson-seastore
+        --freq
 
 The tool will run rados bench write and read test case with the combination 
 of 4 or 8 clients and 2, 4 or 6 threads. In Every test case, there will be 75% of
@@ -122,16 +123,26 @@ Example of result:
 
 .. code-block:: console
     
-    rw_bandwidth        3.10453               3.541689             3.5182199999999995   2.51662
-    rw_iops             793.0                 903.0                900.0                642.0
-    rw_latency          0.0037714466666666662 0.006630723333333334 0.006629473333333333 0.0186881
-    rr_bandwidth        2.84725               2.68286              3.05852              1.471667
-    rr_iops             728.0                 686.0                782.0                376.0
-    rr_latency          0.00136141            0.002904295000000000 0.00254781           0.01060875
-    reactor_utilization 51.76855957999997     63.44185818000002    62.81135658000002    57.04136848000001
-    context-switches    21343                 20060                20770                18164
-    cpu_cycle           4617829192            4504157482           4539431704           4732829464
-    instructions        7146125116            7342745221           7228392400           7705910181
-    branches            1305636128            1332912452           1316155264           1385922457
-    thread_num          1                     1                    2                    2
-    client_num          4                     8                    4                    8 
+               Block_size             4K            4K            4K            4K            4K            4K
+                     Time             60            60            60            60            60            60
+                     Tool    Rados Bench   Rados Bench   Rados Bench   Rados Bench   Rados Bench   Rados Bench
+                  Version       20220213      20220213      20220213      20220213      20220213      20220213
+                   OPtype          Mixed         Mixed         Mixed         Mixed         Mixed         Mixed
+                      OSD        Crimson       Crimson       Crimson       Crimson       Crimson       Crimson
+                    Store       Seastore      Seastore      Seastore      Seastore      Seastore      Seastore
+             rw_Bandwidth        12.1087        12.393       12.7304       12.5896       13.1423       12.7655
+                  rw_IOPS         3098.0        3171.0        3257.0        3220.0        3361.0        3266.0
+               rw_Latency          1.937         3.779         5.520         3.719        7.1285        11.011
+             rr_Bandwidth         5.5268        5.7066        6.1939        5.9415        6.6356        7.8256
+                  rr_IOPS         1414.0        1460.0        1585.0        1520.0        1698.0        2002.0
+               rr_Latency           1.41         2.731         3.779         2.622         4.705         5.983
+      Reactor_Utilization          99.59         99.99         99.95         100.0         100.0         99.53
+          CPU-Utilization           99.9          99.9          99.9          99.9          99.9          99.9
+           CPU_Cycle(GHz)          3.574         3.625         3.609         3.577         3.588         3.591
+    Instruction_per_Cycle           0.82          0.83          0.85          0.84          0.86          0.86
+          Branches(M/sec)        572.897       591.465       599.812       588.072       605.106       608.871
+            Branch-Misses          2.68%         2.62%         2.55%         2.63%         2.57%         2.51%
+          Cache-Misses(%)          4.727         5.631         5.750         5.277         5.484         5.641
+            CPU_Freq(GHz)          3.605         3.637         3.695          3.63         3.659         3.632
+               Thread_num              2             4             6             2             4             6
+               Client_num              4             4             4             8             8             8 
