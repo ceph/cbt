@@ -219,9 +219,9 @@ class FioRBDRandWriteThread(Task):
         self.run_time = env.args.time
         self.bs = env.args.block_size
         self.images = env.images
-        self.lat = 'fio_rw_lat'
-        self.bw = 'fio_rw_bw'
-        self.iops = 'fio_rw_iops'
+        self.lat = 'fio_rw_Latency'
+        self.bw = 'fio_rw_Bandwidth'
+        self.iops = 'fio_rw_IOPS'
 
     def get_a_image(self):
         return self.images.pop(0)  # atomic
@@ -291,9 +291,9 @@ class FioRBDRandWriteThread(Task):
         env.images = []
         # merge all clients bw and iops results
         ratio = env.testclient_threadclass_ratio_map[FioRBDRandWriteThread]
-        test_case_result["fio_rw_bw"] *= \
+        test_case_result["fio_rw_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
-        test_case_result["fio_rw_iops"] *= \
+        test_case_result["fio_rw_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -301,17 +301,17 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
     def __init__(self, env):
         super().__init__(env)
         self.rw = "randread"
-        self.lat = 'fio_rr_lat'
-        self.bw = 'fio_rr_bw'
-        self.iops = 'fio_rr_iops'
+        self.lat = 'fio_rr_Latency'
+        self.bw = 'fio_rr_Bandwidth'
+        self.iops = 'fio_rr_IOPS'
 
     @staticmethod
     def post_process(env, test_case_result):
         env.images = []
         ratio = env.testclient_threadclass_ratio_map[FioRBDRandReadThread]
-        test_case_result["fio_rr_bw"] *= \
+        test_case_result["fio_rr_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
-        test_case_result["fio_rr_iops"] *= \
+        test_case_result["fio_rr_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -373,13 +373,16 @@ class PerfThread(Task):
                     result_dic['CPU-Utilization'] = round(float(temp_lis[4])*100, 2)
                 if temp_lis[1] == "context-switches":
                     value = int(temp_lis[0].replace(",", ""))
-                    result_dic['Context-Switches(K/s)'] = round(float(float(value)/cpu_time), 3)
+                    result_dic['Context-Switches(K/s)'] \
+                            = round(float(float(value)/cpu_time), 3)
                 if temp_lis[1] == "cpu-migrations":
                     value = int(temp_lis[0].replace(",", ""))
-                    result_dic['CPU-Migrations(/s)'] = round(float(float(value)*1000/cpu_time), 3)
+                    result_dic['CPU-Migrations(/s)'] \
+                            = round(float(float(value)*1000/cpu_time), 3)
                 if temp_lis[1] == "page-faults":
                     value = int(temp_lis[0].replace(",", ""))
-                    result_dic['Page-Faults(K/s)'] = round(float(float(value)/cpu_time), 3)
+                    result_dic['Page-Faults(K/s)'] \
+                            = round(float(float(value)/cpu_time), 3)
                 if temp_lis[1] == "cycles":
                     result_dic['CPU_Cycle(GHz)'] = temp_lis[3]
                 if temp_lis[1] == "instructions":
@@ -418,8 +421,10 @@ class IOStatThread(Task):
             if temp_lis and temp_lis[0] == self.dev:
                 result_dic['Device_IPS'] = float(temp_lis[1])
                 result_dic['Device_OPS'] = float(temp_lis[7]) 
-                result_dic['Device_Read(MB/s)'] = round(float(temp_lis[2])/1024, 3)  # MB per second
-                result_dic['Device_Write(MB/s)'] = round(float(temp_lis[8])/1024, 3)  # MB per second
+                result_dic['Device_Read(MB/s)'] \
+                        = round(float(temp_lis[2])/1024, 3)  # MB per second
+                result_dic['Device_Write(MB/s)'] \
+                        = round(float(temp_lis[8])/1024, 3)  # MB per second
                 result_dic['Device_aqu-sz'] = float(temp_lis[19]) 
                 # The average queue length of the requests
                 result_dic['Device_Rawait(ms)'] = float(temp_lis[5]) # ms
@@ -801,8 +806,8 @@ if __name__ == "__main__":
     parser.add_argument('--block-size',
                         type=str,
                         default="4K",
-                        help='data block size, default 4KB for random operations or 4MB \
-                    for sequence operations')
+                        help='data block size, default 4KB for \
+                                random operations or 4MB for sequence operations')
     parser.add_argument('--time',
                         type=str,
                         default="10",
