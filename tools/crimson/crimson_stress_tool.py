@@ -105,7 +105,7 @@ class RadosSeqWriteThread(RadosRandWriteThread):
         self.iops_key = "sw_IOPS"
         self.latency_key = "sw_Latency"
         self.bandwidth_key = "sw_Bandwidth"
-        self.block_size = '4M'
+        self.block_size = env.default_seq_block_size
         if env.args.block_size != "4096":
             self.block_size = env.args.block_size
 
@@ -187,7 +187,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        block_size = '4M'
+        block_size = env.default_seq_block_size
         if env.args.block_size != "4096":
             block_size = env.args.block_size
         env_write_command = "sudo bin/rados bench -p " + env.pool + " " \
@@ -251,8 +251,7 @@ class FioRBDRandWriteThread(Task):
                     match = re.search(r'avg=.*?,', line)
                     if match:
                         match_res = match.group()
-                        result_dic[self.lat] = float(
-                            match_res[4:-1])/1000000  # s
+                        result_dic[self.lat] = float(match_res[4:-1])/1000000  # s
                 if temp_lis[0] == "bw":
                     match_res = re.search(r'avg=.*?,', line).group()
                     result_dic[self.bw] = float(match_res[4:-1])/1000  # MB/s
@@ -265,25 +264,7 @@ class FioRBDRandWriteThread(Task):
 
     @staticmethod
     def pre_process(env):
-        image_name_prefix = "fio_test_rbd_"
-        warm_up_time = "30"
-        # must be client_num here.
-        for i in range(env.client_num):
-            image_name = image_name_prefix + str(i)
-            print(image_name)
-            command = "sudo bin/rbd create " + image_name \
-                + " --size 20G --image-format=2 \
-                    --rbd_default_features=3 --pool " + env.pool
-            command += " 2>/dev/null"
-            os.system(command)
-            env.images.append(image_name)
-        print('all fio rbd images created.')
-        env_write_command = "sudo bin/rados bench -p " + env.pool \
-            + " " + warm_up_time + " write -t 10" \
-            + " -b " + env.args.block_size \
-            + " --no-cleanup"
-        os.system(env_write_command + " >/dev/null")
-        print('ceph osd warmed up.')
+        env.create_images()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -306,12 +287,74 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
         self.iops = 'fio_rr_IOPS'
 
     @staticmethod
+    def pre_process(env):
+        env.create_images()
+        env.fio_pre_write('randwrite', env.args.block_size, 10)
+
+    @staticmethod
     def post_process(env, test_case_result):
         env.images = []
         ratio = env.testclient_threadclass_ratio_map[FioRBDRandReadThread]
         test_case_result["fio_rr_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
         test_case_result["fio_rr_IOPS"] *= \
+            int(test_case_result['Client_num'] * ratio)
+
+
+class FioRBDSeqReadThread(FioRBDRandWriteThread):
+    def __init__(self, env):
+        super().__init__(env)
+        self.rw = "read"
+        self.lat = 'fio_sr_Latency'
+        self.bw = 'fio_sr_Bandwidth'
+        self.iops = 'fio_sr_IOPS'
+
+    @staticmethod
+    def pre_process(env):
+        env.create_images()
+        block_size =env.default_seq_block_size
+        if env.args.block_size != "4096":
+            block_size = env.args.block_size
+        env.fio_pre_write('write', block_size, str(int(env.args.time)*3))
+
+    @staticmethod
+    def post_process(env, test_case_result):
+        env.images = []
+        ratio = env.testclient_threadclass_ratio_map[FioRBDSeqReadThread]
+        test_case_result["fio_sr_Bandwidth"] *= \
+            int(test_case_result['Client_num'] * ratio)
+        test_case_result["fio_sr_IOPS"] *= \
+            int(test_case_result['Client_num'] * ratio)
+
+
+class FioRBDSeqWriteThread(FioRBDRandWriteThread):
+    def __init__(self, env):
+        super().__init__(env)
+        self.rw = "write"
+        self.lat = 'fio_sw_Latency'
+        self.bw = 'fio_sw_Bandwidth'
+        self.iops = 'fio_sw_IOPS'
+        if self.bs != "4096":
+            self.bs = env.default_seq_block_size
+
+    @staticmethod
+    def pre_process(env):
+        env.create_images()
+        warm_up_time = "30"
+        env_write_command = "sudo bin/rados bench -p " + env.pool \
+            + " " + warm_up_time + " write -t 64" \
+            + " -b " + env.args.block_size \
+            + " --no-cleanup"
+        os.system(env_write_command + " >/dev/null")
+        print('ceph osd warmed up.')
+
+    @staticmethod
+    def post_process(env, test_case_result):
+        env.images = []
+        ratio = env.testclient_threadclass_ratio_map[FioRBDSeqWriteThread]
+        test_case_result["fio_sw_Bandwidth"] *= \
+            int(test_case_result['Client_num'] * ratio)
+        test_case_result["fio_sw_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -590,6 +633,7 @@ class Environment():
         self.thread_num = -1
         self.client_num = -1
         self.test_num = -1
+        self.default_seq_block_size = '4M'
         self.base_result['Block_size'] = args.block_size
         self.base_result['Time'] = args.time
         self.base_result['Tool'] = ""
@@ -622,6 +666,12 @@ class Environment():
         if self.args.fio_rbd_rand_read:
             self.testclient_threadclass_ratio_map[FioRBDRandReadThread] = \
                 self.args.fio_rbd_rand_read
+        if self.args.fio_rbd_seq_write:
+            self.testclient_threadclass_ratio_map[FioRBDSeqWriteThread] = \
+                self.args.fio_rbd_seq_write
+        if self.args.fio_rbd_seq_read:
+            self.testclient_threadclass_ratio_map[FioRBDSeqReadThread] = \
+                self.args.fio_rbd_seq_read
 
         if not self.testclient_threadclass_ratio_map:
             raise Exception("Please set at least one base test.")
@@ -786,6 +836,48 @@ class Environment():
             line = gitlog.readline()
         return version
 
+    def create_images(self):
+        image_name_prefix = "images_"
+        # must be client_num here.
+        for i in range(self.client_num):
+            image_name = image_name_prefix + str(i)
+            print(image_name)
+            command = "sudo bin/rbd create " + image_name \
+                + " --size 20G --image-format=2 \
+                    --rbd_default_features=3 --pool " + env.pool
+            command += " 2>/dev/null"
+            os.system(command)
+            env.images.append(image_name)
+        print('images create OK.')
+
+    def fio_pre_write(self, rw, bs, time):
+        pool = self.pool
+        thread_num = self.thread_num
+        class ImageWriteThread(threading.Thread):
+            def __init__(self, image):
+                super().__init__()
+                self.command = "sudo fio" \
+                    + " -ioengine=" + "rbd" \
+                    + " -pool=" + pool \
+                    + " -rbdname=" + image \
+                    + " -direct=1" \
+                    + " -iodepth=" + str(thread_num) \
+                    + " -rw=" + rw \
+                    + " -bs=" + str(bs) \
+                    + " -numjobs=1" \
+                    + " -runtime=" + str(time) \
+                    + " -group_reporting -name=fio"
+            def run(self):
+                os.system(self.command + " >/dev/null")
+        thread_list = []
+        for image in self.images:
+            thread_list.append(ImageWriteThread(image))
+        for thread in thread_list:
+            thread.start()
+        for thread in thread_list:
+            thread.join()
+        print('fio read environment OK.')
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
@@ -860,6 +952,14 @@ if __name__ == "__main__":
                         type=float,
                         default=0,
                         help='ratio of fio rand read clients')
+    parser.add_argument('--fio-rbd-seq-write',
+                        type=float,
+                        default=0,
+                        help='ratio of fio seq write clients')
+    parser.add_argument('--fio-rbd-seq-read',
+                        type=float,
+                        default=0,
+                        help='ratio of fio seq read clients')
 
     # time point based thread param
     parser.add_argument('--reactor-utilization',
