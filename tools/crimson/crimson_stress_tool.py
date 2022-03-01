@@ -105,9 +105,7 @@ class RadosSeqWriteThread(RadosRandWriteThread):
         self.iops_key = "sw_IOPS"
         self.latency_key = "sw_Latency"
         self.bandwidth_key = "sw_Bandwidth"
-        self.block_size = env.default_seq_block_size
-        if env.args.block_size != "4096":
-            self.block_size = env.args.block_size
+        self.block_size = env.args.block_size
 
     def create_command(self):
         rados_bench_write = "sudo taskset -c " + self.task_set \
@@ -120,13 +118,8 @@ class RadosSeqWriteThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        warm_up_time = "30"
-        env_write_command = "sudo bin/rados bench -p " + env.pool \
-            + " " + warm_up_time + " write -t 64" \
-            + " -b " + env.args.block_size \
-            + " --no-cleanup"
-        os.system(env_write_command + " >/dev/null")
-        print('ceph osd warmed up.')
+        env.rados_pre_write(env.args.warmup_block_size, \
+                env.args.warmup_thread_num, env.args.warmup_time)
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -154,12 +147,8 @@ class RadosRandReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env_write_command = "sudo bin/rados bench -p " + env.pool + " " \
-            + env.args.time + " write -t " \
-            + str(10) + " -b " + env.args.block_size + " " \
-            + "--no-cleanup"
-        os.system(env_write_command + " >/dev/null")
-        print('rados rand read test environment OK')
+        env.rados_pre_write(env.args.warmup_block_size, \
+                env.args.warmup_thread_num, env.args.warmup_time)
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -187,16 +176,8 @@ class RadosSeqReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        block_size = env.default_seq_block_size
-        if env.args.block_size != "4096":
-            block_size = env.args.block_size
-        env_write_command = "sudo bin/rados bench -p " + env.pool + " " \
-            + str(int(env.args.time) * 3) \
-            + " write -t 64" \
-            + " -b " + block_size \
-            + " --no-cleanup"
-        os.system(env_write_command + " >/dev/null")
-        print('rados seq read test environment OK')
+        env.rados_pre_write(env.args.warmup_block_size, \
+                env.args.warmup_thread_num, env.args.warmup_time)
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -219,9 +200,9 @@ class FioRBDRandWriteThread(Task):
         self.run_time = env.args.time
         self.bs = env.args.block_size
         self.images = env.images
-        self.lat = 'fio_rw_Latency'
-        self.bw = 'fio_rw_Bandwidth'
-        self.iops = 'fio_rw_IOPS'
+        self.lat = 'rw_Latency'
+        self.bw = 'rw_Bandwidth'
+        self.iops = 'rw_IOPS'
 
     def get_a_image(self):
         return self.images.pop(0)  # atomic
@@ -251,10 +232,10 @@ class FioRBDRandWriteThread(Task):
                     match = re.search(r'avg=.*?,', line)
                     if match:
                         match_res = match.group()
-                        result_dic[self.lat] = float(match_res[4:-1])/1000000  # s
+                        result_dic[self.lat] = float(match_res[4:-1])/1000  # ms
                 if temp_lis[0] == "bw":
                     match_res = re.search(r'avg=.*?,', line).group()
-                    result_dic[self.bw] = float(match_res[4:-1])/1000  # MB/s
+                    result_dic[self.bw] = float(match_res[4:-1])*1024/1000000  # MB/s
                 if temp_lis[0] == "iops":
                     match_res = re.search(r'avg=.*?,', line).group()
                     result_dic[self.iops] = float(match_res[4:-1])
@@ -269,12 +250,12 @@ class FioRBDRandWriteThread(Task):
     @staticmethod
     def post_process(env, test_case_result):
         # clear the images record in class env
-        env.images = []
+        env.remove_images()
         # merge all clients bw and iops results
         ratio = env.testclient_threadclass_ratio_map[FioRBDRandWriteThread]
-        test_case_result["fio_rw_Bandwidth"] *= \
+        test_case_result["rw_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
-        test_case_result["fio_rw_IOPS"] *= \
+        test_case_result["rw_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -282,22 +263,22 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
     def __init__(self, env):
         super().__init__(env)
         self.rw = "randread"
-        self.lat = 'fio_rr_Latency'
-        self.bw = 'fio_rr_Bandwidth'
-        self.iops = 'fio_rr_IOPS'
+        self.lat = 'rr_Latency'
+        self.bw = 'rr_Bandwidth'
+        self.iops = 'rr_IOPS'
 
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.fio_pre_write('randwrite', env.args.block_size, 10)
+        env.fio_pre_write('randwrite', env.args.warmup_block_size, env.args.warmup_time)
 
     @staticmethod
     def post_process(env, test_case_result):
-        env.images = []
+        env.remove_images()
         ratio = env.testclient_threadclass_ratio_map[FioRBDRandReadThread]
-        test_case_result["fio_rr_Bandwidth"] *= \
+        test_case_result["rr_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
-        test_case_result["fio_rr_IOPS"] *= \
+        test_case_result["rr_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -305,25 +286,22 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
     def __init__(self, env):
         super().__init__(env)
         self.rw = "read"
-        self.lat = 'fio_sr_Latency'
-        self.bw = 'fio_sr_Bandwidth'
-        self.iops = 'fio_sr_IOPS'
+        self.lat = 'sr_Latency'
+        self.bw = 'sr_Bandwidth'
+        self.iops = 'sr_IOPS'
 
     @staticmethod
     def pre_process(env):
         env.create_images()
-        block_size =env.default_seq_block_size
-        if env.args.block_size != "4096":
-            block_size = env.args.block_size
-        env.fio_pre_write('write', block_size, str(int(env.args.time)*3))
+        env.fio_pre_write('write', env.args.warmup_block_size, env.args.warmup_time)
 
     @staticmethod
     def post_process(env, test_case_result):
-        env.images = []
+        env.remove_images()
         ratio = env.testclient_threadclass_ratio_map[FioRBDSeqReadThread]
-        test_case_result["fio_sr_Bandwidth"] *= \
+        test_case_result["sr_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
-        test_case_result["fio_sr_IOPS"] *= \
+        test_case_result["sr_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -331,30 +309,24 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
     def __init__(self, env):
         super().__init__(env)
         self.rw = "write"
-        self.lat = 'fio_sw_Latency'
-        self.bw = 'fio_sw_Bandwidth'
-        self.iops = 'fio_sw_IOPS'
-        if self.bs != "4096":
-            self.bs = env.default_seq_block_size
+        self.lat = 'sw_Latency'
+        self.bw = 'sw_Bandwidth'
+        self.iops = 'sw_IOPS'
+        self.bs = env.args.block_size
 
     @staticmethod
     def pre_process(env):
         env.create_images()
-        warm_up_time = "30"
-        env_write_command = "sudo bin/rados bench -p " + env.pool \
-            + " " + warm_up_time + " write -t 64" \
-            + " -b " + env.args.block_size \
-            + " --no-cleanup"
-        os.system(env_write_command + " >/dev/null")
-        print('ceph osd warmed up.')
+        env.rados_pre_write(env.args.warmup_block_size, \
+                env.args.warmup_thread_num, env.args.warmup_time)
 
     @staticmethod
     def post_process(env, test_case_result):
-        env.images = []
+        env.remove_images()
         ratio = env.testclient_threadclass_ratio_map[FioRBDSeqWriteThread]
-        test_case_result["fio_sw_Bandwidth"] *= \
+        test_case_result["sw_Bandwidth"] *= \
             int(test_case_result['Client_num'] * ratio)
-        test_case_result["fio_sw_IOPS"] *= \
+        test_case_result["sw_IOPS"] *= \
             int(test_case_result['Client_num'] * ratio)
 
 
@@ -393,8 +365,9 @@ class PerfThread(Task):
 
     def create_command(self):
         command = "sudo perf stat --timeout " + str(self.last_time)
-        command += " -e cpu-clock,cs,migrations,faults,cycles,instructions" + \
-                ",branches,branch-misses,cache-misses,cache-references"
+        command += " -e cpu-clock,context-switches,cpu-migrations," \
+            + "cpu-migrations,cycles,instructions" \
+            + ",branches,branch-misses,cache-misses,cache-references"
         if self.pid_list:
             command += " -p "
             command += str(self.pid_list[0])
@@ -465,9 +438,9 @@ class IOStatThread(Task):
                 result_dic['Device_IPS'] = float(temp_lis[1])
                 result_dic['Device_OPS'] = float(temp_lis[7]) 
                 result_dic['Device_Read(MB/s)'] \
-                        = round(float(temp_lis[2])/1024, 3)  # MB per second
+                        = round(float(temp_lis[2])/1000, 3)  # MB per second
                 result_dic['Device_Write(MB/s)'] \
-                        = round(float(temp_lis[8])/1024, 3)  # MB per second
+                        = round(float(temp_lis[8])/1000, 3)  # MB per second
                 result_dic['Device_aqu-sz'] = float(temp_lis[19]) 
                 # The average queue length of the requests
                 result_dic['Device_Rawait(ms)'] = float(temp_lis[5]) # ms
@@ -633,7 +606,6 @@ class Environment():
         self.thread_num = -1
         self.client_num = -1
         self.test_num = -1
-        self.default_seq_block_size = '4M'
         self.base_result['Block_size'] = args.block_size
         self.base_result['Time'] = args.time
         self.base_result['Tool'] = ""
@@ -844,11 +816,14 @@ class Environment():
             print(image_name)
             command = "sudo bin/rbd create " + image_name \
                 + " --size 20G --image-format=2 \
-                    --rbd_default_features=3 --pool " + env.pool
+                    --rbd_default_features=3 --pool " + self.pool
             command += " 2>/dev/null"
             os.system(command)
-            env.images.append(image_name)
+            self.images.append(image_name)
         print('images create OK.')
+
+    def remove_images(self):
+        self.images = []
 
     def fio_pre_write(self, rw, bs, time):
         pool = self.pool
@@ -876,7 +851,15 @@ class Environment():
             thread.start()
         for thread in thread_list:
             thread.join()
-        print('fio read environment OK.')
+        print('fio pre write OK.')
+
+    def rados_pre_write(self, block_size, thread_num, time):
+        env_write_command = "sudo bin/rados bench -p " + self.pool + " " \
+            + str(time) + " write -t " \
+            + str(thread_num) + " -b " + str(block_size) + " " \
+            + "--no-cleanup"
+        os.system(env_write_command + " >/dev/null")
+        print('rados pre write OK.')
 
 
 if __name__ == "__main__":
@@ -897,13 +880,24 @@ if __name__ == "__main__":
                         help='which processors will bench thread execute on')
     parser.add_argument('--block-size',
                         type=str,
+                        required=True,
+                        help='data block size')
+    parser.add_argument('--warmup-block-size',
+                        type=str,
                         default="4K",
-                        help='data block size, default 4KB for \
-                                random operations or 4MB for sequence operations')
+                        help='warmup data block size, default 4KB')
     parser.add_argument('--time',
                         type=str,
                         default="10",
                         help='test time for every test case')
+    parser.add_argument('--warmup-time',
+                        type=str,
+                        default="10",
+                        help='warmup time for every test case, default 10s')
+    parser.add_argument('--warmup-thread-num',
+                        type=str,
+                        default="64",
+                        help='warmup thread num for every test case, default 64')
     parser.add_argument('--dev',
                         type=str,
                         help='test device path, default is the vstart default \

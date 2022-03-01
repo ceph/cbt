@@ -103,6 +103,7 @@ Example:
     
     sudo ./crimson_stress_tool.py \ 
         --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 60 \
+        --block-size 4K
         --crimson --store seastore --dev /dev/nvme4n1 \
         --rand-write 0.75 \
         --rand-read 0.25 \
