@@ -148,18 +148,19 @@ def parse_metric_file(metric_file):
     data["memory_mallocs"] = 0
     data["memory_reclaims"] = 0
     data["memory_live_objs"] = 0
-    data["journal_record_num"] = 0
-    data["journal_record_batch_num"] = 0
-    data["journal_io_num"] = 0
-    data["journal_io_depth_num"] = 0
-    data["journal_padding_4KB"] = 0
-    data["journal_metadata_4KB"] = 0 # without padding
-    data["journal_data_4KB"] = 0
     # ratio
     data["reactor_util"] = 0
     # time
     data["reactor_busytime_sec"] = 0
     data["reactor_stealtime_sec"] = 0
+    # submitter -> blocks/count
+    data["journal_padding_4KB"] = defaultdict(lambda: 0)
+    data["journal_metadata_4KB"] = defaultdict(lambda: 0) # without padding
+    data["journal_data_4KB"] = defaultdict(lambda: 0)
+    data["journal_record_num"] = defaultdict(lambda: 0)
+    data["journal_record_batch_num"] = defaultdict(lambda: 0)
+    data["journal_io_num"] = defaultdict(lambda: 0)
+    data["journal_io_depth_num"] = defaultdict(lambda: 0)
     # srcs -> count
     data["trans_srcs_invalidated"] = defaultdict(lambda: 0)
     # scheduler-group -> time
@@ -180,7 +181,6 @@ def parse_metric_file(metric_file):
     data["committed_ool_records"] = defaultdict(lambda: 0)
     # src -> blocks
     data["invalidated_ool_record_4KB"] = defaultdict(lambda: 0)
-    data["committed_ool_record_padding_4KB"] = defaultdict(lambda: 0)
     data["committed_ool_record_metadata_4KB"] = defaultdict(lambda: 0) # without padding
     data["committed_ool_record_data_4KB"] = defaultdict(lambda: 0)
     data["committed_inline_record_metadata_4KB"] = defaultdict(lambda: 0) # without delta buffer
@@ -222,9 +222,6 @@ def parse_metric_file(metric_file):
         "memory_allocated_memory",
         "memory_free_memory",
         "memory_total_memory",
-        "journal_record_group_padding_bytes",
-        "journal_record_group_metadata_bytes",
-        "journal_record_group_data_bytes",
         # count
         "segment_manager_data_read_num",
         "segment_manager_data_write_num",
@@ -238,15 +235,19 @@ def parse_metric_file(metric_file):
         "memory_malloc_operations",
         "memory_reclaims_operations",
         "memory_malloc_live_objects",
-        "journal_record_num",
-        "journal_record_batch_num",
-        "journal_io_num",
-        "journal_io_depth_num",
         # ratio
         "reactor_utilization",
         # time
         "reactor_cpu_busy_ms",
         "reactor_cpu_steal_time_ms",
+        # submitter -> blocks/count
+        "journal_record_group_padding_bytes",
+        "journal_record_group_metadata_bytes",
+        "journal_record_group_data_bytes",
+        "journal_record_num",
+        "journal_record_batch_num",
+        "journal_io_num",
+        "journal_io_depth_num",
         # srcs -> count
         "cache_trans_srcs_invalidated",
         # scheduler-group -> time
@@ -268,7 +269,6 @@ def parse_metric_file(metric_file):
         "cache_committed_ool_records",
         # src -> blocks
         "cache_invalidated_ool_record_bytes",
-        "cache_committed_ool_record_padding_bytes",
         "cache_committed_ool_record_metadata_bytes",
         "cache_committed_ool_record_data_bytes",
         "cache_committed_inline_record_metadata_bytes",
@@ -321,12 +321,6 @@ def parse_metric_file(metric_file):
             set_value("memory_free_KB", value/1024)
         elif name == "memory_total_memory":
             set_value("memory_total_KB", value/1024)
-        elif name == "journal_record_group_padding_bytes":
-            set_value("journal_padding_4KB", value/4096)
-        elif name == "journal_record_group_metadata_bytes":
-            set_value("journal_metadata_4KB", value/4096)
-        elif name == "journal_record_group_data_bytes":
-            set_value("journal_data_4KB", value/4096)
 
         # count
         elif name == "segment_manager_data_read_num":
@@ -353,14 +347,6 @@ def parse_metric_file(metric_file):
             set_value("memory_reclaims", value)
         elif name == "memory_malloc_live_objects":
             set_value("memory_live_objs", value)
-        elif name == "journal_record_num":
-            set_value("journal_record_num", value)
-        elif name == "journal_record_batch_num":
-            set_value("journal_record_batch_num", value)
-        elif name == "journal_io_num":
-            set_value("journal_io_num", value)
-        elif name == "journal_io_depth_num":
-            set_value("journal_io_depth_num", value)
 
         # ratio
         elif name == "reactor_utilization":
@@ -371,6 +357,22 @@ def parse_metric_file(metric_file):
             set_value("reactor_busytime_sec", value/1000)
         elif name == "reactor_cpu_steal_time_ms":
             set_value("reactor_stealtime_sec", value/1000)
+
+        # submitter -> blocks/count
+        elif name == "journal_record_group_padding_bytes":
+            set_value("journal_padding_4KB", value/4096, [labels["submitter"]])
+        elif name == "journal_record_group_metadata_bytes":
+            set_value("journal_metadata_4KB", value/4096, [labels["submitter"]])
+        elif name == "journal_record_group_data_bytes":
+            set_value("journal_data_4KB", value/4096, [labels["submitter"]])
+        elif name == "journal_record_num":
+            set_value("journal_record_num", value, [labels["submitter"]])
+        elif name == "journal_record_batch_num":
+            set_value("journal_record_batch_num", value, [labels["submitter"]])
+        elif name == "journal_io_num":
+            set_value("journal_io_num", value, [labels["submitter"]])
+        elif name == "journal_io_depth_num":
+            set_value("journal_io_depth_num", value, [labels["submitter"]])
 
         # srcs -> count
         elif name == "cache_trans_srcs_invalidated":
@@ -417,9 +419,6 @@ def parse_metric_file(metric_file):
         elif name == "cache_invalidated_ool_record_bytes":
             assert(labels["src"] != "READ")
             set_value("invalidated_ool_record_4KB", value/4096, [labels["src"]])
-        elif name == "cache_committed_ool_record_padding_bytes":
-            assert(labels["src"] != "READ")
-            set_value("committed_ool_record_padding_4KB", value/4096, [labels["src"]])
         elif name == "cache_committed_ool_record_metadata_bytes":
             assert(labels["src"] != "READ")
             set_value("committed_ool_record_metadata_4KB", value/4096, [labels["src"]])
@@ -533,9 +532,6 @@ def prepare_raw_dataset():
     data["memory_allocate_KB"] = []
     data["memory_free_KB"] = []
     data["memory_total_KB"] = []
-    data["journal_padding_4KB"] = []
-    data["journal_metadata_4KB"] = []
-    data["journal_data_4KB"] = []
     # count
     data["segment_reads"] = []
     data["segment_writes"] = []
@@ -550,15 +546,19 @@ def prepare_raw_dataset():
     data["memory_mallocs"] = []
     data["memory_reclaims"] = []
     data["memory_live_objs"] = []
-    data["journal_record_num"] = []
-    data["journal_record_batch_num"] = []
-    data["journal_io_num"] = []
-    data["journal_io_depth_num"] = []
     # ratio
     data["reactor_util"] = []
     # time
     data["reactor_busytime_sec"] = []
     data["reactor_stealtime_sec"] = []
+    # submitter -> blocks/count
+    data["journal_padding_4KB"] = defaultdict(lambda: [])
+    data["journal_metadata_4KB"] = defaultdict(lambda: [])
+    data["journal_data_4KB"] = defaultdict(lambda: [])
+    data["journal_record_num"] = defaultdict(lambda: [])
+    data["journal_record_batch_num"] = defaultdict(lambda: [])
+    data["journal_io_num"] = defaultdict(lambda: [])
+    data["journal_io_depth_num"] = defaultdict(lambda: [])
     # srcs -> count
     data["trans_srcs_invalidated"] = defaultdict(lambda: [])
     # scheduler-group -> time
@@ -579,7 +579,6 @@ def prepare_raw_dataset():
     data["committed_ool_records"] = defaultdict(lambda: [])
     # src -> blocks
     data["invalidated_ool_record_4KB"] = defaultdict(lambda: [])
-    data["committed_ool_record_padding_4KB"] = defaultdict(lambda: [])
     data["committed_ool_record_metadata_4KB"] = defaultdict(lambda: [])
     data["committed_ool_record_data_4KB"] = defaultdict(lambda: [])
     data["committed_inline_record_metadata_4KB"] = defaultdict(lambda: [])
@@ -608,9 +607,6 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff("segment_write_meta_4KB",    dataset, metrics_start, metrics_end)
     get_diff("reactor_aio_read_4KB",      dataset, metrics_start, metrics_end)
     get_diff("reactor_aio_write_4KB",     dataset, metrics_start, metrics_end)
-    get_diff("journal_padding_4KB",       dataset, metrics_start, metrics_end)
-    get_diff("journal_metadata_4KB",      dataset, metrics_start, metrics_end)
-    get_diff("journal_data_4KB",          dataset, metrics_start, metrics_end)
     # count
     get_diff("segment_reads",             dataset, metrics_start, metrics_end)
     get_diff("segment_writes",            dataset, metrics_start, metrics_end)
@@ -623,10 +619,6 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff("memory_frees",              dataset, metrics_start, metrics_end)
     get_diff("memory_mallocs",            dataset, metrics_start, metrics_end)
     get_diff("memory_reclaims",           dataset, metrics_start, metrics_end)
-    get_diff("journal_record_num",        dataset, metrics_start, metrics_end)
-    get_diff("journal_record_batch_num",  dataset, metrics_start, metrics_end)
-    get_diff("journal_io_num",            dataset, metrics_start, metrics_end)
-    get_diff("journal_io_depth_num",      dataset, metrics_start, metrics_end)
     # time
     get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
     get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
@@ -651,6 +643,14 @@ def append_raw_data(dataset, metrics_start, metrics_end):
             value = value_end - value_start
             assert(value >= 0)
             dataset[metric_name][name].append(value)
+    # submitter -> blocks/count
+    get_diff_l1("journal_padding_4KB",       dataset, metrics_start, metrics_end)
+    get_diff_l1("journal_metadata_4KB",      dataset, metrics_start, metrics_end)
+    get_diff_l1("journal_data_4KB",          dataset, metrics_start, metrics_end)
+    get_diff_l1("journal_record_num",        dataset, metrics_start, metrics_end)
+    get_diff_l1("journal_record_batch_num",  dataset, metrics_start, metrics_end)
+    get_diff_l1("journal_io_num",            dataset, metrics_start, metrics_end)
+    get_diff_l1("journal_io_depth_num",      dataset, metrics_start, metrics_end)
     # srcs -> count
     get_diff_l1("trans_srcs_invalidated",  dataset, metrics_start, metrics_end)
     # src -> count
@@ -662,7 +662,6 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff_l1("committed_ool_records",   dataset, metrics_start, metrics_end)
     # src -> blocks
     get_diff_l1("invalidated_ool_record_4KB",           dataset, metrics_start, metrics_end)
-    get_diff_l1("committed_ool_record_padding_4KB",     dataset, metrics_start, metrics_end)
     get_diff_l1("committed_ool_record_metadata_4KB",    dataset, metrics_start, metrics_end)
     get_diff_l1("committed_ool_record_data_4KB",        dataset, metrics_start, metrics_end)
     get_diff_l1("committed_inline_record_metadata_4KB", dataset, metrics_start, metrics_end)
@@ -974,7 +973,6 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     # 9.x write_amplification_detail
     valid_data_4K = {}
     valid_metadata_4K = {}
-    valid_ool_padding_4K = {}
     invalid_write_4K = {}
     for src in commit_srcs:
         if absolute:
@@ -986,7 +984,6 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         valid_ool_data = dataset["committed_ool_record_data_4KB"][src]
         assert(fresh_ool_4KB[src] == valid_ool_data)
         valid_ool_metadata = dataset["committed_ool_record_metadata_4KB"][src]
-        valid_ool_padding = dataset["committed_ool_record_padding_4KB"][src]
         inline_fresh_data = [total - retired for total, retired
                              in zip(fresh_inline_4KB[src], fresh_invalid_4KB[src])]
         inline_retired_data = fresh_invalid_4KB[src]
@@ -996,7 +993,6 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             "INVALID_OOL":            invalid_ool,
             "VALID_OOL_DATA":         valid_ool_data,
             "VALID_OOL_METADATA":     valid_ool_metadata,
-            "VALID_OOL_PADDING":      valid_ool_padding,
             "INLINE_FRESH_DATA":      inline_fresh_data,
             "INLINE_RETIRED_DATA":    inline_retired_data,
             "INLINE_DELTA_DATA":      inline_delta_data,
@@ -1015,7 +1011,6 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         valid_metadata = merge_lists([valid_ool_metadata,
                                       inline_metadata])
         valid_metadata_4K[src] = valid_metadata
-        valid_ool_padding_4K[src] = valid_ool_padding
         invalid_write = merge_lists([invalid_ool,
                                      inline_retired_data])
         invalid_write_4K[src] = invalid_write
@@ -1029,13 +1024,11 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     mutate_trans_data_write = []
     for src in commit_srcs:
         name = "VALID_DATA_" + src
-        data_10[name] = valid_data_4K[src]
+        data_10[name] = valid_data_4K[src]     # ool/inline data, inline delta
         name = "VALID_METADATA_" + src
-        data_10[name] = valid_metadata_4K[src]
+        data_10[name] = valid_metadata_4K[src] # ool/inline metadata
         name = "INVALID_WRITE_" + src
-        data_10[name] = invalid_write_4K[src]
-        name = "VALID_OOL_PADDING_" + src
-        data_10[name] = valid_ool_padding_4K[src]
+        data_10[name] = invalid_write_4K[src]  # inline-retired, invalid-ool
         if src == "MUTATE":
             mutate_trans_data_write = valid_data_4K[src]
     if commit_srcs:
@@ -1055,49 +1048,32 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         else:
             data_name = "write_amplification_overall"
 
-        account1 = merge_lists(dataset["invalidated_ool_record_4KB"].values())
-        account2 = merge_lists(dataset["committed_ool_record_padding_4KB"].values())
-        account3 = merge_lists(dataset["committed_ool_record_metadata_4KB"].values())
-        account4 = merge_lists(dataset["committed_ool_record_data_4KB"].values())
-        accounted_write = merge_lists([dataset["journal_padding_4KB"],
-                                       dataset["journal_metadata_4KB"],
-                                       dataset["journal_data_4KB"],
-                                       account1,
-                                       account2,
-                                       account3,
-                                       account4])
+        aw_padding =  merge_lists(dataset["journal_padding_4KB"].values())
+        total_md =    merge_lists(dataset["journal_metadata_4KB"].values())
+        total_data =  merge_lists(dataset["journal_data_4KB"].values())
+        total_write = merge_lists([aw_padding,
+                                   total_md,
+                                   total_data])
 
         aw_valid_data = merge_lists(valid_data_4K.values())
+        # note: record_group_header is not accounted
         aw_valid_metadata = merge_lists(valid_metadata_4K.values())
         aw_invalid = merge_lists(invalid_write_4K.values())
-        aw_padding = merge_lists(valid_ool_padding_4K.values())
-        aw_padding = merge_lists([aw_padding,
-                                  dataset["journal_padding_4KB"]])
 
-        deltas_4KB = merge_lists(mutate_delta_4KB.values())
-        mds_4KB = merge_lists(dataset["committed_inline_record_metadata_4KB"].values())
-        aw_else = [md_all - md - delta
-                   for md_all, md, delta
-                   in zip(dataset["journal_metadata_4KB"],
-                          mds_4KB,
-                          deltas_4KB)]
+        accounted_write = merge_lists([aw_valid_data,
+                                       aw_valid_metadata,
+                                       aw_invalid,
+                                       aw_padding])
 
-        expected_accounted_write = merge_lists([aw_valid_data,
-                                                aw_valid_metadata,
-                                                aw_invalid,
-                                                aw_padding,
-                                                aw_else])
-
-        # assert(expected_accounted_write == accounted_write)
         data_11 = {
             "SEGMENTED_READ":     segmented_read,
             "SEGMENTED_WRITE":    segmented_write,
+            "TOTAL_WRITE":        total_write,
             "ACCOUNTED_WRITE":    accounted_write,
             "AW_VALID_DATA":      aw_valid_data,
             "AW_VALID_METADATA":  aw_valid_metadata,
             "AW_INVALID":         aw_invalid,
             "AW_PADDING":         aw_padding,
-            "AW_ELSE":            aw_else,
             "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
         }
         if absolute:
@@ -1109,40 +1085,25 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     # 12. record_fullness
     data_name = "record_fullness"
     data_12_ratio = {}
-
-    inline_filled_md = dataset["journal_metadata_4KB"]
-    inline_md = merge_lists([dataset["journal_padding_4KB"],
-                             inline_filled_md])
-    data_12_ratio["inline-md"] = get_ratio(
-        inline_filled_md, inline_md)
-
-    inline_filled_all = merge_lists([inline_filled_md,
-                                     dataset["journal_data_4KB"]])
-    inline_all = merge_lists([inline_md,
-                              dataset["journal_data_4KB"]])
-    data_12_ratio["inline-all"] = get_ratio(
-        inline_filled_all, inline_all)
-
-    for src, paddings in dataset["committed_ool_record_padding_4KB"].items():
-        ool_filled_md = dataset["committed_ool_record_metadata_4KB"][src]
-        ool_md = merge_lists([paddings, ool_filled_md])
-        data_12_ratio["ool-md-" + src] = get_ratio(ool_filled_md, ool_md)
-        ool_filled_all = merge_lists([ool_filled_md, dataset["committed_ool_record_data_4KB"][src]])
-        ool_all = merge_lists([ool_md, dataset["committed_ool_record_data_4KB"][src]])
-        data_12_ratio["ool-all-" + src] = get_ratio(ool_filled_all, ool_all)
-
+    for submitter, raw_md in dataset["journal_metadata_4KB"].items():
+        total_md = merge_lists([dataset["journal_padding_4KB"][submitter], raw_md])
+        data_12_ratio["md-" + submitter] = get_ratio(raw_md, total_md)
+        raw_all = merge_lists([dataset["journal_data_4KB"][submitter], raw_md])
+        total_all = merge_lists([dataset["journal_data_4KB"][submitter], total_md])
+        data_12_ratio["all-" + submitter] = get_ratio(raw_all, total_all)
     washed_dataset[data_name] = filter_out_invalid_ratio_l2(data_12_ratio)
 
-    # 13. journal io
-    data_name = "journal_io"
-    journal_io_depth = get_ratio(dataset["journal_io_depth_num"],
-                                 dataset["journal_io_num"])
-    journal_record_batching = get_ratio(dataset["journal_record_batch_num"],
-                                        dataset["journal_record_num"])
-    washed_dataset[data_name] = {
-        "io_depth": journal_io_depth,
-        "record_batching": journal_record_batching,
-    }
+    # 13. journal io by submitter
+    data_name = "journal_io_by_submitter"
+    data_13 = {}
+    for submitter, io_depth_num in dataset["journal_io_depth_num"].items():
+        journal_io_depth = get_ratio(io_depth_num,
+                                     dataset["journal_io_num"][submitter])
+        data_13["io_depth-" + submitter] = journal_io_depth
+        journal_record_batching = get_ratio(dataset["journal_record_batch_num"][submitter],
+                                            dataset["journal_record_num"][submitter])
+        data_13["record_batching-" + submitter] = journal_record_batching
+    washed_dataset[data_name] = data_13
 
     # 14. trans_srcs_invalidated
     data_name = "trans_srcs_invalidated_ratio"
