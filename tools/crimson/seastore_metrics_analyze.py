@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
+from collections import OrderedDict
 from enum import Enum
 import json
 import os
@@ -115,6 +116,26 @@ def _process_json_item(json_item):
         if k == "value":
             if isinstance(v, int) or isinstance(v, float):
                 value = v
+            elif isinstance(v, list):
+                if (len(v) == 3 and
+                    isinstance(v[2], tuple) and
+                    v[2][0] == "buckets"):
+                    bucket = v[2][1]
+                    # valid bucket type, [[('le', 0.1), ('count', 9)], ...]
+                    tmp = []
+                    for item in bucket:
+                        key = item[0][1]
+                        val = item[1][1]
+                        if isinstance(key, int) or isinstance(key, float):
+                            tmp.append((key, val))
+                    if (len(tmp)):
+                        tmp = sorted(tmp)
+                        value = []
+                        accumulated = 0
+                        for item in tmp:
+                            accumulated += item[1]
+                            value.append((item[0], accumulated))
+                        value = OrderedDict(value)
         else:
             assert(isinstance(v, str))
             labels[k] = v
@@ -191,6 +212,8 @@ def parse_metric_file(metric_file):
     data["journal_record_batch_num"] = defaultdict(lambda: 0)
     data["journal_io_num"] = defaultdict(lambda: 0)
     data["journal_io_depth_num"] = defaultdict(lambda: 0)
+    # util -> count
+    data["segment_util_distribution"] = defaultdict(lambda: 0)
     # srcs -> count
     data["trans_srcs_invalidated"] = defaultdict(lambda: 0)
     # scheduler-group -> time
@@ -237,7 +260,10 @@ def parse_metric_file(metric_file):
         while len(_labels) > 1:
             setter = setter[_labels[0]]
             _labels.pop(0)
-        setter[_labels[0]] += value
+        if isinstance(value, OrderedDict):
+            setter[_labels[0]] = value
+        else:
+            setter[_labels[0]] += value
 
     found_metrics = set()
     expected_metrics = {
@@ -308,6 +334,8 @@ def parse_metric_file(metric_file):
         "journal_record_batch_num",
         "journal_io_num",
         "journal_io_depth_num",
+        # util -> count
+        "segment_cleaner_segment_utilization_distribution",
         # srcs -> count
         "cache_trans_srcs_invalidated",
         # scheduler-group -> time
@@ -493,6 +521,10 @@ def parse_metric_file(metric_file):
             set_value("journal_io_num", value, [labels["submitter"]])
         elif name == "journal_io_depth_num":
             set_value("journal_io_depth_num", value, [labels["submitter"]])
+
+        # util -> count
+        elif name == "segment_cleaner_segment_utilization_distribution":
+            set_value("segment_util_distribution", value)
 
         # srcs -> count
         elif name == "cache_trans_srcs_invalidated":
@@ -709,6 +741,8 @@ def prepare_raw_dataset():
     data["journal_record_batch_num"] = defaultdict(lambda: [])
     data["journal_io_num"] = defaultdict(lambda: [])
     data["journal_io_depth_num"] = defaultdict(lambda: [])
+    # util -> count
+    data["segment_util_distribution"] = defaultdict(lambda: [])
     # srcs -> count
     data["trans_srcs_invalidated"] = defaultdict(lambda: [])
     # scheduler-group -> time
@@ -816,6 +850,11 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     dataset["unavail_unreclaimable_KB"].append(metrics_end["unavail_unreclaimable_KB"])
     dataset["unavail_used_KB"].append(metrics_end["unavail_used_KB"])
     dataset["unavail_unused_KB"].append(metrics_end["unavail_unused_KB"])
+
+    def get_no_diff_l1(metric_name, dataset, metrics_end):
+        for name, value_end in metrics_end[metric_name].items():
+            dataset[metric_name][name].append(value_end)
+    get_no_diff_l1("segment_util_distribution", dataset, metrics_end)
 
     def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
         for name, value_end in metrics_end[metric_name].items():
@@ -1406,6 +1445,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         "blocked_iops": blocked_iops,
         "blocking_iops": blocking_iops,
     }
+
+    # 20. segment usage distribution
+    washed_dataset["segment_usage_distribution"] = dataset["segment_util_distribution"]
 
     if len(times_sec) == 0:
         # indexes
