@@ -621,17 +621,27 @@ def parse_metric_file(metric_file):
         elif name == "cache_committed_extent_bytes":
             assert(labels["src"] != "READ")
             effort_name = labels["effort"]
-            if (effort_name == "FRESH_INVALID" or
-                effort_name == "FRESH_INLINE" or
-                effort_name == "FRESH_OOL"):
+            if effort_name == "FRESH_INLINE":
+                set_value("committed_disk_efforts_4KB", value/4096,
+                          [labels["src"], labels["ext"], effort_name])
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], "FRESH"])
+            elif effort_name == "FRESH_INVALID":
+                set_value("committed_disk_efforts_4KB", value/4096,
+                          [labels["src"], labels["ext"], effort_name])
+                # FRESH_INLINE includes FRESH_INVLIAD
+                set_value("committed_efforts_4KB", -value/4096,
+                          [labels["src"], "FRESH"])
+                set_value("committed_disk_efforts_4KB", -value/4096,
+                          [labels["src"], labels["ext"], "FRESH_INLINE"])
+            elif effort_name == "FRESH_OOL":
                 set_value("committed_disk_efforts_4KB", value/4096,
                           [labels["src"], labels["ext"], effort_name])
                 # match cache_invalidated_extent_bytes FRESH, FRESH_OOL_WRITTEN
                 set_value("committed_efforts_4KB", value/4096,
                           [labels["src"], "FRESH"])
-                if effort_name == "FRESH_OOL":
-                    set_value("committed_efforts_4KB", value/4096,
-                              [labels["src"], "FRESH_OOL_WRITTEN"])
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], "FRESH_OOL_WRITTEN"])
             else:
                 set_value("committed_efforts_4KB", value/4096,
                           [labels["src"], labels["effort"]])
@@ -647,11 +657,12 @@ def parse_metric_file(metric_file):
 
         # others
         elif name == "cache_committed_extents":
-            if ((labels["effort"] == "FRESH_INLINE" or
-                 labels["effort"] == "FRESH_OOL") and
-                labels["ext"] == "OBJECT_DATA_BLOCK" and
-                labels["src"] == "MUTATE"):
-                set_value("object_data_writes", value)
+            if labels["ext"] == "OBJECT_DATA_BLOCK" and labels["src"] == "MUTATE":
+                if labels["effort"] == "FRESH_INLINE" or labels["effort"] == "FRESH_OOL":
+                    set_value("object_data_writes", value)
+                if labels["effort"] == "FRESH_INVALID":
+                    # FRESH_INLINE includes FRESH_INVLIAD
+                    set_value("object_data_writes", -value)
         else:
             ignored_metrics.add(name)
         if name not in ignored_metrics:
@@ -1226,8 +1237,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         valid_ool_data = dataset["committed_ool_record_data_4KB"][src]
         assert(fresh_ool_4KB[src] == valid_ool_data)
         valid_ool_metadata = dataset["committed_ool_record_metadata_4KB"][src]
-        inline_fresh_data = [total - retired for total, retired
-                             in zip(fresh_inline_4KB[src], fresh_invalid_4KB[src])]
+        inline_fresh_data = fresh_inline_4KB[src]
         inline_retired_data = fresh_invalid_4KB[src]
         inline_delta_data = mutate_delta_4KB[src]
         inline_metadata = dataset["committed_inline_record_metadata_4KB"][src]
