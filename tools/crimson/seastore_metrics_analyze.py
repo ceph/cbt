@@ -247,6 +247,7 @@ def parse_metric_file(metric_file):
     # src-> effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
     data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["committed_trans_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
@@ -620,10 +621,13 @@ def parse_metric_file(metric_file):
         # src -> extent-type -> effort-type -> blocks
         elif name == "cache_committed_extent_bytes":
             assert(labels["src"] != "READ")
+            # READ, MUTATE, RETIRE, FRESH_INVLID/INLINE/OOL
             effort_name = labels["effort"]
             if effort_name == "FRESH_INLINE":
                 set_value("committed_disk_efforts_4KB", value/4096,
                           [labels["src"], labels["ext"], effort_name])
+                set_value("committed_trans_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
                 set_value("committed_efforts_4KB", value/4096,
                           [labels["src"], "FRESH"])
             elif effort_name == "FRESH_INVALID":
@@ -634,17 +638,27 @@ def parse_metric_file(metric_file):
                           [labels["src"], "FRESH"])
                 set_value("committed_disk_efforts_4KB", -value/4096,
                           [labels["src"], labels["ext"], "FRESH_INLINE"])
+                set_value("committed_trans_efforts_4KB", -value/4096,
+                          [labels["src"], "FRESH_INLINE"])
             elif effort_name == "FRESH_OOL":
                 set_value("committed_disk_efforts_4KB", value/4096,
                           [labels["src"], labels["ext"], effort_name])
+                set_value("committed_trans_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
                 # match cache_invalidated_extent_bytes FRESH, FRESH_OOL_WRITTEN
                 set_value("committed_efforts_4KB", value/4096,
                           [labels["src"], "FRESH"])
                 set_value("committed_efforts_4KB", value/4096,
                           [labels["src"], "FRESH_OOL_WRITTEN"])
-            else:
+            elif effort_name == "RETIRE":
                 set_value("committed_efforts_4KB", value/4096,
-                          [labels["src"], labels["effort"]])
+                          [labels["src"], effort_name])
+                set_value("committed_trans_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
+            else:
+                # READ, MUTATE
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
         elif name == "cache_committed_delta_bytes":
             assert(labels["src"] != "READ")
             effort_name = "MUTATE_DELTA"
@@ -652,6 +666,8 @@ def parse_metric_file(metric_file):
                       [labels["src"], effort_name])
             set_value("committed_disk_efforts_4KB", value/4096,
                       [labels["src"], labels["ext"], effort_name])
+            set_value("committed_trans_efforts_4KB", value/4096,
+                      [labels["src"], effort_name])
         elif name == "cache_successful_read_extent_bytes":
             set_value("committed_efforts_4KB", value/4096, ["READ", "READ"])
 
@@ -787,6 +803,7 @@ def prepare_raw_dataset():
     # src -> effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
     data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["committed_trans_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [])))
     return data
@@ -919,6 +936,7 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # src -> effort-type -> blocks
     get_diff_l2("invalidated_efforts_4KB",  dataset, metrics_start, metrics_end)
     get_diff_l2("committed_efforts_4KB",    dataset, metrics_start, metrics_end)
+    get_diff_l2("committed_trans_efforts_4KB", dataset, metrics_start, metrics_end)
 
     def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
         for l3_name, l3_items_end in metrics_end[metric_name].items():
@@ -1458,6 +1476,15 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
 
     # 20. segment usage distribution
     washed_dataset["segment_usage_distribution"] = dataset["segment_util_distribution"]
+
+    # 21.* transaction commit efforts by src
+    data_name = "trans_commit_efforts_4KB_by_src"
+    washed_dataset[data_name] = {}
+    for src, efforts in dataset["committed_trans_efforts_4KB"].items():
+        data_name_src = "trans_commit_efforts_4KB -- " + src
+        washed_dataset[data_name_src] = get_ratio_l2_by_l1(efforts, dataset["committed_trans"][src])
+        sum_efforts = merge_lists([data for effort, data in efforts.items() if effort != "RETIRE"])
+        washed_dataset[data_name][src] = get_ratio(sum_efforts, dataset["committed_trans"][src])
 
     if len(times_sec) == 0:
         # indexes
