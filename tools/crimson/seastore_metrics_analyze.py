@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
+from collections import OrderedDict
 from enum import Enum
 import json
 import os
@@ -115,6 +116,26 @@ def _process_json_item(json_item):
         if k == "value":
             if isinstance(v, int) or isinstance(v, float):
                 value = v
+            elif isinstance(v, list):
+                if (len(v) == 3 and
+                    isinstance(v[2], tuple) and
+                    v[2][0] == "buckets"):
+                    bucket = v[2][1]
+                    # valid bucket type, [[('le', 0.1), ('count', 9)], ...]
+                    tmp = []
+                    for item in bucket:
+                        key = item[0][1]
+                        val = item[1][1]
+                        if isinstance(key, int) or isinstance(key, float):
+                            tmp.append((key, val))
+                    if (len(tmp)):
+                        tmp = sorted(tmp)
+                        value = []
+                        accumulated = 0
+                        for item in tmp:
+                            accumulated += item[1]
+                            value.append((item[0], accumulated))
+                        value = OrderedDict(value)
         else:
             assert(isinstance(v, str))
             labels[k] = v
@@ -134,6 +155,18 @@ def parse_metric_file(metric_file):
     data["memory_allocate_KB"] = 0
     data["memory_free_KB"] = 0
     data["memory_total_KB"] = 0
+    data["available_KB"] = 0
+    data["projected_used_sum_KB"] = 0
+    data["unavail_reclaimable_KB"] = 0
+    data["unavail_unreclaimable_KB"] = 0
+    data["unavail_used_KB"] = 0
+    data["unavail_unused_KB"] = 0
+    data["reclaimed_KB"] = 0
+    data["reclaimed_segment_KB"] = 0
+    data["closed_journal_total_KB"] = 0
+    data["closed_journal_used_KB"] = 0
+    data["closed_ool_total_KB"] = 0
+    data["closed_ool_used_KB"] = 0
     # count
     data["segment_reads"] = 0
     data["segment_writes"] = 0
@@ -148,8 +181,26 @@ def parse_metric_file(metric_file):
     data["memory_mallocs"] = 0
     data["memory_reclaims"] = 0
     data["memory_live_objs"] = 0
+    data["segments_open"] = 0
+    data["segments_closed"] = 0
+    data["segments_empty"] = 0
+    data["segments_in_journal"] = 0
+    data["segments_type_journal"] = 0
+    data["segments_type_ool"] = 0
+    data["segments_count_open_journal"] = 0
+    data["segments_count_close_journal"] = 0
+    data["segments_count_release_journal"] = 0
+    data["segments_count_open_ool"] = 0
+    data["segments_count_close_ool"] = 0
+    data["segments_count_release_ool"] = 0
+    data["projected_count"] = 0
+    data["io_count"] = 0
+    data["io_blocked_count"] = 0
+    data["io_blocked_sum"] = 0
     # ratio
     data["reactor_util"] = 0
+    data["unavailiable_total"] = 0
+    data["alive_unavailable"] = 0
     # time
     data["reactor_busytime_sec"] = 0
     data["reactor_stealtime_sec"] = 0
@@ -161,6 +212,8 @@ def parse_metric_file(metric_file):
     data["journal_record_batch_num"] = defaultdict(lambda: 0)
     data["journal_io_num"] = defaultdict(lambda: 0)
     data["journal_io_depth_num"] = defaultdict(lambda: 0)
+    # util -> count
+    data["segment_util_distribution"] = defaultdict(lambda: 0)
     # srcs -> count
     data["trans_srcs_invalidated"] = defaultdict(lambda: 0)
     # scheduler-group -> time
@@ -194,6 +247,7 @@ def parse_metric_file(metric_file):
     # src-> effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
     data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["committed_trans_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
@@ -207,7 +261,10 @@ def parse_metric_file(metric_file):
         while len(_labels) > 1:
             setter = setter[_labels[0]]
             _labels.pop(0)
-        setter[_labels[0]] += value
+        if isinstance(value, OrderedDict):
+            setter[_labels[0]] = value
+        else:
+            setter[_labels[0]] += value
 
     found_metrics = set()
     expected_metrics = {
@@ -222,6 +279,18 @@ def parse_metric_file(metric_file):
         "memory_allocated_memory",
         "memory_free_memory",
         "memory_total_memory",
+        "segment_cleaner_available_bytes",
+        "segment_cleaner_projected_used_bytes_sum",
+        "segment_cleaner_unavailable_reclaimable_bytes",
+        "segment_cleaner_unavailable_unreclaimable_bytes",
+        "segment_cleaner_unavailable_unused_bytes",
+        "segment_cleaner_used_bytes",
+        "segment_cleaner_reclaimed_bytes",
+        "segment_cleaner_reclaimed_segment_bytes",
+        "segment_cleaner_closed_journal_total_bytes",
+        "segment_cleaner_closed_journal_used_bytes",
+        "segment_cleaner_closed_ool_total_bytes",
+        "segment_cleaner_closed_ool_used_bytes",
         # count
         "segment_manager_data_read_num",
         "segment_manager_data_write_num",
@@ -235,8 +304,26 @@ def parse_metric_file(metric_file):
         "memory_malloc_operations",
         "memory_reclaims_operations",
         "memory_malloc_live_objects",
+        "segment_cleaner_segments_open",
+        "segment_cleaner_segments_closed",
+        "segment_cleaner_segments_empty",
+        "segment_cleaner_segments_in_journal",
+        "segment_cleaner_segments_type_journal",
+        "segment_cleaner_segments_type_ool",
+        "segment_cleaner_segments_count_open_journal",
+        "segment_cleaner_segments_count_close_journal",
+        "segment_cleaner_segments_count_release_journal",
+        "segment_cleaner_segments_count_open_ool",
+        "segment_cleaner_segments_count_close_ool",
+        "segment_cleaner_segments_count_release_ool",
+        "segment_cleaner_projected_count",
+        "segment_cleaner_io_count",
+        "segment_cleaner_io_blocked_count",
+        "segment_cleaner_io_blocked_sum",
         # ratio
         "reactor_utilization",
+        "segment_cleaner_available_ratio",
+        "segment_cleaner_reclaim_ratio",
         # time
         "reactor_cpu_busy_ms",
         "reactor_cpu_steal_time_ms",
@@ -248,6 +335,8 @@ def parse_metric_file(metric_file):
         "journal_record_batch_num",
         "journal_io_num",
         "journal_io_depth_num",
+        # util -> count
+        "segment_cleaner_segment_utilization_distribution",
         # srcs -> count
         "cache_trans_srcs_invalidated",
         # scheduler-group -> time
@@ -321,6 +410,30 @@ def parse_metric_file(metric_file):
             set_value("memory_free_KB", value/1024)
         elif name == "memory_total_memory":
             set_value("memory_total_KB", value/1024)
+        elif name == "segment_cleaner_available_bytes":
+            set_value("available_KB", value/1024)
+        elif name == "segment_cleaner_projected_used_bytes_sum":
+            set_value("projected_used_sum_KB", value/1024)
+        elif name == "segment_cleaner_unavailable_reclaimable_bytes":
+            set_value("unavail_reclaimable_KB", value/1024)
+        elif name == "segment_cleaner_unavailable_unreclaimable_bytes":
+            set_value("unavail_unreclaimable_KB", value/1024)
+        elif name == "segment_cleaner_unavailable_unused_bytes":
+            set_value("unavail_unused_KB", value/1024)
+        elif name == "segment_cleaner_used_bytes":
+            set_value("unavail_used_KB", value/1024)
+        elif name == "segment_cleaner_reclaimed_bytes":
+            set_value("reclaimed_KB", value/1024)
+        elif name == "segment_cleaner_reclaimed_segment_bytes":
+            set_value("reclaimed_segment_KB", value/1024)
+        elif name == "segment_cleaner_closed_journal_total_bytes":
+            set_value("closed_journal_total_KB", value/1024)
+        elif name == "segment_cleaner_closed_journal_used_bytes":
+            set_value("closed_journal_used_KB", value/1024)
+        elif name == "segment_cleaner_closed_ool_total_bytes":
+            set_value("closed_ool_total_KB", value/1024)
+        elif name == "segment_cleaner_closed_ool_used_bytes":
+            set_value("closed_ool_used_KB", value/1024)
 
         # count
         elif name == "segment_manager_data_read_num":
@@ -347,10 +460,46 @@ def parse_metric_file(metric_file):
             set_value("memory_reclaims", value)
         elif name == "memory_malloc_live_objects":
             set_value("memory_live_objs", value)
+        elif name == "segment_cleaner_segments_open":
+            set_value("segments_open", value)
+        elif name == "segment_cleaner_segments_closed":
+            set_value("segments_closed", value)
+        elif name == "segment_cleaner_segments_empty":
+            set_value("segments_empty", value)
+        elif name == "segment_cleaner_segments_in_journal":
+            set_value("segments_in_journal", value)
+        elif name == "segment_cleaner_segments_type_journal":
+            set_value("segments_type_journal", value)
+        elif name == "segment_cleaner_segments_type_ool":
+            set_value("segments_type_ool", value)
+        elif name == "segment_cleaner_segments_count_open_journal":
+            set_value("segments_count_open_journal", value)
+        elif name == "segment_cleaner_segments_count_close_journal":
+            set_value("segments_count_close_journal", value)
+        elif name == "segment_cleaner_segments_count_release_journal":
+            set_value("segments_count_release_journal", value)
+        elif name == "segment_cleaner_segments_count_open_ool":
+            set_value("segments_count_open_ool", value)
+        elif name == "segment_cleaner_segments_count_close_ool":
+            set_value("segments_count_close_ool", value)
+        elif name == "segment_cleaner_segments_count_release_ool":
+            set_value("segments_count_release_ool", value)
+        elif name == "segment_cleaner_projected_count":
+            set_value("projected_count", value)
+        elif name == "segment_cleaner_io_count":
+            set_value("io_count", value)
+        elif name == "segment_cleaner_io_blocked_count":
+            set_value("io_blocked_count", value)
+        elif name == "segment_cleaner_io_blocked_sum":
+            set_value("io_blocked_sum", value)
 
         # ratio
         elif name == "reactor_utilization":
             set_value("reactor_util", value/100)
+        elif name == "segment_cleaner_available_ratio":
+            set_value("unavailiable_total", 1 - value)
+        elif name == "segment_cleaner_reclaim_ratio":
+            set_value("alive_unavailable", 1 - value)
 
         # time
         elif name == "reactor_cpu_busy_ms":
@@ -373,6 +522,10 @@ def parse_metric_file(metric_file):
             set_value("journal_io_num", value, [labels["submitter"]])
         elif name == "journal_io_depth_num":
             set_value("journal_io_depth_num", value, [labels["submitter"]])
+
+        # util -> count
+        elif name == "segment_cleaner_segment_utilization_distribution":
+            set_value("segment_util_distribution", value)
 
         # srcs -> count
         elif name == "cache_trans_srcs_invalidated":
@@ -468,21 +621,44 @@ def parse_metric_file(metric_file):
         # src -> extent-type -> effort-type -> blocks
         elif name == "cache_committed_extent_bytes":
             assert(labels["src"] != "READ")
+            # READ, MUTATE, RETIRE, FRESH_INVLID/INLINE/OOL
             effort_name = labels["effort"]
-            if (effort_name == "FRESH_INVALID" or
-                effort_name == "FRESH_INLINE" or
-                effort_name == "FRESH_OOL"):
+            if effort_name == "FRESH_INLINE":
                 set_value("committed_disk_efforts_4KB", value/4096,
                           [labels["src"], labels["ext"], effort_name])
+                set_value("committed_trans_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], "FRESH"])
+            elif effort_name == "FRESH_INVALID":
+                set_value("committed_disk_efforts_4KB", value/4096,
+                          [labels["src"], labels["ext"], effort_name])
+                # FRESH_INLINE includes FRESH_INVLIAD
+                set_value("committed_efforts_4KB", -value/4096,
+                          [labels["src"], "FRESH"])
+                set_value("committed_disk_efforts_4KB", -value/4096,
+                          [labels["src"], labels["ext"], "FRESH_INLINE"])
+                set_value("committed_trans_efforts_4KB", -value/4096,
+                          [labels["src"], "FRESH_INLINE"])
+            elif effort_name == "FRESH_OOL":
+                set_value("committed_disk_efforts_4KB", value/4096,
+                          [labels["src"], labels["ext"], effort_name])
+                set_value("committed_trans_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
                 # match cache_invalidated_extent_bytes FRESH, FRESH_OOL_WRITTEN
                 set_value("committed_efforts_4KB", value/4096,
                           [labels["src"], "FRESH"])
-                if effort_name == "FRESH_OOL":
-                    set_value("committed_efforts_4KB", value/4096,
-                              [labels["src"], "FRESH_OOL_WRITTEN"])
-            else:
                 set_value("committed_efforts_4KB", value/4096,
-                          [labels["src"], labels["effort"]])
+                          [labels["src"], "FRESH_OOL_WRITTEN"])
+            elif effort_name == "RETIRE":
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
+                set_value("committed_trans_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
+            else:
+                # READ, MUTATE
+                set_value("committed_efforts_4KB", value/4096,
+                          [labels["src"], effort_name])
         elif name == "cache_committed_delta_bytes":
             assert(labels["src"] != "READ")
             effort_name = "MUTATE_DELTA"
@@ -490,16 +666,19 @@ def parse_metric_file(metric_file):
                       [labels["src"], effort_name])
             set_value("committed_disk_efforts_4KB", value/4096,
                       [labels["src"], labels["ext"], effort_name])
+            set_value("committed_trans_efforts_4KB", value/4096,
+                      [labels["src"], effort_name])
         elif name == "cache_successful_read_extent_bytes":
             set_value("committed_efforts_4KB", value/4096, ["READ", "READ"])
 
         # others
         elif name == "cache_committed_extents":
-            if ((labels["effort"] == "FRESH_INLINE" or
-                 labels["effort"] == "FRESH_OOL") and
-                labels["ext"] == "OBJECT_DATA_BLOCK" and
-                labels["src"] == "MUTATE"):
-                set_value("object_data_writes", value)
+            if labels["ext"] == "OBJECT_DATA_BLOCK" and labels["src"] == "MUTATE":
+                if labels["effort"] == "FRESH_INLINE" or labels["effort"] == "FRESH_OOL":
+                    set_value("object_data_writes", value)
+                if labels["effort"] == "FRESH_INVALID":
+                    # FRESH_INLINE includes FRESH_INVLIAD
+                    set_value("object_data_writes", -value)
         else:
             ignored_metrics.add(name)
         if name not in ignored_metrics:
@@ -532,6 +711,18 @@ def prepare_raw_dataset():
     data["memory_allocate_KB"] = []
     data["memory_free_KB"] = []
     data["memory_total_KB"] = []
+    data["available_KB"] = []
+    data["projected_used_sum_KB"] = []
+    data["unavail_reclaimable_KB"] = []
+    data["unavail_unreclaimable_KB"] = []
+    data["unavail_used_KB"] = []
+    data["unavail_unused_KB"] = []
+    data["reclaimed_KB"] = []
+    data["reclaimed_segment_KB"] = []
+    data["closed_journal_total_KB"] = []
+    data["closed_journal_used_KB"] = []
+    data["closed_ool_total_KB"] = []
+    data["closed_ool_used_KB"] = []
     # count
     data["segment_reads"] = []
     data["segment_writes"] = []
@@ -546,8 +737,26 @@ def prepare_raw_dataset():
     data["memory_mallocs"] = []
     data["memory_reclaims"] = []
     data["memory_live_objs"] = []
+    data["segments_open"] = []
+    data["segments_closed"] = []
+    data["segments_empty"] = []
+    data["segments_in_journal"] = []
+    data["segments_type_journal"] = []
+    data["segments_type_ool"] = []
+    data["segments_count_open_journal"] = []
+    data["segments_count_close_journal"] = []
+    data["segments_count_release_journal"] = []
+    data["segments_count_open_ool"] = []
+    data["segments_count_close_ool"] = []
+    data["segments_count_release_ool"] = []
+    data["projected_count"] = []
+    data["io_count"] = []
+    data["io_blocked_count"] = []
+    data["io_blocked_sum"] = []
     # ratio
     data["reactor_util"] = []
+    data["unavailiable_total"] = []
+    data["alive_unavailable"] = []
     # time
     data["reactor_busytime_sec"] = []
     data["reactor_stealtime_sec"] = []
@@ -559,6 +768,8 @@ def prepare_raw_dataset():
     data["journal_record_batch_num"] = defaultdict(lambda: [])
     data["journal_io_num"] = defaultdict(lambda: [])
     data["journal_io_depth_num"] = defaultdict(lambda: [])
+    # util -> count
+    data["segment_util_distribution"] = defaultdict(lambda: [])
     # srcs -> count
     data["trans_srcs_invalidated"] = defaultdict(lambda: [])
     # scheduler-group -> time
@@ -592,6 +803,7 @@ def prepare_raw_dataset():
     # src -> effort-type -> blocks
     data["invalidated_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
     data["committed_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["committed_trans_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> extent-type -> effort-type -> blocks
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [])))
     return data
@@ -607,6 +819,13 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff("segment_write_meta_4KB",    dataset, metrics_start, metrics_end)
     get_diff("reactor_aio_read_4KB",      dataset, metrics_start, metrics_end)
     get_diff("reactor_aio_write_4KB",     dataset, metrics_start, metrics_end)
+    get_diff("projected_used_sum_KB",     dataset, metrics_start, metrics_end)
+    get_diff("reclaimed_KB",              dataset, metrics_start, metrics_end)
+    get_diff("reclaimed_segment_KB",      dataset, metrics_start, metrics_end)
+    get_diff("closed_journal_total_KB",   dataset, metrics_start, metrics_end)
+    get_diff("closed_journal_used_KB",    dataset, metrics_start, metrics_end)
+    get_diff("closed_ool_total_KB",       dataset, metrics_start, metrics_end)
+    get_diff("closed_ool_used_KB",        dataset, metrics_start, metrics_end)
     # count
     get_diff("segment_reads",             dataset, metrics_start, metrics_end)
     get_diff("segment_writes",            dataset, metrics_start, metrics_end)
@@ -619,6 +838,16 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff("memory_frees",              dataset, metrics_start, metrics_end)
     get_diff("memory_mallocs",            dataset, metrics_start, metrics_end)
     get_diff("memory_reclaims",           dataset, metrics_start, metrics_end)
+    get_diff("segments_count_open_journal",       dataset, metrics_start, metrics_end)
+    get_diff("segments_count_close_journal",      dataset, metrics_start, metrics_end)
+    get_diff("segments_count_release_journal",    dataset, metrics_start, metrics_end)
+    get_diff("segments_count_open_ool",       dataset, metrics_start, metrics_end)
+    get_diff("segments_count_close_ool",      dataset, metrics_start, metrics_end)
+    get_diff("segments_count_release_ool",    dataset, metrics_start, metrics_end)
+    get_diff("projected_count",    dataset, metrics_start, metrics_end)
+    get_diff("io_count",    dataset, metrics_start, metrics_end)
+    get_diff("io_blocked_count",    dataset, metrics_start, metrics_end)
+    get_diff("io_blocked_sum",    dataset, metrics_start, metrics_end)
     # time
     get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
     get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
@@ -629,6 +858,8 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     for name, value in metrics_end["tree_depth"].items():
         dataset["tree_depth"][name].append(value)
     dataset["reactor_util"].append(metrics_end["reactor_util"])
+    dataset["unavailiable_total"].append(metrics_end["unavailiable_total"])
+    dataset["alive_unavailable"].append(metrics_end["alive_unavailable"])
     dataset["reactor_tasks_pending"].append(metrics_end["reactor_tasks_pending"])
     for name, value in metrics_end["scheduler_queue_length"].items():
         dataset["scheduler_queue_length"][name].append(value)
@@ -636,6 +867,22 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     dataset["memory_free_KB"].append(metrics_end["memory_free_KB"])
     dataset["memory_total_KB"].append(metrics_end["memory_total_KB"])
     dataset["memory_live_objs"].append(metrics_end["memory_live_objs"])
+    dataset["segments_open"].append(metrics_end["segments_open"])
+    dataset["segments_closed"].append(metrics_end["segments_closed"])
+    dataset["segments_empty"].append(metrics_end["segments_empty"])
+    dataset["segments_in_journal"].append(metrics_end["segments_in_journal"])
+    dataset["segments_type_journal"].append(metrics_end["segments_type_journal"])
+    dataset["segments_type_ool"].append(metrics_end["segments_type_ool"])
+    dataset["available_KB"].append(metrics_end["available_KB"])
+    dataset["unavail_reclaimable_KB"].append(metrics_end["unavail_reclaimable_KB"])
+    dataset["unavail_unreclaimable_KB"].append(metrics_end["unavail_unreclaimable_KB"])
+    dataset["unavail_used_KB"].append(metrics_end["unavail_used_KB"])
+    dataset["unavail_unused_KB"].append(metrics_end["unavail_unused_KB"])
+
+    def get_no_diff_l1(metric_name, dataset, metrics_end):
+        for name, value_end in metrics_end[metric_name].items():
+            dataset[metric_name][name].append(value_end)
+    get_no_diff_l1("segment_util_distribution", dataset, metrics_end)
 
     def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
         for name, value_end in metrics_end[metric_name].items():
@@ -689,6 +936,7 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     # src -> effort-type -> blocks
     get_diff_l2("invalidated_efforts_4KB",  dataset, metrics_start, metrics_end)
     get_diff_l2("committed_efforts_4KB",    dataset, metrics_start, metrics_end)
+    get_diff_l2("committed_trans_efforts_4KB", dataset, metrics_start, metrics_end)
 
     def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
         for l3_name, l3_items_end in metrics_end[metric_name].items():
@@ -751,7 +999,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     washed_dataset[data_name] = dataset["tree_depth"]
 
     # 3. from tree_erases_committed, tree_inserts_committed
-    data_name = "tree_operations"
+    data_name = "tree_operations_sum"
 
     def merge_lists_l1_by_l2(l3_items):
         l2_ret = {}
@@ -788,20 +1036,43 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         sub_name = tree_type + "_erases"
         washed_dataset[data_name][sub_name] = values
 
+    def get_IOPS(rws, ts_sec):
+        assert(len(rws) == len(ts_sec))
+        return [rw/t for rw, t in zip(rws, ts_sec)]
+    def get_IOPS_l2(l2_rws, ts_sec):
+        ret = {}
+        for name, data in l2_rws.items():
+            iops = get_IOPS(data, ts_sec)
+            ret[name] = iops
+        return ret
+
+    data_name = "tree_operations_per_sec"
+    tree_inserts_PS_committed_by_tree = get_IOPS_l2(
+        _tree_inserts_committed_by_tree, times_sec)
+    tree_erases_PS_committed_by_tree = get_IOPS_l2(
+        _tree_erases_committed_by_tree, times_sec)
+    washed_dataset[data_name] = {}
+    for tree_type, values in tree_inserts_PS_committed_by_tree.items():
+        sub_name = tree_type + "_inserts"
+        washed_dataset[data_name][sub_name] = values
+    for tree_type, values in tree_erases_PS_committed_by_tree.items():
+        sub_name = tree_type + "_erases"
+        washed_dataset[data_name][sub_name] = values
+
     # 4. from cache_hit, cache_access
     data_name = "cache_hit_access_ratio_by_src"
 
-    def get_ratio(numerators, denominators):
+    def get_ratio(numerators, denominators, invalid=INVALID_RATIO):
         assert(len(numerators) == len(denominators))
         ratios = []
         for numerator, denominator in zip(numerators, denominators):
-            ratio = INVALID_RATIO
+            ratio = invalid
             if denominator != 0:
                 ratio = (numerator/denominator)
             else:
                 if numerator != 0:
                     # special case
-                    ratio = INVALID_RATIO - 0.1
+                    ratio = invalid * 2
             ratios.append(ratio)
         return ratios
     def get_ratio_l2(l2_numerators, l2_denominators, expected_size):
@@ -984,8 +1255,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         valid_ool_data = dataset["committed_ool_record_data_4KB"][src]
         assert(fresh_ool_4KB[src] == valid_ool_data)
         valid_ool_metadata = dataset["committed_ool_record_metadata_4KB"][src]
-        inline_fresh_data = [total - retired for total, retired
-                             in zip(fresh_inline_4KB[src], fresh_invalid_4KB[src])]
+        inline_fresh_data = fresh_inline_4KB[src]
         inline_retired_data = fresh_invalid_4KB[src]
         inline_delta_data = mutate_delta_4KB[src]
         inline_metadata = dataset["committed_inline_record_metadata_4KB"][src]
@@ -1114,6 +1384,108 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             non_empty_trans_srcs_invalidated,
             committed_trans_all)
 
+    # 15. segments state
+    data_name = "segments_state"
+    washed_dataset[data_name] = {
+        "open": dataset["segments_open"],
+        "closed": dataset["segments_closed"],
+        "empty": dataset["segments_empty"],
+        "in_journal": dataset["segments_in_journal"],
+        "type_journal": dataset["segments_type_journal"],
+        "type_ool": dataset["segments_type_ool"],
+    }
+
+    # 16. segments operations
+    data_name = "segments_operations_sum"
+    segments_count_open_journal = accumulate(dataset["segments_count_open_journal"])
+    segments_count_close_journal = accumulate(dataset["segments_count_close_journal"])
+    segments_count_release_journal = accumulate(dataset["segments_count_release_journal"])
+    segments_count_open_ool = accumulate(dataset["segments_count_open_ool"])
+    segments_count_close_ool = accumulate(dataset["segments_count_close_ool"])
+    segments_count_release_ool = accumulate(dataset["segments_count_release_ool"])
+    washed_dataset[data_name] = {
+        "open_journal": segments_count_open_journal,
+        "close_journal": segments_count_close_journal,
+        "release_journal": segments_count_release_journal,
+        "open_ool": segments_count_open_ool,
+        "close_ool": segments_count_close_ool,
+        "release_ool": segments_count_release_ool,
+    }
+
+    data_name = "segments_operations_per_sec"
+    segments_count_open_journal_PS = get_IOPS(dataset["segments_count_open_journal"], times_sec)
+    segments_count_close_journal_PS = get_IOPS(dataset["segments_count_close_journal"], times_sec)
+    segments_count_release_journal_PS = get_IOPS(dataset["segments_count_release_journal"], times_sec)
+    segments_count_open_ool_PS = get_IOPS(dataset["segments_count_open_ool"], times_sec)
+    segments_count_close_ool_PS = get_IOPS(dataset["segments_count_close_ool"], times_sec)
+    segments_count_release_ool_PS = get_IOPS(dataset["segments_count_release_ool"], times_sec)
+    washed_dataset[data_name] = {
+        "open_journal": segments_count_open_journal_PS,
+        "close_journal": segments_count_close_journal_PS,
+        "release_journal": segments_count_release_journal_PS,
+        "open_ool": segments_count_open_ool_PS,
+        "close_ool": segments_count_close_ool_PS,
+        "release_ool": segments_count_release_ool_PS,
+    }
+
+    # 17. space usage
+    data_name = "space_usage_KB"
+    avg_projected_used_KB = get_ratio(dataset["projected_used_sum_KB"],
+                                      dataset["projected_count"])
+    washed_dataset[data_name] = {
+        "available": dataset["available_KB"],
+        "unavail_reclaimable": dataset["unavail_reclaimable_KB"],
+        "unavail_unreclaimable": dataset["unavail_unreclaimable_KB"],
+        "unavail_used": dataset["unavail_used_KB"],
+        "unavail_unused": dataset["unavail_unused_KB"],
+        "projected_avg": avg_projected_used_KB,
+    }
+
+    # 18. space reclaim ratio
+    data_name = "space_reclaim_ratio"
+    avg_reclaimed_ratio = get_ratio(dataset["reclaimed_KB"],
+                                    dataset["reclaimed_segment_KB"])
+    reclaimed_KB = accumulate(dataset["reclaimed_KB"])
+    reclaimed_segment_KB = accumulate(dataset["reclaimed_segment_KB"])
+    reclaimed_alive_total = get_ratio(reclaimed_KB, reclaimed_segment_KB)
+    closed_journal_alive_total = get_ratio(dataset["closed_journal_used_KB"],
+                                           dataset["closed_journal_total_KB"])
+    closed_ool_alive_total = get_ratio(dataset["closed_ool_used_KB"],
+                                       dataset["closed_ool_total_KB"])
+    washed_dataset[data_name] = {
+        "unavailable/total": dataset["unavailiable_total"],
+        "alive/unavailable": dataset["alive_unavailable"],
+        "actual_reclaim_average": avg_reclaimed_ratio,
+        "reclaimed_alive/total": reclaimed_alive_total,
+        "closed_journal_alive/total": closed_journal_alive_total,
+        "closed_ool_alive/total": closed_ool_alive_total,
+    }
+
+    # 19. cleaner blocked io
+    data_name = "cleaner_blocked_io"
+    blocked_iops = get_ratio(dataset["io_blocked_count"],
+                             dataset["io_count"],
+                             -0.0001)
+    blocking_iops = get_ratio(dataset["io_blocked_sum"],
+                              dataset["io_count"],
+                              -0.0001)
+    washed_dataset[data_name] = {
+        "blocked_iops": blocked_iops,
+        "blocking_iops": blocking_iops,
+    }
+
+    # 20. segment usage distribution
+    washed_dataset["segment_usage_distribution"] = dataset["segment_util_distribution"]
+
+    # 21.* transaction commit efforts by src
+    data_name = "trans_commit_efforts_4KB_by_src"
+    washed_dataset[data_name] = {}
+    for src, efforts in dataset["committed_trans_efforts_4KB"].items():
+        data_name_src = "trans_commit_efforts_4KB -- " + src
+        washed_dataset[data_name_src] = get_ratio_l2_by_l1(efforts, dataset["committed_trans"][src])
+        sum_efforts = merge_lists([data for effort, data in efforts.items() if effort != "RETIRE"])
+        washed_dataset[data_name][src] = get_ratio(sum_efforts, dataset["committed_trans"][src])
+
     if len(times_sec) == 0:
         # indexes
         indexes = []
@@ -1186,15 +1558,6 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         }
 
     # 4.x IOPS_by_src, IOPS_overall
-    def get_IOPS(rws, ts_sec):
-        assert(len(rws) == len(ts_sec))
-        return [rw/t for rw, t in zip(rws, ts_sec)]
-    def get_IOPS_l2(l2_rws, ts_sec):
-        ret = {}
-        for name, data in l2_rws.items():
-            iops = get_IOPS(data, ts_sec)
-            ret[name] = iops
-        return ret
     data_IOPS_detail = {}
     read_trans = []
     commit_trans = []
