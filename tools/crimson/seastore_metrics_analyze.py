@@ -167,6 +167,8 @@ def parse_metric_file(metric_file):
     data["closed_journal_used_KB"] = 0
     data["closed_ool_total_KB"] = 0
     data["closed_ool_used_KB"] = 0
+    data["alloc_journal_KB"] = 0
+    data["dirty_journal_KB"] = 0
     # count
     data["segment_reads"] = 0
     data["segment_writes"] = 0
@@ -196,7 +198,13 @@ def parse_metric_file(metric_file):
     data["projected_count"] = 0
     data["io_count"] = 0
     data["io_blocked_count"] = 0
+    data["io_blocked_count_trim"] = 0
+    data["io_blocked_count_reclaim"] = 0
     data["io_blocked_sum"] = 0
+    data["version_count_dirty"] = 0
+    data["version_sum_dirty"] = 0
+    data["version_count_reclaim"] = 0
+    data["version_sum_reclaim"] = 0
     # ratio
     data["reactor_util"] = 0
     data["unavailiable_total"] = 0
@@ -239,9 +247,8 @@ def parse_metric_file(metric_file):
     data["committed_inline_record_metadata_4KB"] = defaultdict(lambda: 0) # without delta buffer
     # src -> tree-type -> count
     data["tree_erases_committed"] = defaultdict(lambda: defaultdict(lambda: 0))
-    data["tree_erases_invalidated"] = defaultdict(lambda: defaultdict(lambda: 0))
     data["tree_inserts_committed"] = defaultdict(lambda: defaultdict(lambda: 0))
-    data["tree_inserts_invalidated"] = defaultdict(lambda: defaultdict(lambda: 0))
+    data["tree_updates_committed"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> extent-type -> count
     data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: 0))
     # src-> effort-type -> blocks
@@ -291,6 +298,8 @@ def parse_metric_file(metric_file):
         "segment_cleaner_closed_journal_used_bytes",
         "segment_cleaner_closed_ool_total_bytes",
         "segment_cleaner_closed_ool_used_bytes",
+        "segment_cleaner_alloc_journal_bytes",
+        "segment_cleaner_dirty_journal_bytes",
         # count
         "segment_manager_data_read_num",
         "segment_manager_data_write_num",
@@ -319,7 +328,13 @@ def parse_metric_file(metric_file):
         "segment_cleaner_projected_count",
         "segment_cleaner_io_count",
         "segment_cleaner_io_blocked_count",
+        "segment_cleaner_io_blocked_count_trim",
+        "segment_cleaner_io_blocked_count_reclaim",
         "segment_cleaner_io_blocked_sum",
+        "cache_version_count_dirty",
+        "cache_version_count_reclaim",
+        "cache_version_sum_dirty",
+        "cache_version_sum_reclaim",
         # ratio
         "reactor_utilization",
         "segment_cleaner_available_ratio",
@@ -363,9 +378,8 @@ def parse_metric_file(metric_file):
         "cache_committed_inline_record_metadata_bytes",
         # src -> tree-type -> count
         "cache_tree_erases_committed",
-        "cache_tree_erases_invalidated",
         "cache_tree_inserts_committed",
-        "cache_tree_inserts_invalidated",
+        "cache_tree_updates_committed",
         # src -> extent-type -> count
         "cache_trans_invalidated",
         # src -> effort-type -> blocks
@@ -434,6 +448,10 @@ def parse_metric_file(metric_file):
             set_value("closed_ool_total_KB", value/1024)
         elif name == "segment_cleaner_closed_ool_used_bytes":
             set_value("closed_ool_used_KB", value/1024)
+        elif name == "segment_cleaner_alloc_journal_bytes":
+            set_value("alloc_journal_KB", value/1024)
+        elif name == "segment_cleaner_dirty_journal_bytes":
+            set_value("dirty_journal_KB", value/1024)
 
         # count
         elif name == "segment_manager_data_read_num":
@@ -490,8 +508,20 @@ def parse_metric_file(metric_file):
             set_value("io_count", value)
         elif name == "segment_cleaner_io_blocked_count":
             set_value("io_blocked_count", value)
+        elif name == "segment_cleaner_io_blocked_count_trim":
+            set_value("io_blocked_count_trim", value)
+        elif name == "segment_cleaner_io_blocked_count_reclaim":
+            set_value("io_blocked_count_reclaim", value)
         elif name == "segment_cleaner_io_blocked_sum":
             set_value("io_blocked_sum", value)
+        elif name == "cache_version_count_dirty":
+            set_value("version_count_dirty", value)
+        elif name == "cache_version_count_reclaim":
+            set_value("version_count_reclaim", value)
+        elif name == "cache_version_sum_dirty":
+            set_value("version_sum_dirty", value)
+        elif name == "cache_version_sum_reclaim":
+            set_value("version_sum_reclaim", value)
 
         # ratio
         elif name == "reactor_utilization":
@@ -585,24 +615,13 @@ def parse_metric_file(metric_file):
         # src -> tree-type -> count
         elif name == "cache_tree_erases_committed":
             assert(labels["src"] != "READ")
-            if labels["src"] == "CLEANER":
-                assert(labels["tree"] != "ONODE")
             set_value("tree_erases_committed", value, [labels["src"], labels["tree"]])
-        elif name == "cache_tree_erases_invalidated":
-            assert(labels["src"] != "READ")
-            if labels["src"] == "CLEANER":
-                assert(labels["tree"] != "ONODE")
-            set_value("tree_erases_invalidated", value, [labels["src"], labels["tree"]])
         elif name == "cache_tree_inserts_committed":
             assert(labels["src"] != "READ")
-            if labels["src"] == "CLEANER":
-                assert(labels["tree"] != "ONODE")
             set_value("tree_inserts_committed", value, [labels["src"], labels["tree"]])
-        elif name == "cache_tree_inserts_invalidated":
+        elif name == "cache_tree_updates_committed":
             assert(labels["src"] != "READ")
-            if labels["src"] == "CLEANER":
-                assert(labels["tree"] != "ONODE")
-            set_value("tree_inserts_invalidated", value, [labels["src"], labels["tree"]])
+            set_value("tree_updates_committed", value, [labels["src"], labels["tree"]])
 
         # src -> extent-type -> count
         elif name == "cache_trans_invalidated":
@@ -723,6 +742,8 @@ def prepare_raw_dataset():
     data["closed_journal_used_KB"] = []
     data["closed_ool_total_KB"] = []
     data["closed_ool_used_KB"] = []
+    data["alloc_journal_KB"] = []
+    data["dirty_journal_KB"] = []
     # count
     data["segment_reads"] = []
     data["segment_writes"] = []
@@ -752,7 +773,13 @@ def prepare_raw_dataset():
     data["projected_count"] = []
     data["io_count"] = []
     data["io_blocked_count"] = []
+    data["io_blocked_count_trim"] = []
+    data["io_blocked_count_reclaim"] = []
     data["io_blocked_sum"] = []
+    data["version_count_dirty"] = []
+    data["version_sum_dirty"] = []
+    data["version_count_reclaim"] = []
+    data["version_sum_reclaim"] = []
     # ratio
     data["reactor_util"] = []
     data["unavailiable_total"] = []
@@ -795,9 +822,8 @@ def prepare_raw_dataset():
     data["committed_inline_record_metadata_4KB"] = defaultdict(lambda: [])
     # src -> tree-type -> count
     data["tree_erases_committed"] = defaultdict(lambda: defaultdict(lambda: []))
-    data["tree_erases_invalidated"] = defaultdict(lambda: defaultdict(lambda: []))
     data["tree_inserts_committed"] = defaultdict(lambda: defaultdict(lambda: []))
-    data["tree_inserts_invalidated"] = defaultdict(lambda: defaultdict(lambda: []))
+    data["tree_updates_committed"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> extent-type -> count
     data["invalidated_trans"] = defaultdict(lambda: defaultdict(lambda: []))
     # src -> effort-type -> blocks
@@ -841,13 +867,19 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     get_diff("segments_count_open_journal",       dataset, metrics_start, metrics_end)
     get_diff("segments_count_close_journal",      dataset, metrics_start, metrics_end)
     get_diff("segments_count_release_journal",    dataset, metrics_start, metrics_end)
-    get_diff("segments_count_open_ool",       dataset, metrics_start, metrics_end)
-    get_diff("segments_count_close_ool",      dataset, metrics_start, metrics_end)
-    get_diff("segments_count_release_ool",    dataset, metrics_start, metrics_end)
-    get_diff("projected_count",    dataset, metrics_start, metrics_end)
-    get_diff("io_count",    dataset, metrics_start, metrics_end)
-    get_diff("io_blocked_count",    dataset, metrics_start, metrics_end)
-    get_diff("io_blocked_sum",    dataset, metrics_start, metrics_end)
+    get_diff("segments_count_open_ool",   dataset, metrics_start, metrics_end)
+    get_diff("segments_count_close_ool",  dataset, metrics_start, metrics_end)
+    get_diff("segments_count_release_ool",dataset, metrics_start, metrics_end)
+    get_diff("projected_count",           dataset, metrics_start, metrics_end)
+    get_diff("io_count",                  dataset, metrics_start, metrics_end)
+    get_diff("io_blocked_count",          dataset, metrics_start, metrics_end)
+    get_diff("io_blocked_count_trim",     dataset, metrics_start, metrics_end)
+    get_diff("io_blocked_count_reclaim",  dataset, metrics_start, metrics_end)
+    get_diff("io_blocked_sum",            dataset, metrics_start, metrics_end)
+    get_diff("version_count_dirty",       dataset, metrics_start, metrics_end)
+    get_diff("version_sum_dirty",         dataset, metrics_start, metrics_end)
+    get_diff("version_count_reclaim",     dataset, metrics_start, metrics_end)
+    get_diff("version_sum_reclaim",       dataset, metrics_start, metrics_end)
     # time
     get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
     get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
@@ -878,6 +910,8 @@ def append_raw_data(dataset, metrics_start, metrics_end):
     dataset["unavail_unreclaimable_KB"].append(metrics_end["unavail_unreclaimable_KB"])
     dataset["unavail_used_KB"].append(metrics_end["unavail_used_KB"])
     dataset["unavail_unused_KB"].append(metrics_end["unavail_unused_KB"])
+    dataset["alloc_journal_KB"].append(metrics_end["alloc_journal_KB"])
+    dataset["dirty_journal_KB"].append(metrics_end["dirty_journal_KB"])
 
     def get_no_diff_l1(metric_name, dataset, metrics_end):
         for name, value_end in metrics_end[metric_name].items():
@@ -928,9 +962,8 @@ def append_raw_data(dataset, metrics_start, metrics_end):
                 dataset[metric_name][l2_name][name].append(value)
     # src -> tree-type -> count
     get_diff_l2("tree_erases_committed",    dataset, metrics_start, metrics_end)
-    get_diff_l2("tree_erases_invalidated",  dataset, metrics_start, metrics_end)
     get_diff_l2("tree_inserts_committed",   dataset, metrics_start, metrics_end)
-    get_diff_l2("tree_inserts_invalidated", dataset, metrics_start, metrics_end)
+    get_diff_l2("tree_updates_committed",   dataset, metrics_start, metrics_end)
     # src -> extent-type -> count
     get_diff_l2("invalidated_trans",        dataset, metrics_start, metrics_end)
     # src -> effort-type -> blocks
@@ -1012,6 +1045,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         return l2_ret
     _tree_inserts_committed_by_tree = merge_lists_l1_by_l2(dataset["tree_inserts_committed"])
     _tree_erases_committed_by_tree = merge_lists_l1_by_l2(dataset["tree_erases_committed"])
+    _tree_updates_committed_by_tree = merge_lists_l1_by_l2(dataset["tree_updates_committed"])
 
     def accumulate(values):
         out = []
@@ -1027,6 +1061,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         return out
     tree_inserts_committed_by_tree = accumulate_l2(_tree_inserts_committed_by_tree)
     tree_erases_committed_by_tree = accumulate_l2(_tree_erases_committed_by_tree)
+    tree_updates_committed_by_tree = accumulate_l2(_tree_updates_committed_by_tree)
 
     washed_dataset[data_name] = {}
     for tree_type, values in tree_inserts_committed_by_tree.items():
@@ -1034,6 +1069,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         washed_dataset[data_name][sub_name] = values
     for tree_type, values in tree_erases_committed_by_tree.items():
         sub_name = tree_type + "_erases"
+        washed_dataset[data_name][sub_name] = values
+    for tree_type, values in tree_updates_committed_by_tree.items():
+        sub_name = tree_type + "_updates"
         washed_dataset[data_name][sub_name] = values
 
     def get_IOPS(rws, ts_sec):
@@ -1051,12 +1089,17 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         _tree_inserts_committed_by_tree, times_sec)
     tree_erases_PS_committed_by_tree = get_IOPS_l2(
         _tree_erases_committed_by_tree, times_sec)
+    tree_updates_PS_committed_by_tree = get_IOPS_l2(
+        _tree_updates_committed_by_tree, times_sec)
     washed_dataset[data_name] = {}
     for tree_type, values in tree_inserts_PS_committed_by_tree.items():
         sub_name = tree_type + "_inserts"
         washed_dataset[data_name][sub_name] = values
     for tree_type, values in tree_erases_PS_committed_by_tree.items():
         sub_name = tree_type + "_erases"
+        washed_dataset[data_name][sub_name] = values
+    for tree_type, values in tree_updates_PS_committed_by_tree.items():
+        sub_name = tree_type + "_updates"
         washed_dataset[data_name][sub_name] = values
 
     # 4. from cache_hit, cache_access
@@ -1156,18 +1199,6 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         result_ratio = get_ratio_l2(dataset["invalidated_efforts_4KB"][src],
                                     committed_efforts_4KB,
                                     dataset_size)
-
-        tree_erases_committed = dataset["tree_erases_committed"][src]
-        tree_erases_invalidated = dataset["tree_erases_invalidated"][src]
-        for tree_type, cmt_items in tree_erases_committed.items():
-            sub_name = tree_type + "_ERASES"
-            result_ratio[sub_name] = get_ratio(tree_erases_invalidated[tree_type], cmt_items)
-
-        tree_inserts_committed = dataset["tree_inserts_committed"][src]
-        tree_inserts_invalidated = dataset["tree_inserts_invalidated"][src]
-        for tree_type, cmt_items in tree_inserts_committed.items():
-            sub_name = tree_type + "_INSERTS"
-            result_ratio[sub_name] = get_ratio(tree_inserts_invalidated[tree_type], cmt_items)
 
         non_empty_result_ratio = filter_out_invalid_ratio_l2(result_ratio)
         if len(non_empty_result_ratio) == 0:
@@ -1466,11 +1497,19 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     blocked_iops = get_ratio(dataset["io_blocked_count"],
                              dataset["io_count"],
                              -0.0001)
+    blocked_iops_trim = get_ratio(dataset["io_blocked_count_trim"],
+                                  dataset["io_count"],
+                                  -0.0001)
+    blocked_iops_reclaim = get_ratio(dataset["io_blocked_count_reclaim"],
+                                     dataset["io_count"],
+                                     -0.0001)
     blocking_iops = get_ratio(dataset["io_blocked_sum"],
                               dataset["io_count"],
                               -0.0001)
     washed_dataset[data_name] = {
         "blocked_iops": blocked_iops,
+        "blocked_iops_trim": blocked_iops_trim,
+        "blocked_iops_reclaim": blocked_iops_reclaim,
         "blocking_iops": blocking_iops,
     }
 
@@ -1496,6 +1535,26 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             current += data
             indexes.append(current)
         return washed_dataset, indexes
+
+    # 22. journal sizes
+    data_name = "journal_length_KB"
+    washed_dataset[data_name] = {
+        "alloc_journal": dataset["alloc_journal_KB"],
+        "dirty_journal": dataset["dirty_journal_KB"],
+    }
+
+    # 23 rewrite versions
+    data_name = "rewrite_version"
+    rewrite_dirty_version = get_ratio(dataset["version_sum_dirty"],
+                                      dataset["version_count_dirty"],
+                                      -1)
+    rewrite_reclaim_version = get_ratio(dataset["version_sum_reclaim"],
+                                        dataset["version_count_reclaim"],
+                                        -1)
+    washed_dataset[data_name] = {
+        "rewrite_dirty": rewrite_dirty_version,
+        "rewrite_reclaim": rewrite_reclaim_version,
+    }
 
     #
     # Metric-only specific graph
