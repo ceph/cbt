@@ -1386,13 +1386,25 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     # 12. record_fullness
     data_name = "record_fullness"
     data_12_ratio = {}
+    submitter_writes_4KB_avg = {}
+    submitter_writes_4KB_sum = {}
     for submitter, raw_md in dataset["journal_metadata_4KB"].items():
         total_md = merge_lists([dataset["journal_padding_4KB"][submitter], raw_md])
         data_12_ratio["md-" + submitter] = get_ratio(raw_md, total_md)
         raw_all = merge_lists([dataset["journal_data_4KB"][submitter], raw_md])
         total_all = merge_lists([dataset["journal_data_4KB"][submitter], total_md])
         data_12_ratio["all-" + submitter] = get_ratio(raw_all, total_all)
+        submit_record_num = dataset["journal_record_num"][submitter]
+        submitter_writes_4KB_avg[submitter] = get_ratio(total_all, submit_record_num)
+        submitter_writes_4KB_sum[submitter] = accumulate(total_all)
+        washed_dataset["submitters_write_4KB_avg_" + submitter] = {
+            "metadata": get_ratio(raw_md, submit_record_num),
+            "data":     get_ratio(dataset["journal_data_4KB"][submitter], submit_record_num),
+            "padding":  get_ratio(dataset["journal_padding_4KB"][submitter], submit_record_num),
+        }
     washed_dataset[data_name] = filter_out_invalid_ratio_l2(data_12_ratio)
+    washed_dataset["submitters_write_4KB_avg"] = submitter_writes_4KB_avg
+    washed_dataset["submitters_write_4KB_sum"] = submitter_writes_4KB_sum
 
     # 13. journal io by submitter
     data_name = "journal_io_by_submitter"
