@@ -1463,6 +1463,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     data_name = "space_usage_KB"
     avg_projected_used_KB = get_ratio(dataset["projected_used_sum_KB"],
                                       dataset["projected_count"])
+    total_KB = merge_lists([dataset["available_KB"],
+                            dataset["unavail_reclaimable_KB"],
+                            dataset["unavail_unreclaimable_KB"]])
     washed_dataset[data_name] = {
         "available": dataset["available_KB"],
         "unavail_reclaimable": dataset["unavail_reclaimable_KB"],
@@ -1470,6 +1473,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         "unavail_used": dataset["unavail_used_KB"],
         "unavail_unused": dataset["unavail_unused_KB"],
         "projected_avg": avg_projected_used_KB,
+        "total": total_KB,
     }
 
     # 18. space reclaim ratio
@@ -1483,6 +1487,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
                                            dataset["closed_journal_total_KB"])
     closed_ool_alive_total = get_ratio(dataset["closed_ool_used_KB"],
                                        dataset["closed_ool_total_KB"])
+    alive_total = get_ratio(dataset["unavail_used_KB"], total_KB)
     washed_dataset[data_name] = {
         "unavailable/total": dataset["unavailiable_total"],
         "alive/unavailable": dataset["alive_unavailable"],
@@ -1490,6 +1495,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         "reclaimed_alive/total": reclaimed_alive_total,
         "closed_journal_alive/total": closed_journal_alive_total,
         "closed_ool_alive/total": closed_ool_alive_total,
+        "alive/total": alive_total,
     }
 
     # 19. cleaner blocked io
