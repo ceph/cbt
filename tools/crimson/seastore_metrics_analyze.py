@@ -15,7 +15,7 @@ class BenchT(Enum):
     FIO     = 2
     METRICS = 3
 
-def load_dir(dir_name):
+def load_dir(dir_name, headcut, tailcut):
     load_folder = path.join(os.getcwd(), dir_name)
     benches = []
     metrics = []
@@ -73,7 +73,12 @@ def load_dir(dir_name):
             ret_times.append(difftime)
             ctime = time
         index += 1
-
+    if tailcut == 0:
+        tailcut = len(metrics)
+        print(tailcut)
+    benches = benches[headcut:tailcut]
+    metrics = metrics[headcut:tailcut]
+    ret_times = ret_times[headcut:tailcut]
     return [item[1] for item in benches], [item[1] for item in metrics], ret_times
 
 def parse_bench_file(bench_file):
@@ -1009,7 +1014,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     washed_dataset = {}
 
     # 1. from cached_4KB, dirty_4KB
-    data_name = "cache_usage_MB"
+    data_name = "cache_usage(MiB)"
 
     assert(len(dataset["cached_4KB"]) == dataset_size)
     assert(len(dataset["dirty_4KB"]) == dataset_size)
@@ -1026,7 +1031,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     }
 
     # 2. from tree_depth
-    data_name = "tree_depth"
+    data_name = "tree_depths"
     for name, values in dataset["tree_depth"].items():
         assert(len(values) == dataset_size)
     washed_dataset[data_name] = dataset["tree_depth"]
@@ -1084,7 +1089,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             ret[name] = iops
         return ret
 
-    data_name = "tree_operations_per_sec"
+    data_name = "tree_operations_per_second"
     tree_inserts_PS_committed_by_tree = get_IOPS_l2(
         _tree_inserts_committed_by_tree, times_sec)
     tree_erases_PS_committed_by_tree = get_IOPS_l2(
@@ -1103,7 +1108,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         washed_dataset[data_name][sub_name] = values
 
     # 4. from cache_hit, cache_access
-    data_name = "cache_hit_access_ratio_by_src"
+    data_name = "cache_hit_ratio_by_source"
 
     def get_ratio(numerators, denominators, invalid=INVALID_RATIO):
         assert(len(numerators) == len(denominators))
@@ -1136,7 +1141,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     washed_dataset[data_name] = filter_out_invalid_ratio_l2(cache_hit_access_ratio)
 
     # 5. from invalidated_trans, committed_trans
-    data_name = "trans_invalidate_committed_ratio_by_src---inaccurate"
+    data_name = "transaction_invalidated_committed_ratio_by_source"
 
     def merge_lists_l2(l3_items):
         l2_ret = {}
@@ -1185,7 +1190,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             ret[name] = ratios
         return ret
     for src, invalidated_trans_by_extent in dataset["invalidated_trans"].items():
-        data_name = "trans_invalidate_committed_ratio_by_extent---" + src
+        data_name = "transaction_invalidated_committed_ratio_by_extent---" + src
         non_empty_invalidated_trans = filter_out_empty_l2(invalidated_trans_by_extent)
         if len(non_empty_invalidated_trans) == 0:
             print(data_name + " is emtpy!")
@@ -1195,7 +1200,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
 
     # 7.x from invalidated_efforts_4KB, committed_efforts_4KB
     for src, committed_efforts_4KB in dataset["committed_efforts_4KB"].items():
-        data_name = "trans_invalidate_committed_ratio_by_effort---accurate---" + src
+        data_name = "transaction_invalidated_committed_ratio_by_actual_effort---" + src
         result_ratio = get_ratio_l2(dataset["invalidated_efforts_4KB"][src],
                                     committed_efforts_4KB,
                                     dataset_size)
@@ -1278,9 +1283,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     invalid_write_4K = {}
     for src in commit_srcs:
         if absolute:
-            data_name = "write_4KB_detail---" + src
+            data_name = "write_4KB_by_category---" + src
         else:
-            data_name = "write_amplification_detail---" + src
+            data_name = "write_amplification_by_category---" + src
 
         invalid_ool = dataset["invalidated_ool_record_4KB"][src]
         valid_ool_data = dataset["committed_ool_record_data_4KB"][src]
@@ -1291,9 +1296,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         inline_delta_data = mutate_delta_4KB[src]
         inline_metadata = dataset["committed_inline_record_metadata_4KB"][src]
         output = {
-            "INVALID_OOL":            invalid_ool,
-            "VALID_OOL_DATA":         valid_ool_data,
-            "VALID_OOL_METADATA":     valid_ool_metadata,
+            "OOL_INVALID":            invalid_ool,
+            "OOL_VALID_DATA":         valid_ool_data,
+            "OOL_VALID_METADATA":     valid_ool_metadata,
             "INLINE_FRESH_DATA":      inline_fresh_data,
             "INLINE_RETIRED_DATA":    inline_retired_data,
             "INLINE_DELTA_DATA":      inline_delta_data,
@@ -1318,17 +1323,17 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
 
     # 10. write_amplification_by_src
     if absolute:
-        data_name = "write_4KB_by_src"
+        data_name = "write_4KiB_by_source"
     else:
-        data_name = "write_amplification_by_src"
+        data_name = "write_amplification_by_source"
     data_10 = {}
     mutate_trans_data_write = []
     for src in commit_srcs:
-        name = "VALID_DATA_" + src
+        name = src + "_VALID_DATA_"
         data_10[name] = valid_data_4K[src]     # ool/inline data, inline delta
-        name = "VALID_METADATA_" + src
+        name = src + "_VALID_METADATA"
         data_10[name] = valid_metadata_4K[src] # ool/inline metadata
-        name = "INVALID_WRITE_" + src
+        name = src + "_INVALID_WRITE"
         data_10[name] = invalid_write_4K[src]  # inline-retired, invalid-ool
         if src == "MUTATE":
             mutate_trans_data_write = valid_data_4K[src]
@@ -1345,7 +1350,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
                                    dataset["segment_write_meta_4KB"]])
     if commit_srcs:
         if absolute:
-            data_name = "write_4KB_overall"
+            data_name = "write_4KiB_overall"
         else:
             data_name = "write_amplification_overall"
 
@@ -1375,10 +1380,10 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             "AW_VALID_METADATA":  aw_valid_metadata,
             "AW_INVALID":         aw_invalid,
             "AW_PADDING":         aw_padding,
-            "MUTATE_TRANS_DATA_WRITE": mutate_trans_data_write,
+            "MUTATE_TRANS_DATA":  mutate_trans_data_write,
         }
         if absolute:
-            data_11["writes_4KB"] = writes_4KB
+            data_11["writes_4KiB"] = writes_4KB
         else:
             data_11 = get_ratio_l2_by_l1(data_11, writes_4KB)
         washed_dataset[data_name] = data_11
@@ -1390,36 +1395,36 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     submitter_writes_4KB_sum = {}
     for submitter, raw_md in dataset["journal_metadata_4KB"].items():
         total_md = merge_lists([dataset["journal_padding_4KB"][submitter], raw_md])
-        data_12_ratio["md-" + submitter] = get_ratio(raw_md, total_md)
+        data_12_ratio[submitter + "-md"] = get_ratio(raw_md, total_md)
         raw_all = merge_lists([dataset["journal_data_4KB"][submitter], raw_md])
         total_all = merge_lists([dataset["journal_data_4KB"][submitter], total_md])
-        data_12_ratio["all-" + submitter] = get_ratio(raw_all, total_all)
+        data_12_ratio[submitter + "-all"] = get_ratio(raw_all, total_all)
         submit_record_num = dataset["journal_record_num"][submitter]
         submitter_writes_4KB_avg[submitter] = get_ratio(total_all, submit_record_num)
         submitter_writes_4KB_sum[submitter] = accumulate(total_all)
-        washed_dataset["submitters_write_4KB_avg_" + submitter] = {
+        washed_dataset["submitters_write_4KiB_average---" + submitter] = {
             "metadata": get_ratio(raw_md, submit_record_num),
             "data":     get_ratio(dataset["journal_data_4KB"][submitter], submit_record_num),
             "padding":  get_ratio(dataset["journal_padding_4KB"][submitter], submit_record_num),
         }
     washed_dataset[data_name] = filter_out_invalid_ratio_l2(data_12_ratio)
-    washed_dataset["submitters_write_4KB_avg"] = submitter_writes_4KB_avg
-    washed_dataset["submitters_write_4KB_sum"] = submitter_writes_4KB_sum
+    washed_dataset["submitters_write_4KiB_average"] = submitter_writes_4KB_avg
+    washed_dataset["submitters_write_4KiB_sum"] = submitter_writes_4KB_sum
 
     # 13. journal io by submitter
-    data_name = "journal_io_by_submitter"
+    data_name = "journal_io_pattern_by_submitter"
     data_13 = {}
     for submitter, io_depth_num in dataset["journal_io_depth_num"].items():
         journal_io_depth = get_ratio(io_depth_num,
                                      dataset["journal_io_num"][submitter])
-        data_13["io_depth-" + submitter] = journal_io_depth
+        data_13[submitter + "-io_depth"] = journal_io_depth
         journal_record_batching = get_ratio(dataset["journal_record_batch_num"][submitter],
                                             dataset["journal_record_num"][submitter])
-        data_13["record_batching-" + submitter] = journal_record_batching
+        data_13[submitter + "-batched_records"] = journal_record_batching
     washed_dataset[data_name] = data_13
 
     # 14. trans_srcs_invalidated
-    data_name = "trans_srcs_invalidated_ratio"
+    data_name = "transaction_invalidated_committed_ratio_by_sources"
     committed_trans_all = merge_lists(dataset["committed_trans"].values())
     non_empty_trans_srcs_invalidated = filter_out_empty_l2(dataset["trans_srcs_invalidated"])
     if non_empty_trans_srcs_invalidated:
@@ -1428,7 +1433,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             committed_trans_all)
 
     # 15. segments state
-    data_name = "segments_state"
+    data_name = "segment_state"
     washed_dataset[data_name] = {
         "open": dataset["segments_open"],
         "closed": dataset["segments_closed"],
@@ -1439,7 +1444,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     }
 
     # 16. segments operations
-    data_name = "segments_operations_sum"
+    data_name = "segment_operation_sum"
     segments_count_open_journal = accumulate(dataset["segments_count_open_journal"])
     segments_count_close_journal = accumulate(dataset["segments_count_close_journal"])
     segments_count_release_journal = accumulate(dataset["segments_count_release_journal"])
@@ -1455,7 +1460,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         "release_ool": segments_count_release_ool,
     }
 
-    data_name = "segments_operations_per_sec"
+    data_name = "segment_operation_per_second"
     segments_count_open_journal_PS = get_IOPS(dataset["segments_count_open_journal"], times_sec)
     segments_count_close_journal_PS = get_IOPS(dataset["segments_count_close_journal"], times_sec)
     segments_count_release_journal_PS = get_IOPS(dataset["segments_count_release_journal"], times_sec)
@@ -1472,24 +1477,26 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     }
 
     # 17. space usage
-    data_name = "space_usage_KB"
+    data_name = "space_usage_MiB"
     avg_projected_used_KB = get_ratio(dataset["projected_used_sum_KB"],
                                       dataset["projected_count"])
+    def KB_to_MB(items):
+        return [item/1024 for item in items]
     total_KB = merge_lists([dataset["available_KB"],
                             dataset["unavail_reclaimable_KB"],
                             dataset["unavail_unreclaimable_KB"]])
     washed_dataset[data_name] = {
-        "available": dataset["available_KB"],
-        "unavail_reclaimable": dataset["unavail_reclaimable_KB"],
-        "unavail_unreclaimable": dataset["unavail_unreclaimable_KB"],
-        "unavail_used": dataset["unavail_used_KB"],
-        "unavail_unused": dataset["unavail_unused_KB"],
-        "projected_avg": avg_projected_used_KB,
-        "total": total_KB,
+        "available": KB_to_MB(dataset["available_KB"]),
+        "unavail_reclaimable": KB_to_MB(dataset["unavail_reclaimable_KB"]),
+        "unavail_unreclaimable": KB_to_MB(dataset["unavail_unreclaimable_KB"]),
+        "unavail_used": KB_to_MB(dataset["unavail_used_KB"]),
+        "unavail_unused": KB_to_MB(dataset["unavail_unused_KB"]),
+        "projected_avg": KB_to_MB(avg_projected_used_KB),
+        "total": KB_to_MB(total_KB),
     }
 
-    # 18. space reclaim ratio
-    data_name = "space_reclaim_ratio"
+    # 18. space ratio
+    data_name = "space_ratio"
     avg_reclaimed_ratio = get_ratio(dataset["reclaimed_KB"],
                                     dataset["reclaimed_segment_KB"])
     reclaimed_KB = accumulate(dataset["reclaimed_KB"])
@@ -1503,15 +1510,15 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     washed_dataset[data_name] = {
         "unavailable/total": dataset["unavailiable_total"],
         "alive/unavailable": dataset["alive_unavailable"],
-        "actual_reclaim_average": avg_reclaimed_ratio,
-        "reclaimed_alive/total": reclaimed_alive_total,
+        "reclaimed_average_alive/total": avg_reclaimed_ratio,
+        "reclaimed_sum_alive/total": reclaimed_alive_total,
         "closed_journal_alive/total": closed_journal_alive_total,
         "closed_ool_alive/total": closed_ool_alive_total,
         "alive/total": alive_total,
     }
 
     # 19. cleaner blocked io
-    data_name = "cleaner_blocked_io"
+    data_name = "cleaner_blocked_io_by_reason"
     blocked_iops = get_ratio(dataset["io_blocked_count"],
                              dataset["io_count"],
                              -0.0001)
@@ -1526,19 +1533,19 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
                               -0.0001)
     washed_dataset[data_name] = {
         "blocked_iops": blocked_iops,
-        "blocked_iops_trim": blocked_iops_trim,
-        "blocked_iops_reclaim": blocked_iops_reclaim,
-        "blocking_iops": blocking_iops,
+        "blocked_iops_by_trim": blocked_iops_trim,
+        "blocked_iops_by_reclaim": blocked_iops_reclaim,
+        "blocked_depth_iops": blocking_iops,
     }
 
     # 20. segment usage distribution
     washed_dataset["segment_usage_distribution"] = dataset["segment_util_distribution"]
 
     # 21.* transaction commit efforts by src
-    data_name = "trans_commit_efforts_4KB_by_src"
+    data_name = "transaction_commit_average_efforts_4KiB_by_source"
     washed_dataset[data_name] = {}
     for src, efforts in dataset["committed_trans_efforts_4KB"].items():
-        data_name_src = "trans_commit_efforts_4KB -- " + src
+        data_name_src = "transaction_commit_average_efforts_4KiB_detail---" + src
         washed_dataset[data_name_src] = get_ratio_l2_by_l1(efforts, dataset["committed_trans"][src])
         sum_efforts = merge_lists([data for effort, data in efforts.items() if effort != "RETIRE"])
         washed_dataset[data_name][src] = get_ratio(sum_efforts, dataset["committed_trans"][src])
@@ -1555,14 +1562,14 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         return washed_dataset, indexes
 
     # 22. journal sizes
-    data_name = "journal_length_KB"
+    data_name = "journal_length_MiB"
     washed_dataset[data_name] = {
-        "alloc_journal": dataset["alloc_journal_KB"],
-        "dirty_journal": dataset["dirty_journal_KB"],
+        "alloc_journal": KB_to_MB(dataset["alloc_journal_KB"]),
+        "dirty_journal": KB_to_MB(dataset["dirty_journal_KB"]),
     }
 
     # 23 rewrite versions
-    data_name = "rewrite_version"
+    data_name = "rewrite_average_versions"
     rewrite_dirty_version = get_ratio(dataset["version_sum_dirty"],
                                       dataset["version_count_dirty"],
                                       -1)
@@ -1579,9 +1586,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     #
 
     # 1. from writes_4KB
-    washed_dataset["writes_accumulated_MB"] = {
-        "obj_data(client)":  accumulate([write/256 for write in writes_4KB]),
-        "reactor_aio_write": accumulate([write/256 for write in dataset["reactor_aio_write_4KB"]])
+    washed_dataset["writes_accumulated_MiB"] = {
+        "obj_data(client)":  block_to_MB(accumulate(writes_4KB)),
+        "reactor_aio_write": block_to_MB(accumulate(dataset["reactor_aio_write_4KB"]))
     }
 
     # 2. from reactor_util, reactor_busytime_sec, reactor_stealtime_sec
@@ -1614,8 +1621,10 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     def get_throughput_MB(rws_4KB, ts_sec):
         assert(len(rws_4KB) == len(ts_sec))
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
+    obj_data_throughput_MB = get_throughput_MB(writes_4KB, times_sec)
+    print(obj_data_throughput_MB)
     if commit_srcs:
-        washed_dataset["throughput_MB"] = {
+        washed_dataset["throughput_MiB"] = {
             "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
             "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
             "device_read":        get_throughput_MB(segmented_read, times_sec),
@@ -1623,15 +1632,15 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             "accounted_write":    get_throughput_MB(accounted_write, times_sec),
             "valid_extent_write": get_throughput_MB(aw_valid_data, times_sec),
             "commit_trans_data_write": get_throughput_MB(mutate_trans_data_write, times_sec),
-            "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
+            "obj_data_write":     obj_data_throughput_MB,
         }
     else:
-        washed_dataset["throughput_MB"] = {
+        washed_dataset["throughput_MiB"] = {
             "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
             "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
             "device_read":        get_throughput_MB(segmented_read, times_sec),
             "device_write":       get_throughput_MB(segmented_write, times_sec),
-            "obj_data_write":     get_throughput_MB(writes_4KB, times_sec),
+            "obj_data_write":     obj_data_throughput_MB,
         }
 
     # 4.x IOPS_by_src, IOPS_overall
@@ -1643,7 +1652,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             read_trans = items
         else:
             commit_trans.append(items)
-        name = "committed_trans_" + src
+        name = "committed_" + src
         data_IOPS_detail[name] = items
     ool_records = []
     for src, invalidated_ool in dataset["invalidated_ool_records"].items():
@@ -1652,7 +1661,12 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
                            dataset["committed_ool_records"][src]])
         ool_records.append(ool)
         data_IOPS_detail[name] = ool
-    washed_dataset["IOPS_by_src"] = get_IOPS_l2(data_IOPS_detail, times_sec)
+    washed_dataset["IOPS_by_source"] = get_IOPS_l2(data_IOPS_detail, times_sec)
+
+    washed_dataset["IOPS_by_source2"] = washed_dataset["IOPS_by_source"].copy()
+    del washed_dataset["IOPS_by_source2"]["committed_MUTATE"]
+    del washed_dataset["IOPS_by_source2"]["ool_records_MUTATE"]
+    del washed_dataset["IOPS_by_source2"]["committed_READ"]
 
     segmented_writes = merge_lists([dataset["segment_writes"],
                                     dataset["segment_meta_writes"]])
@@ -1688,9 +1702,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         washed_dataset["tasks_pending"]["sched_" + group_name + "_tasks"] = tasks
 
     # 7. from memory_allocate_KB, memory_free_KB, memory_total_KB
-    def KB_to_MB(items):
-        return [item/1024 for item in items]
-    washed_dataset["memory_usage_MB"] = {
+    washed_dataset["memory_usage_MiB"] = {
         "allocated": KB_to_MB(dataset["memory_allocate_KB"]),
         # "free": KB_to_MB(dataset["memory_free_KB"]),
         # "total": KB_to_MB(dataset["memory_total_KB"])
@@ -1722,10 +1734,11 @@ def relplot_data(directory, bench_type, name, data, indexes, ylim):
         to_draw.index.name = "time_seconds"
     else:
         to_draw.index.name = "writes_4KB"
+    to_draw.columns.name = "legend"
     g = sns.relplot(data=to_draw,
                     kind="line",
                     markers=True,
-                   ).set(title=name, ylim=ylim)
+                   ).set(title=name, ylim=ylim, ylabel="")
     g.fig.set_size_inches(15,6)
     g.savefig("%s/%s.png" % (directory, name))
 
@@ -1738,10 +1751,16 @@ if __name__ == "__main__":
     parser.add_argument(
             "--absolute", action='store_true',
             help="no write amplification")
+    parser.add_argument(
+            "--headcut", type=int,
+            help="drop the first N results", default=0)
+    parser.add_argument(
+            "--tailcut", type=int,
+            help="drop the tail -N results", default=0)
     args = parser.parse_args()
 
     print("loading dir %s ..." % (args.directory))
-    benches, metrics, times = load_dir(args.directory)
+    benches, metrics, times = load_dir(args.directory, args.headcut, args.tailcut)
     print("loaded %d metrics" % (len(metrics)))
     print()
 
