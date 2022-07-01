@@ -19,6 +19,8 @@ def load_dir(dir_name, headcut, tailcut):
     load_folder = path.join(os.getcwd(), dir_name)
     benches = []
     metrics = []
+    stats = []
+    radosbench = ""
     for full_file_name in os.listdir(load_folder):
         if not full_file_name.endswith(".log"):
             continue
@@ -34,19 +36,28 @@ def load_dir(dir_name, headcut, tailcut):
         if file_type.startswith("bench"):
             assert(len(names) == 3)
             benches.append((index, file_dir))
-        else:
-            assert(file_type.startswith("metrics"))
+        elif file_type.startswith("metrics"):
             time = -1
             if len(names) == 4:
+                # Mode: METRICS
                 time = int(names[3]) / 1000 # as seconds
             else:
+                # Mode with bench files
                 assert(len(names) == 3)
             metrics.append((index, file_dir, time))
+        elif file_type.startswith("stats"):
+            assert(len(names) == 4)
+            time = int(names[3]) / 1000 # as seconds
+            stats.append((index, file_dir, time))
+        else:
+            assert(file_type.startswith("radosbench"))
+            assert(len(names) == 3)
+            radosbench = file_dir
 
     benches.sort()
     metrics.sort()
-    assert(len(metrics) > 1)
-    if metrics[0][2] != -1:
+    stats.sort()
+    if (len(metrics) and metrics[0][2] != -1) or len(stats):
         # Mode: METRICS
         assert(len(benches) == 0)
     else:
@@ -56,30 +67,68 @@ def load_dir(dir_name, headcut, tailcut):
             # no matching matric file to the last bench result
             benches.pop()
         assert(len(metrics) == len(benches) + 1)
+    if len(stats) and len(metrics):
+        assert(len(stats) == len(metrics))
 
     index = 0
-    assert(metrics[index][0] == index)
-    ctime = metrics[index][2]
+    ctime = -1
+    len_indexes = 0
+    if len(metrics):
+        assert(metrics[index][0] == index)
+        ctime = metrics[index][2]
+        len_indexes = len(metrics)
+    if len(stats):
+        assert(stats[index][0] == index)
+        _ctime = stats[index][2]
+        if ctime != -1:
+            assert(ctime == _ctime)
+        else:
+            ctime = _ctime
+        len_indexes = len(stats)
+    assert(len_indexes)
+
     ret_times = []
     index += 1
-    while index < len(metrics):
-        assert(metrics[index][0] == index)
+    while index < len_indexes:
         if len(benches):
             assert(benches[index - 1][0] == index)
         else:
-            time = metrics[index][2]
+            time = -1
+            if len(metrics):
+                assert(metrics[index][0] == index)
+                time = metrics[index][2]
+            if len(stats):
+                assert(stats[index][0] == index)
+                _time = stats[index][2]
+                if time != -1:
+                    assert(_time == time)
+                else:
+                    time = _time
             difftime = time - ctime
             assert(difftime > 0)
             ret_times.append(difftime)
             ctime = time
         index += 1
+
     if tailcut == 0:
-        tailcut = len(metrics)
+        tailcut = len_indexes
         print(tailcut)
+    diff_tailcut = tailcut
+    if diff_tailcut > 0:
+        diff_tailcut += 1
+
     benches = benches[headcut:tailcut]
-    metrics = metrics[headcut:tailcut]
+    metrics = metrics[headcut:diff_tailcut]
+    stats = stats[headcut:diff_tailcut]
+    bench_start = ret_times[0]
+    bench_skip = 0
+    for t in ret_times[0:headcut]:
+        bench_skip += t
     ret_times = ret_times[headcut:tailcut]
-    return [item[1] for item in benches], [item[1] for item in metrics], ret_times
+
+    return [item[1] for item in benches], [item[1] for item in metrics], \
+            [item[1] for item in stats], ret_times, \
+            (bench_start, bench_skip, radosbench)
 
 def parse_bench_file(bench_file):
     btype = BenchT.NULL
@@ -144,7 +193,8 @@ def _process_json_item(json_item):
         else:
             assert(isinstance(v, str))
             labels[k] = v
-    assert(labels["shard"] == "0")
+    if "shard" in labels:
+        assert(labels["shard"] == "0")
     return name, labels, value
 
 def parse_metric_file(metric_file):
@@ -722,8 +772,85 @@ def parse_metric_file(metric_file):
 
     return data, illegal_metrics, ignored_metrics
 
+def parse_stats_file(stats_file):
+    data = {}
+    block_per_sector = 8*1024 # 32MiB
+
+    json_items = _load_json(stats_file)
+    for json_item in json_items:
+        name, labels, value = _process_json_item(json_item)
+        assert(len(labels) == 0)
+        if name == "read_kb":
+            data["iostat_read_4KB"] = value/4
+        elif name == "wrtn_kb":
+            data["iostat_write_4KB"] = value/4
+        elif name == "dscd_kb":
+            pass
+        elif name == "nand_sect":
+            data["nvme_nand_4KB"] = value*block_per_sector
+        elif name == "host_sect":
+            data["nvme_host_4KB"] = value*block_per_sector
+        else:
+            assert(False)
+
+    return data
+
+def parse_radosbench_file(_radosbench, raw_dataset, times):
+    bench_start, bench_skip, radosbench = _radosbench
+    if radosbench == "":
+        return
+
+    writes_4KB = raw_dataset["radosbench_4KB"]
+    time_index = 0
+    cur_time = bench_skip - bench_start + times[time_index]
+    time_index += 1
+    assert(time_index < len(times))
+    while cur_time <= 0:
+        writes_4KB.append(0)
+        if time_index >= len(times):
+            time_index += 1
+            break
+        cur_time += times[time_index]
+        time_index += 1
+    assert(cur_time > 0)
+
+    write_finish_4KB = 0
+    write_4KB = 0
+    prv_time_seconds = -1
+    for line in open(radosbench, 'r').readlines():
+        items = line.split()
+        if len(items) != 8:
+            continue
+        time_seconds = int(items[0])
+        assert(prv_time_seconds + 1 == time_seconds)
+        prv_time_seconds = time_seconds
+        if time_seconds > cur_time:
+            writes_4KB.append(write_4KB)
+            write_4KB = 0
+            if time_index >= len(times):
+                time_index += 1
+                break
+            cur_time += times[time_index]
+            time_index += 1
+        _write_finish_4KB = int(items[3]) # assume writes are 4KB
+        assert(_write_finish_4KB >= write_finish_4KB)
+        write_4KB += (_write_finish_4KB - write_finish_4KB)
+        write_finish_4KB = _write_finish_4KB
+
+    while time_index <= len(times):
+        writes_4KB.append(write_4KB)
+        write_4KB = 0
+        time_index += 1
+
 def prepare_raw_dataset():
     data = {}
+    # radosbench
+    data["radosbench_4KB"] = []
+    # stats
+    data["iostat_write_4KB"] = []
+    data["iostat_read_4KB"] = []
+    data["nvme_host_4KB"] = []
+    data["nvme_nand_4KB"] = []
     # blocks
     data["segment_read_4KB"] = []
     data["segment_write_4KB"] = []
@@ -839,153 +966,160 @@ def prepare_raw_dataset():
     data["committed_disk_efforts_4KB"] = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [])))
     return data
 
-def append_raw_data(dataset, metrics_start, metrics_end):
+def append_raw_data(dataset, metrics_start, metrics_end, stats_start, stats_end):
     def get_diff(metric_name, dataset, metrics_start, metrics_end):
         value = metrics_end[metric_name] - metrics_start[metric_name]
         # the value can be negative for reactor_stealtime_sec
         dataset[metric_name].append(value)
-    # blocks
-    get_diff("segment_read_4KB",          dataset, metrics_start, metrics_end)
-    get_diff("segment_write_4KB",         dataset, metrics_start, metrics_end)
-    get_diff("segment_write_meta_4KB",    dataset, metrics_start, metrics_end)
-    get_diff("reactor_aio_read_4KB",      dataset, metrics_start, metrics_end)
-    get_diff("reactor_aio_write_4KB",     dataset, metrics_start, metrics_end)
-    get_diff("projected_used_sum_KB",     dataset, metrics_start, metrics_end)
-    get_diff("reclaimed_KB",              dataset, metrics_start, metrics_end)
-    get_diff("reclaimed_segment_KB",      dataset, metrics_start, metrics_end)
-    get_diff("closed_journal_total_KB",   dataset, metrics_start, metrics_end)
-    get_diff("closed_journal_used_KB",    dataset, metrics_start, metrics_end)
-    get_diff("closed_ool_total_KB",       dataset, metrics_start, metrics_end)
-    get_diff("closed_ool_used_KB",        dataset, metrics_start, metrics_end)
-    # count
-    get_diff("segment_reads",             dataset, metrics_start, metrics_end)
-    get_diff("segment_writes",            dataset, metrics_start, metrics_end)
-    get_diff("segment_meta_writes",       dataset, metrics_start, metrics_end)
-    get_diff("reactor_aio_reads",         dataset, metrics_start, metrics_end)
-    get_diff("reactor_aio_writes",        dataset, metrics_start, metrics_end)
-    get_diff("object_data_writes",        dataset, metrics_start, metrics_end)
-    get_diff("reactor_polls_M",           dataset, metrics_start, metrics_end)
-    get_diff("reactor_tasks_processed_M", dataset, metrics_start, metrics_end)
-    get_diff("memory_frees",              dataset, metrics_start, metrics_end)
-    get_diff("memory_mallocs",            dataset, metrics_start, metrics_end)
-    get_diff("memory_reclaims",           dataset, metrics_start, metrics_end)
-    get_diff("segments_count_open_journal",       dataset, metrics_start, metrics_end)
-    get_diff("segments_count_close_journal",      dataset, metrics_start, metrics_end)
-    get_diff("segments_count_release_journal",    dataset, metrics_start, metrics_end)
-    get_diff("segments_count_open_ool",   dataset, metrics_start, metrics_end)
-    get_diff("segments_count_close_ool",  dataset, metrics_start, metrics_end)
-    get_diff("segments_count_release_ool",dataset, metrics_start, metrics_end)
-    get_diff("projected_count",           dataset, metrics_start, metrics_end)
-    get_diff("io_count",                  dataset, metrics_start, metrics_end)
-    get_diff("io_blocked_count",          dataset, metrics_start, metrics_end)
-    get_diff("io_blocked_count_trim",     dataset, metrics_start, metrics_end)
-    get_diff("io_blocked_count_reclaim",  dataset, metrics_start, metrics_end)
-    get_diff("io_blocked_sum",            dataset, metrics_start, metrics_end)
-    get_diff("version_count_dirty",       dataset, metrics_start, metrics_end)
-    get_diff("version_sum_dirty",         dataset, metrics_start, metrics_end)
-    get_diff("version_count_reclaim",     dataset, metrics_start, metrics_end)
-    get_diff("version_sum_reclaim",       dataset, metrics_start, metrics_end)
-    # time
-    get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
-    get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
+    if len(stats_start):
+        get_diff("iostat_write_4KB",       dataset, stats_start, stats_end)
+        get_diff("iostat_read_4KB",        dataset, stats_start, stats_end)
+        get_diff("nvme_host_4KB",          dataset, stats_start, stats_end)
+        get_diff("nvme_nand_4KB",          dataset, stats_start, stats_end)
 
-    # these are special: no diff
-    dataset["cached_4KB"].append(metrics_end["cached_4KB"])
-    dataset["dirty_4KB"].append(metrics_end["dirty_4KB"])
-    for name, value in metrics_end["tree_depth"].items():
-        dataset["tree_depth"][name].append(value)
-    dataset["reactor_util"].append(metrics_end["reactor_util"])
-    dataset["unavailiable_total"].append(metrics_end["unavailiable_total"])
-    dataset["alive_unavailable"].append(metrics_end["alive_unavailable"])
-    dataset["reactor_tasks_pending"].append(metrics_end["reactor_tasks_pending"])
-    for name, value in metrics_end["scheduler_queue_length"].items():
-        dataset["scheduler_queue_length"][name].append(value)
-    dataset["memory_allocate_KB"].append(metrics_end["memory_allocate_KB"])
-    dataset["memory_free_KB"].append(metrics_end["memory_free_KB"])
-    dataset["memory_total_KB"].append(metrics_end["memory_total_KB"])
-    dataset["memory_live_objs"].append(metrics_end["memory_live_objs"])
-    dataset["segments_open"].append(metrics_end["segments_open"])
-    dataset["segments_closed"].append(metrics_end["segments_closed"])
-    dataset["segments_empty"].append(metrics_end["segments_empty"])
-    dataset["segments_in_journal"].append(metrics_end["segments_in_journal"])
-    dataset["segments_type_journal"].append(metrics_end["segments_type_journal"])
-    dataset["segments_type_ool"].append(metrics_end["segments_type_ool"])
-    dataset["available_KB"].append(metrics_end["available_KB"])
-    dataset["unavail_reclaimable_KB"].append(metrics_end["unavail_reclaimable_KB"])
-    dataset["unavail_unreclaimable_KB"].append(metrics_end["unavail_unreclaimable_KB"])
-    dataset["unavail_used_KB"].append(metrics_end["unavail_used_KB"])
-    dataset["unavail_unused_KB"].append(metrics_end["unavail_unused_KB"])
-    dataset["alloc_journal_KB"].append(metrics_end["alloc_journal_KB"])
-    dataset["dirty_journal_KB"].append(metrics_end["dirty_journal_KB"])
+    if len(metrics_start):
+        # blocks
+        get_diff("segment_read_4KB",          dataset, metrics_start, metrics_end)
+        get_diff("segment_write_4KB",         dataset, metrics_start, metrics_end)
+        get_diff("segment_write_meta_4KB",    dataset, metrics_start, metrics_end)
+        get_diff("reactor_aio_read_4KB",      dataset, metrics_start, metrics_end)
+        get_diff("reactor_aio_write_4KB",     dataset, metrics_start, metrics_end)
+        get_diff("projected_used_sum_KB",     dataset, metrics_start, metrics_end)
+        get_diff("reclaimed_KB",              dataset, metrics_start, metrics_end)
+        get_diff("reclaimed_segment_KB",      dataset, metrics_start, metrics_end)
+        get_diff("closed_journal_total_KB",   dataset, metrics_start, metrics_end)
+        get_diff("closed_journal_used_KB",    dataset, metrics_start, metrics_end)
+        get_diff("closed_ool_total_KB",       dataset, metrics_start, metrics_end)
+        get_diff("closed_ool_used_KB",        dataset, metrics_start, metrics_end)
+        # count
+        get_diff("segment_reads",             dataset, metrics_start, metrics_end)
+        get_diff("segment_writes",            dataset, metrics_start, metrics_end)
+        get_diff("segment_meta_writes",       dataset, metrics_start, metrics_end)
+        get_diff("reactor_aio_reads",         dataset, metrics_start, metrics_end)
+        get_diff("reactor_aio_writes",        dataset, metrics_start, metrics_end)
+        get_diff("object_data_writes",        dataset, metrics_start, metrics_end)
+        get_diff("reactor_polls_M",           dataset, metrics_start, metrics_end)
+        get_diff("reactor_tasks_processed_M", dataset, metrics_start, metrics_end)
+        get_diff("memory_frees",              dataset, metrics_start, metrics_end)
+        get_diff("memory_mallocs",            dataset, metrics_start, metrics_end)
+        get_diff("memory_reclaims",           dataset, metrics_start, metrics_end)
+        get_diff("segments_count_open_journal",       dataset, metrics_start, metrics_end)
+        get_diff("segments_count_close_journal",      dataset, metrics_start, metrics_end)
+        get_diff("segments_count_release_journal",    dataset, metrics_start, metrics_end)
+        get_diff("segments_count_open_ool",   dataset, metrics_start, metrics_end)
+        get_diff("segments_count_close_ool",  dataset, metrics_start, metrics_end)
+        get_diff("segments_count_release_ool",dataset, metrics_start, metrics_end)
+        get_diff("projected_count",           dataset, metrics_start, metrics_end)
+        get_diff("io_count",                  dataset, metrics_start, metrics_end)
+        get_diff("io_blocked_count",          dataset, metrics_start, metrics_end)
+        get_diff("io_blocked_count_trim",     dataset, metrics_start, metrics_end)
+        get_diff("io_blocked_count_reclaim",  dataset, metrics_start, metrics_end)
+        get_diff("io_blocked_sum",            dataset, metrics_start, metrics_end)
+        get_diff("version_count_dirty",       dataset, metrics_start, metrics_end)
+        get_diff("version_sum_dirty",         dataset, metrics_start, metrics_end)
+        get_diff("version_count_reclaim",     dataset, metrics_start, metrics_end)
+        get_diff("version_sum_reclaim",       dataset, metrics_start, metrics_end)
+        # time
+        get_diff("reactor_busytime_sec",      dataset, metrics_start, metrics_end)
+        get_diff("reactor_stealtime_sec",     dataset, metrics_start, metrics_end)
 
-    def get_no_diff_l1(metric_name, dataset, metrics_end):
-        for name, value_end in metrics_end[metric_name].items():
-            dataset[metric_name][name].append(value_end)
-    get_no_diff_l1("segment_util_distribution", dataset, metrics_end)
+        # these are special: no diff
+        dataset["cached_4KB"].append(metrics_end["cached_4KB"])
+        dataset["dirty_4KB"].append(metrics_end["dirty_4KB"])
+        for name, value in metrics_end["tree_depth"].items():
+            dataset["tree_depth"][name].append(value)
+        dataset["reactor_util"].append(metrics_end["reactor_util"])
+        dataset["unavailiable_total"].append(metrics_end["unavailiable_total"])
+        dataset["alive_unavailable"].append(metrics_end["alive_unavailable"])
+        dataset["reactor_tasks_pending"].append(metrics_end["reactor_tasks_pending"])
+        for name, value in metrics_end["scheduler_queue_length"].items():
+            dataset["scheduler_queue_length"][name].append(value)
+        dataset["memory_allocate_KB"].append(metrics_end["memory_allocate_KB"])
+        dataset["memory_free_KB"].append(metrics_end["memory_free_KB"])
+        dataset["memory_total_KB"].append(metrics_end["memory_total_KB"])
+        dataset["memory_live_objs"].append(metrics_end["memory_live_objs"])
+        dataset["segments_open"].append(metrics_end["segments_open"])
+        dataset["segments_closed"].append(metrics_end["segments_closed"])
+        dataset["segments_empty"].append(metrics_end["segments_empty"])
+        dataset["segments_in_journal"].append(metrics_end["segments_in_journal"])
+        dataset["segments_type_journal"].append(metrics_end["segments_type_journal"])
+        dataset["segments_type_ool"].append(metrics_end["segments_type_ool"])
+        dataset["available_KB"].append(metrics_end["available_KB"])
+        dataset["unavail_reclaimable_KB"].append(metrics_end["unavail_reclaimable_KB"])
+        dataset["unavail_unreclaimable_KB"].append(metrics_end["unavail_unreclaimable_KB"])
+        dataset["unavail_used_KB"].append(metrics_end["unavail_used_KB"])
+        dataset["unavail_unused_KB"].append(metrics_end["unavail_unused_KB"])
+        dataset["alloc_journal_KB"].append(metrics_end["alloc_journal_KB"])
+        dataset["dirty_journal_KB"].append(metrics_end["dirty_journal_KB"])
 
-    def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
-        for name, value_end in metrics_end[metric_name].items():
-            value_start = metrics_start[metric_name][name]
-            value = value_end - value_start
-            assert(value >= 0)
-            dataset[metric_name][name].append(value)
-    # submitter -> blocks/count
-    get_diff_l1("journal_padding_4KB",       dataset, metrics_start, metrics_end)
-    get_diff_l1("journal_metadata_4KB",      dataset, metrics_start, metrics_end)
-    get_diff_l1("journal_data_4KB",          dataset, metrics_start, metrics_end)
-    get_diff_l1("journal_record_num",        dataset, metrics_start, metrics_end)
-    get_diff_l1("journal_record_batch_num",  dataset, metrics_start, metrics_end)
-    get_diff_l1("journal_io_num",            dataset, metrics_start, metrics_end)
-    get_diff_l1("journal_io_depth_num",      dataset, metrics_start, metrics_end)
-    # srcs -> count
-    get_diff_l1("trans_srcs_invalidated",  dataset, metrics_start, metrics_end)
-    # src -> count
-    get_diff_l1("cache_access",            dataset, metrics_start, metrics_end)
-    get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
-    get_diff_l1("created_trans",           dataset, metrics_start, metrics_end)
-    get_diff_l1("committed_trans",         dataset, metrics_start, metrics_end)
-    get_diff_l1("invalidated_ool_records", dataset, metrics_start, metrics_end)
-    get_diff_l1("committed_ool_records",   dataset, metrics_start, metrics_end)
-    # src -> blocks
-    get_diff_l1("invalidated_ool_record_4KB",           dataset, metrics_start, metrics_end)
-    get_diff_l1("committed_ool_record_metadata_4KB",    dataset, metrics_start, metrics_end)
-    get_diff_l1("committed_ool_record_data_4KB",        dataset, metrics_start, metrics_end)
-    get_diff_l1("committed_inline_record_metadata_4KB", dataset, metrics_start, metrics_end)
-    # scheduler-group -> time
-    get_diff_l1("scheduler_runtime_sec",   dataset, metrics_start, metrics_end)
-    get_diff_l1("scheduler_waittime_sec",  dataset, metrics_start, metrics_end)
-    get_diff_l1("scheduler_starvetime_sec", dataset, metrics_start, metrics_end)
-    # scheduler-group -> count
-    get_diff_l1("scheduler_tasks_processed_M", dataset, metrics_start, metrics_end)
+        def get_no_diff_l1(metric_name, dataset, metrics_end):
+            for name, value_end in metrics_end[metric_name].items():
+                dataset[metric_name][name].append(value_end)
+        get_no_diff_l1("segment_util_distribution", dataset, metrics_end)
 
-    def get_diff_l2(metric_name, dataset, metrics_start, metrics_end):
-        for l2_name, l2_items_end in metrics_end[metric_name].items():
-            for name, value_end in l2_items_end.items():
-                value_start = metrics_start[metric_name][l2_name][name]
+        def get_diff_l1(metric_name, dataset, metrics_start, metrics_end):
+            for name, value_end in metrics_end[metric_name].items():
+                value_start = metrics_start[metric_name][name]
                 value = value_end - value_start
                 assert(value >= 0)
-                dataset[metric_name][l2_name][name].append(value)
-    # src -> tree-type -> count
-    get_diff_l2("tree_erases_committed",    dataset, metrics_start, metrics_end)
-    get_diff_l2("tree_inserts_committed",   dataset, metrics_start, metrics_end)
-    get_diff_l2("tree_updates_committed",   dataset, metrics_start, metrics_end)
-    # src -> extent-type -> count
-    get_diff_l2("invalidated_trans",        dataset, metrics_start, metrics_end)
-    # src -> effort-type -> blocks
-    get_diff_l2("invalidated_efforts_4KB",  dataset, metrics_start, metrics_end)
-    get_diff_l2("committed_efforts_4KB",    dataset, metrics_start, metrics_end)
-    get_diff_l2("committed_trans_efforts_4KB", dataset, metrics_start, metrics_end)
+                dataset[metric_name][name].append(value)
+        # submitter -> blocks/count
+        get_diff_l1("journal_padding_4KB",       dataset, metrics_start, metrics_end)
+        get_diff_l1("journal_metadata_4KB",      dataset, metrics_start, metrics_end)
+        get_diff_l1("journal_data_4KB",          dataset, metrics_start, metrics_end)
+        get_diff_l1("journal_record_num",        dataset, metrics_start, metrics_end)
+        get_diff_l1("journal_record_batch_num",  dataset, metrics_start, metrics_end)
+        get_diff_l1("journal_io_num",            dataset, metrics_start, metrics_end)
+        get_diff_l1("journal_io_depth_num",      dataset, metrics_start, metrics_end)
+        # srcs -> count
+        get_diff_l1("trans_srcs_invalidated",  dataset, metrics_start, metrics_end)
+        # src -> count
+        get_diff_l1("cache_access",            dataset, metrics_start, metrics_end)
+        get_diff_l1("cache_hit",               dataset, metrics_start, metrics_end)
+        get_diff_l1("created_trans",           dataset, metrics_start, metrics_end)
+        get_diff_l1("committed_trans",         dataset, metrics_start, metrics_end)
+        get_diff_l1("invalidated_ool_records", dataset, metrics_start, metrics_end)
+        get_diff_l1("committed_ool_records",   dataset, metrics_start, metrics_end)
+        # src -> blocks
+        get_diff_l1("invalidated_ool_record_4KB",           dataset, metrics_start, metrics_end)
+        get_diff_l1("committed_ool_record_metadata_4KB",    dataset, metrics_start, metrics_end)
+        get_diff_l1("committed_ool_record_data_4KB",        dataset, metrics_start, metrics_end)
+        get_diff_l1("committed_inline_record_metadata_4KB", dataset, metrics_start, metrics_end)
+        # scheduler-group -> time
+        get_diff_l1("scheduler_runtime_sec",   dataset, metrics_start, metrics_end)
+        get_diff_l1("scheduler_waittime_sec",  dataset, metrics_start, metrics_end)
+        get_diff_l1("scheduler_starvetime_sec", dataset, metrics_start, metrics_end)
+        # scheduler-group -> count
+        get_diff_l1("scheduler_tasks_processed_M", dataset, metrics_start, metrics_end)
 
-    def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
-        for l3_name, l3_items_end in metrics_end[metric_name].items():
-            for l2_name, l2_items_end in l3_items_end.items():
+        def get_diff_l2(metric_name, dataset, metrics_start, metrics_end):
+            for l2_name, l2_items_end in metrics_end[metric_name].items():
                 for name, value_end in l2_items_end.items():
-                    value_start = metrics_start[metric_name][l3_name][l2_name][name]
+                    value_start = metrics_start[metric_name][l2_name][name]
                     value = value_end - value_start
                     assert(value >= 0)
-                    dataset[metric_name][l3_name][l2_name][name].append(value)
-    # src -> extent-type -> effort-type -> blocks
-    get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
+                    dataset[metric_name][l2_name][name].append(value)
+        # src -> tree-type -> count
+        get_diff_l2("tree_erases_committed",    dataset, metrics_start, metrics_end)
+        get_diff_l2("tree_inserts_committed",   dataset, metrics_start, metrics_end)
+        get_diff_l2("tree_updates_committed",   dataset, metrics_start, metrics_end)
+        # src -> extent-type -> count
+        get_diff_l2("invalidated_trans",        dataset, metrics_start, metrics_end)
+        # src -> effort-type -> blocks
+        get_diff_l2("invalidated_efforts_4KB",  dataset, metrics_start, metrics_end)
+        get_diff_l2("committed_efforts_4KB",    dataset, metrics_start, metrics_end)
+        get_diff_l2("committed_trans_efforts_4KB", dataset, metrics_start, metrics_end)
+
+        def get_diff_l3(metric_name, dataset, metrics_start, metrics_end):
+            for l3_name, l3_items_end in metrics_end[metric_name].items():
+                for l2_name, l2_items_end in l3_items_end.items():
+                    for name, value_end in l2_items_end.items():
+                        value_start = metrics_start[metric_name][l3_name][l2_name][name]
+                        value = value_end - value_start
+                        assert(value >= 0)
+                        dataset[metric_name][l3_name][l2_name][name].append(value)
+        # src -> extent-type -> effort-type -> blocks
+        get_diff_l3("committed_disk_efforts_4KB", dataset, metrics_start, metrics_end)
 
 def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     def merge_lists(lists):
@@ -1008,6 +1142,9 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         writes_4KB = merge_lists([writes_by_odb["FRESH_INLINE"],
                                   writes_by_odb["FRESH_OOL"]])
         assert(len(writes_4KB) == len(times_sec))
+
+    if len(dataset["radosbench_4KB"]) > 0:
+        assert(len(dataset["radosbench_4KB"]) == len(times_sec))
 
     INVALID_RATIO = -0.1
     dataset_size = len(writes_4KB)
@@ -1162,6 +1299,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
                 total_diff += diff
                 print("WARN: extra created transactions %d -- total %d -- %s at round %d"
                       % (diff, total_diff, src_name, index))
+    print()
 
     washed_dataset[data_name] = get_ratio_l2(invalidated_trans_by_src,
                                              dataset["committed_trans"],
@@ -1348,6 +1486,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     segmented_read = dataset["segment_read_4KB"]
     segmented_write = merge_lists([dataset["segment_write_4KB"],
                                    dataset["segment_write_meta_4KB"]])
+
     if commit_srcs:
         if absolute:
             data_name = "write_4KiB_overall"
@@ -1382,11 +1521,39 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
             "AW_PADDING":         aw_padding,
             "MUTATE_TRANS_DATA":  mutate_trans_data_write,
         }
+
         if absolute:
             data_11["writes_4KiB"] = writes_4KB
         else:
             data_11 = get_ratio_l2_by_l1(data_11, writes_4KB)
         washed_dataset[data_name] = data_11
+
+        if len(dataset["iostat_write_4KB"]) or len(dataset["radosbench_4KB"]):
+            if absolute:
+                data_name = "write_4KiB_overall_2"
+            else:
+                data_name = "write_amplification_overall_2"
+            data_11_2 = {}
+            if len(dataset["iostat_write_4KB"]):
+                data_11_2.update({
+                    "SEGMENTED_READ":   segmented_read,
+                    "SEGMENTED_WRITE":  segmented_write,
+                    "IOSTAT_READ":      dataset["iostat_read_4KB"],
+                    "IOSTAT_WRITE":     dataset["iostat_write_4KB"],
+                    "NVME_HOST":        dataset["nvme_host_4KB"],
+                    "NVME_NAND":        dataset["nvme_nand_4KB"],
+                })
+            if len(dataset["radosbench_4KB"]):
+                data_11_2.update({
+                    "RADOS_BENCH": dataset["radosbench_4KB"],
+                })
+            if absolute:
+                data_11_2["writes_4KiB"] = writes_4KB
+            else:
+                data_11_2 = get_ratio_l2_by_l1(data_11_2, writes_4KB)
+                print(data_11_2["RADOS_BENCH"])
+                print()
+            washed_dataset[data_name] = data_11_2
 
     # 12. record_fullness
     data_name = "record_fullness"
@@ -1552,13 +1719,7 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
 
     if len(times_sec) == 0:
         # indexes
-        indexes = []
-        current = writes_4KB[0]
-        indexes.append(current)
-        for data in writes_4KB[1:]:
-            assert(data > 0)
-            current += data
-            indexes.append(current)
+        indexes = accumulate(writes_4KB)
         return washed_dataset, indexes
 
     # 22. journal sizes
@@ -1586,10 +1747,39 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     #
 
     # 1. from writes_4KB
-    washed_dataset["writes_accumulated_MiB"] = {
+    data_name = "writes_accumulated_MiB"
+    washed_dataset[data_name] = {
         "obj_data(client)":  block_to_MB(accumulate(writes_4KB)),
-        "reactor_aio_write": block_to_MB(accumulate(dataset["reactor_aio_write_4KB"]))
+        "reactor_aio_write": block_to_MB(accumulate(dataset["reactor_aio_write_4KB"])),
+        "reactor_aio_read":  block_to_MB(accumulate(dataset["reactor_aio_read_4KB"])),
     }
+    for src, writes in valid_data_4K.items():
+        washed_dataset[data_name]["trans_" + src] = block_to_MB(accumulate(writes))
+    for name, data in washed_dataset[data_name].items():
+        print("%s: %s MiB" % (name, str(data[-1])))
+    print()
+
+    if len(dataset["iostat_write_4KB"]) or len(dataset["radosbench_4KB"]):
+        data_name = "writes_accumulated_MiB_2"
+        washed_dataset[data_name] = {
+            "obj_data(client)":  block_to_MB(accumulate(writes_4KB)),
+        }
+        if len(dataset["iostat_write_4KB"]):
+            washed_dataset[data_name].update({
+                "reactor_aio_write": block_to_MB(accumulate(dataset["reactor_aio_write_4KB"])),
+                "reactor_aio_read":  block_to_MB(accumulate(dataset["reactor_aio_read_4KB"])),
+                "iostat_read":   block_to_MB(accumulate(dataset["iostat_read_4KB"])),
+                "iostat_write":  block_to_MB(accumulate(dataset["iostat_write_4KB"])),
+                "nvme_host":     block_to_MB(accumulate(dataset["nvme_host_4KB"])),
+                "nvme_nand":     block_to_MB(accumulate(dataset["nvme_nand_4KB"])),
+            })
+        if len(dataset["radosbench_4KB"]):
+            washed_dataset[data_name].update({
+                "rados_bench": block_to_MB(accumulate(dataset["radosbench_4KB"])),
+            })
+        for name, data in washed_dataset[data_name].items():
+            print("%s: %s MiB" % (name, str(data[-1])))
+        print()
 
     # 2. from reactor_util, reactor_busytime_sec, reactor_stealtime_sec
     #         scheduler_runtime_sec, scheduler_waittime_sec, scheduler_starvetime_sec
@@ -1623,25 +1813,38 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
     obj_data_throughput_MB = get_throughput_MB(writes_4KB, times_sec)
     print(obj_data_throughput_MB)
+    print()
+    washed_dataset["throughput_MiB"] = {
+        "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+        "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+        "device_read":        get_throughput_MB(segmented_read, times_sec),
+        "device_write":       get_throughput_MB(segmented_write, times_sec),
+        "obj_data_write":     obj_data_throughput_MB,
+    }
     if commit_srcs:
-        washed_dataset["throughput_MiB"] = {
-            "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
-            "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
-            "device_read":        get_throughput_MB(segmented_read, times_sec),
-            "device_write":       get_throughput_MB(segmented_write, times_sec),
+        washed_dataset["throughput_MiB"].update({
             "accounted_write":    get_throughput_MB(accounted_write, times_sec),
             "valid_extent_write": get_throughput_MB(aw_valid_data, times_sec),
             "commit_trans_data_write": get_throughput_MB(mutate_trans_data_write, times_sec),
+        })
+    if len(dataset["iostat_write_4KB"]) or len(dataset["radosbench_4KB"]):
+        data_name = "throughput_MiB_2"
+        washed_dataset[data_name] = {
             "obj_data_write":     obj_data_throughput_MB,
         }
-    else:
-        washed_dataset["throughput_MiB"] = {
-            "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
-            "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
-            "device_read":        get_throughput_MB(segmented_read, times_sec),
-            "device_write":       get_throughput_MB(segmented_write, times_sec),
-            "obj_data_write":     obj_data_throughput_MB,
-        }
+        if len(dataset["iostat_write_4KB"]):
+            washed_dataset[data_name].update({
+                "reactor_aio_read":   get_throughput_MB(dataset["reactor_aio_read_4KB"], times_sec),
+                "reactor_aio_write":  get_throughput_MB(dataset["reactor_aio_write_4KB"], times_sec),
+                "iostat_read":  get_throughput_MB(dataset["iostat_read_4KB"], times_sec),
+                "iostat_write": get_throughput_MB(dataset["iostat_write_4KB"], times_sec),
+                "nvme_host":    get_throughput_MB(dataset["nvme_host_4KB"], times_sec),
+                "nvme_nand":    get_throughput_MB(dataset["nvme_nand_4KB"], times_sec),
+            })
+        if len(dataset["radosbench_4KB"]):
+            washed_dataset[data_name].update({
+                "radosbench":   get_throughput_MB(dataset["radosbench_4KB"], times_sec),
+            })
 
     # 4.x IOPS_by_src, IOPS_overall
     data_IOPS_detail = {}
@@ -1715,16 +1918,86 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
         #"reclaims": dataset["memory_reclaims"],
         "live_objs": dataset["memory_live_objs"],
     }
-    # indexes
-    indexes = []
-    current = times_sec[0]
-    indexes.append(current)
-    for data in times_sec[1:]:
-        assert(data > 0)
-        current += data
-        indexes.append(current)
 
+    # indexes
+    indexes = accumulate(times_sec)
     return washed_dataset, indexes
+
+def wash_dataset_no_metrics(dataset, writes_4KB, times_sec, absolute):
+    assert(len(dataset["radosbench_4KB"]) == len(times_sec))
+    washed_dataset = {}
+
+    INVALID_RATIO = -0.1
+    def get_ratio(numerators, denominators, invalid=INVALID_RATIO):
+        assert(len(numerators) == len(denominators))
+        ratios = []
+        for numerator, denominator in zip(numerators, denominators):
+            ratio = invalid
+            if denominator != 0:
+                ratio = (numerator/denominator)
+            else:
+                if numerator != 0:
+                    # special case
+                    ratio = invalid * 2
+            ratios.append(ratio)
+        return ratios
+    def get_ratio_l2_by_l1(l2_numerators, denominators):
+        ret = {}
+        for name, numerators in l2_numerators.items():
+            ratios = get_ratio(numerators, denominators)
+            ret[name] = ratios
+        return ret
+    def block_to_MB(items):
+        return [item/256 for item in items]
+    def get_throughput_MB(rws_4KB, ts_sec):
+        assert(len(rws_4KB) == len(ts_sec))
+        return [rw/256/t for rw, t in zip(rws_4KB, ts_sec)]
+    def accumulate(values):
+        out = []
+        out_value = 0
+        for v in values:
+            out_value += v
+            out.append(out_value)
+        return out
+
+    data_name = ""
+    if absolute:
+        data_name = "write_4KiB_overall_2"
+    else:
+        data_name = "write_amplification_overall_2"
+    data = {
+        "IOSTAT_READ":      dataset["iostat_read_4KB"],
+        "IOSTAT_WRITE":     dataset["iostat_write_4KB"],
+        "NVME_HOST":        dataset["nvme_host_4KB"],
+        "NVME_NAND":        dataset["nvme_nand_4KB"],
+    }
+    if absolute:
+        data["RADOS_BENCH"] = dataset["radosbench_4KB"]
+    else:
+        data = get_ratio_l2_by_l1(data, dataset["radosbench_4KB"])
+    washed_dataset[data_name] = data
+
+    data_name = "writes_accumulated_MiB_2"
+    washed_dataset[data_name] = {
+        "iostat_read":   block_to_MB(accumulate(dataset["iostat_read_4KB"])),
+        "iostat_write":  block_to_MB(accumulate(dataset["iostat_write_4KB"])),
+        "nvme_host":     block_to_MB(accumulate(dataset["nvme_host_4KB"])),
+        "nvme_nand":     block_to_MB(accumulate(dataset["nvme_nand_4KB"])),
+        "rados_bench":   block_to_MB(accumulate(dataset["radosbench_4KB"])),
+    }
+    for name, data in washed_dataset[data_name].items():
+        print("%s: %s MiB" % (name, str(data[-1])))
+    print()
+
+    data_name = "throughput_MiB_2"
+    washed_dataset[data_name] = {
+        "iostat_read":  get_throughput_MB(dataset["iostat_read_4KB"], times_sec),
+        "iostat_write": get_throughput_MB(dataset["iostat_write_4KB"], times_sec),
+        "nvme_host":    get_throughput_MB(dataset["nvme_host_4KB"], times_sec),
+        "nvme_nand":    get_throughput_MB(dataset["nvme_nand_4KB"], times_sec),
+        "radosbench":   get_throughput_MB(dataset["radosbench_4KB"], times_sec),
+    }
+    return washed_dataset, accumulate(times_sec)
 
 def relplot_data(directory, bench_type, name, data, indexes, ylim):
     sns.set_theme(style="whitegrid")
@@ -1760,29 +2033,46 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("loading dir %s ..." % (args.directory))
-    benches, metrics, times = load_dir(args.directory, args.headcut, args.tailcut)
-    print("loaded %d metrics" % (len(metrics)))
+    benches, metrics, stats, times, radosbench = load_dir(args.directory, args.headcut, args.tailcut)
+    print("loaded %d metrics, %d stats, %d times" % (len(metrics), len(stats), len(times)))
     print()
 
     print("parse results ...")
-    writes_4KB = []
-    illegal_metrics = set()
-    ignored_metrics = set()
     raw_dataset = prepare_raw_dataset()
+    parse_radosbench_file(radosbench, raw_dataset, times)
 
     bench_type = BenchT.NULL
     if len(times):
         bench_type = BenchT.METRICS
 
+    writes_4KB = []
+    illegal_metrics = set()
+    ignored_metrics = set()
+
     index = 0
-    metric_file = metrics[index]
     print(index, end=" ", flush=True)
-    metrics_start, illegal, ignored = parse_metric_file(metric_file)
-    illegal_metrics |= illegal
-    ignored_metrics |= ignored
-    while index < (len(metrics) - 1):
+    num_indexes = 0
+
+    metrics_start = {}
+    if len(metrics):
+        metric_file = metrics[index]
+        metrics_start, illegal, ignored = parse_metric_file(metric_file)
+        illegal_metrics |= illegal
+        ignored_metrics |= ignored
+        num_indexes = len(metrics) - 1
+
+    stats_start = {}
+    if len(stats):
+        stats_file = stats[index]
+        stats_start = parse_stats_file(stats_file)
+        _num_indexes = len(stats) - 1
+        if num_indexes > 0:
+            assert(num_indexes == _num_indexes)
+        else:
+            num_indexes = _num_indexes
+
+    while index < num_indexes:
         print(index + 1, end=" ", flush=True)
-        metric_file = metrics[index + 1]
 
         if bench_type != BenchT.METRICS:
             # mode with bench files
@@ -1794,13 +2084,23 @@ if __name__ == "__main__":
                 assert(bench_type == btype)
             writes_4KB.append(write_4KB)
 
-        metrics_end, illegal, ignored = parse_metric_file(metric_file)
-        illegal_metrics |= illegal
-        ignored_metrics |= ignored
+        metrics_end = {}
+        if len(metrics):
+            metric_file = metrics[index + 1]
+            metrics_end, illegal, ignored = parse_metric_file(metric_file)
+            illegal_metrics |= illegal
+            ignored_metrics |= ignored
 
-        append_raw_data(raw_dataset, metrics_start, metrics_end)
+        stats_end = {}
+        if len(stats):
+            stats_file = stats[index + 1]
+            stats_end = parse_stats_file(stats_file)
+
+        append_raw_data(raw_dataset, metrics_start, metrics_end, stats_start, stats_end)
+
         index += 1
         metrics_start = metrics_end
+        stats_start = stats_end
     print()
     print("   bench type: %s" % (bench_type))
     print("   illegal metrics: %s" % (illegal_metrics))
@@ -1809,8 +2109,12 @@ if __name__ == "__main__":
     print()
 
     print("wash results (absolute=%s) ..." % (args.absolute))
-    dataset, indexes = wash_dataset(
-        raw_dataset, writes_4KB, times, args.absolute)
+    dataset = {}
+    indexes = []
+    if len(metrics):
+        dataset, indexes = wash_dataset(raw_dataset, writes_4KB, times, args.absolute)
+    else:
+        dataset, indexes = wash_dataset_no_metrics(raw_dataset, writes_4KB, times, args.absolute)
     print("wash results done")
     print()
 
