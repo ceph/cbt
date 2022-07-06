@@ -29,10 +29,10 @@ class Fiostatsparser():
 
   def get_output_csv_filename(self):
     if not self.csvfilename:
-      date = time.strftime("%m-%d-%Y", time.localtime())
-      ltime = time.strftime("%I:%M-%S%p", time.localtime())
+      date = time.strftime("%m_%d_%Y", time.localtime())
+      ltime = time.strftime("%I_%M_%S%p", time.localtime())
       timestamp = date + "_" + ltime
-      self.csvfilename = self.baseopcsvfn + timestamp + ".txt"
+      self.csvfilename = self.baseopcsvfn + timestamp + ".csv"
     return self.csvfilename
 
 class Parsejson(Fiostatsparser):

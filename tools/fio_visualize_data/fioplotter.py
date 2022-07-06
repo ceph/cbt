@@ -14,8 +14,8 @@ class Fioplotter():
     self.baseplotfilename = self.destination + self.basefile
 
   def get_plot_filename(self):
-    date = time.strftime("%m-%d-%Y", time.localtime())
-    ltime = time.strftime("%I:%M-%S%p", time.localtime())
+    date = time.strftime("%m_%d_%Y", time.localtime())
+    ltime = time.strftime("%I_%M_%S%p", time.localtime())
     timestamp = date + "_" + ltime
     plotfilename = self.baseplotfilename + self.stattype + "_" + timestamp + ".pdf"
     return plotfilename
