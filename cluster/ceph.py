@@ -99,6 +99,7 @@ class Ceph(Cluster):
         self.ceph_mgr_cmd = config.get('ceph-mgr_cmd', '/usr/bin/ceph-mgr')
         self.ceph_mds_cmd = config.get('ceph-mds_cmd', '/usr/bin/ceph-mds')
         self.ceph_authtool_cmd = config.get('ceph-authtool_cmd', '/usr/bin/ceph-authtool')
+        self.monmaptool_cmd = config.get('monmaptool_cmd', '/usr/bin/monmaptool')
         self.radosgw_admin_cmd = config.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
         self.ceph_cmd = config.get('ceph_cmd', '/usr/bin/ceph')
         self.ceph_fuse_cmd = config.get('ceph-fuse_cmd', '/usr/bin/ceph-fuse')
@@ -347,7 +348,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo sh -c \'%s --print-key %s > %s\'' % (self.ceph_authtool_cmd, self.client_keyring, self.client_secret)).communicate()
         # Build the monmap, retrieve it, and distribute it
         mons = settings.getnodes('mons').split(',')
-        cmd = 'monmaptool --create --clobber'
+        cmd = '%s --create --clobber' % self.monmaptool_cmd
         monhosts = self.get_mon_hosts()
         logger.info(monhosts)
         for monhost, mons in monhosts.items():
