@@ -116,7 +116,7 @@ class CephClientEndpoints(ClientEndpoints):
                 rbd_name = '%s-%s' % (self.pool, self.get_rbd_name(node, ep_num))
                 self.cluster.mkimage(rbd_name, self.endpoint_size, self.pool, self.data_pool, self.order)
 
-    def create_rbd_scrubbing(self):
+    def create_rbd_scrub_pool(self):
         self.pool = '%s-scrub' % self.name
         self.cluster.rmpool(self.pool, self.scrub_pool_profile)
         self.cluster.mkpool(self.pool, self.scrub_pool_profile, 'rbd')

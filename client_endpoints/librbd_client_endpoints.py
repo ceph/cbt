@@ -20,5 +20,5 @@ class LibrbdClientEndpoints(CephClientEndpoints):
     def create_recovery_image(self):
         self.create_rbd_recovery()
 
-    def create_scrubbing_image(self):
-        self.create_rbd_scrubbing()
+    def create_scrub_image(self):
+        self.create_rbd_scrub_pool()

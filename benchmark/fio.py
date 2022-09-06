@@ -66,11 +66,11 @@ class Fio(Benchmark):
         # Create the recovery image based on test type requested
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
             self.client_endpoints_object.create_recovery_image()
-        if 'scrubbing_test' in self.cluster.config:
-            self.client_endpoints_object.create_scrubbing_image()
+        if 'scrub_test' in self.cluster.config:
+            self.client_endpoints_object.create_scrub_image()
         if 'scrub_recov_test' in self.cluster.config:
             self.client_endpoints_object.create_recovery_image()
-            self.client_endpoints_object.create_scrubbing_image()
+            self.client_endpoints_object.create_scrub_image()
         self.create_endpoints()
 
     def create_endpoints(self):
@@ -218,10 +218,10 @@ class Fio(Benchmark):
             # Wait for signal to start client IO
             self.cluster.wait_start_io()
 
-        if 'scrubbing_test' in self.cluster.config:
-            logger.info('Scrubbing test in config')
-            scrubbing_callback = self.scrubbing_callback
-            self.cluster.create_scrubbing_test(self.run_dir, scrubbing_callback)
+        if 'scrub_test' in self.cluster.config:
+            logger.info('Scrub test in config')
+            scrub_callback = self.scrub_callback
+            self.cluster.create_scrub_test(self.run_dir, scrub_callback)
             self.cluster.wait_start_io()
 
         if 'scrub_recov_test' in self.cluster.config:
@@ -242,9 +242,9 @@ class Fio(Benchmark):
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
-        # If we were doing scrubbing, wait until it's done.
-        if 'scrubbing_test' in self.cluster.config:
-            self.cluster.wait_scrubbing_done()
+        # If we were doing scrub, wait until it's done.
+        if 'scrub_test' in self.cluster.config:
+            self.cluster.wait_scrub_done()
 
         if 'scrub_recov_test' in self.cluster.config:
             self.cluster.wait_scrub_recovery_done()
@@ -263,7 +263,7 @@ class Fio(Benchmark):
     def recovery_callback_background(self):
         logger.info('Recovery thread completed!')
 
-    def scrubbing_callback(self):
+    def scrub_callback(self):
         logger.info('Scrubbing thread completed')
 
     def scrub_recov_callback(self):

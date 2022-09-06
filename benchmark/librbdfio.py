@@ -267,7 +267,7 @@ class LibrbdFio(Benchmark):
     def recovery_callback_background(self):
         logger.info('Recovery thread completed!')
 
-    def scrubbing_callback(self):
+    def scrub_callback(self):
         logger.info('Scrubbing thread completed!')
 
     def parse(self, out_dir):
