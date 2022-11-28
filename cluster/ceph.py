@@ -151,6 +151,7 @@ class Ceph(Cluster):
 
         #Scrub tests
         self.scrub_enabled = config.get('enable_scrub', False)
+        self.scrub_type = config.get('scrub_type', '')
         self.prefill_scrub_objects = 0
         self.prefill_scrub_object_size = 0
         self.prefill_scrub_time = 0
@@ -771,8 +772,15 @@ class Ceph(Cluster):
             #self.check_health()
 
     def initiate_scrub(self):
-        logger.info("Initiating scrub on pool %s" % self.scrub_pool_name)
-        common.pdsh(settings.getnodes('head'), '%s osd pool deep-scrub %s' % (self.ceph_cmd, self.scrub_pool_name)).communicate()
+        if self.scrub_type:
+            if self.scrub_type == 'shallow':
+                scrub_command = 'scrub'
+            elif self.scrub_type == 'deep':
+                scrub_command = 'deep-scrub'
+        else:
+            scrub_command = 'deep-scrub'
+        logger.info("Initiating %s on pool %s" % (scrub_command, self.scrub_pool_name))
+        common.pdsh(settings.getnodes('head'), '%s osd pool %s %s' % (self.ceph_cmd, scrub_command, self.scrub_pool_name)).communicate()
 
     def wait_scrub_done(self):
         self.stoprequest.set()
