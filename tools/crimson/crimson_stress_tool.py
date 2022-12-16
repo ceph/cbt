@@ -416,6 +416,54 @@ class PerfThread(Task):
         self.result.close()
         return result_dic
 
+class PerfRecordThread(Task):
+    def __init__(self, env):
+        super().__init__(env)
+        # perf record from 1/4 time to 1/2 time
+        self.start_time = round(int(env.args.time) * 0.25)
+        self.last_time = round(int(env.args.time) * 0.5)
+        self.pid_list = env.pid
+
+    def create_command(self):
+        command = "sudo perf record -a -g"
+        if self.pid_list:
+            command += " -p "
+            command += str(self.pid_list[0])
+            for pid_index in range(1, len(self.pid_list)):
+                command += ","
+                command += str(self.pid_list[pid_index])
+        command += " -o perf.data"
+        command += " -- sleep "
+        command += str(self.last_time)
+        command += " 2>&1"
+        return command
+
+    def analyse(self):
+        result_dic = {}
+        return result_dic
+
+    @staticmethod
+    def post_process(self, test_case_result):
+        print("perf.data generated at current directory.")
+        # generate fire flame if there are stackcollapse-perf.pl
+        # and flamegraph.pl in the current directory
+        # these tools are in https://github.com/brendangregg/FlameGraph
+        stackcollapse_perf = False
+        flamegraph = False
+        file_list = os.listdir('.')
+        for file in file_list:
+            if file ==  "stackcollapse-perf.pl":
+                stackcollapse_perf = True
+            if file == "flamegraph.pl":
+                flamegraph = True
+        if stackcollapse_perf and flamegraph:
+            time.sleep(5)
+            os.system("sudo perf script -i perf.data | ./stackcollapse-perf.pl \
+                --all | ./flamegraph.pl > flamegraph.svg")
+            print("flamegraph generated at current directory.")
+        else:
+            print("cannot find flamegraph scripts, will not generate flamegraph.")
+        return
 
 class IOStatThread(Task):
     def __init__(self, env):
@@ -669,6 +717,8 @@ class Environment():
                 ReactorUtilizationCollectorThread)
         if self.args.perf:
             self.timepoint_threadclass_list.append(PerfThread)
+        if self.args.perf_record:
+            self.timepoint_threadclass_list.append(PerfRecordThread)
         if self.args.iostat:
             self.timepoint_threadclass_list.append(IOStatThread)
         if self.args.freq:
@@ -962,6 +1012,9 @@ if __name__ == "__main__":
     parser.add_argument('--perf',
                         action='store_true',
                         help='collect perf information')
+    parser.add_argument('--perf-record',
+                        action='store_true',
+                        help='collect perf record information')
     parser.add_argument('--iostat',
                         action='store_true',
                         help='collect iostat information')
