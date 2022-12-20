@@ -32,7 +32,9 @@ class Task(threading.Thread):
     # don't need to rewite this method
     def run(self):
         time.sleep(self.start_time)
-        self.result = os.popen(self.create_command())
+        command = self.create_command()
+        print(command)
+        self.result = os.popen(command)
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -794,6 +796,9 @@ class Environment():
 
         # pool
         os.system("sudo bin/ceph osd pool create " + self.pool + " 64 64")
+
+        # waiting for rados completely ready
+        time.sleep(20)
 
     def general_post_processing(self):
         # killall
