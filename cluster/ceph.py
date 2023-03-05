@@ -778,13 +778,19 @@ class Ceph(Cluster):
             if self.prefill_recov_objects > 0:
                 self.recov_pool_name = name
 
+        # Add mandatory UI option to create a pool that starts with "." in releases after quincy (Sigh again).
+        yes_flag = ""
+        if self.version_compat not in ['argonaut', 'bobcat', 'cuttlefish', 'dumpling', 'emperor', 'firefly', 'giant', 'hammer', 'infernalis', 'jewel', 'kraken', 'luminous', 'mimic', 'nautilus', 'octopus', 'pacific', 'quincy']:
+            if name.startswith("."):
+                yes_flag = "--yes-i-really-mean-it"
+
         if replication and replication == 'erasure':
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile, yes_flag),
                         continue_if_error=False).communicate()
             if ec_overwrites is True:
                 common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s allow_ec_overwrites true' % (self.ceph_cmd, self.tmp_conf, name), continue_if_error=False).communicate()
         else:
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, yes_flag),
                         continue_if_error=False).communicate()
         if self.version_compat not in ['argonaut', 'bobcat', 'cuttlefish', 'dumpling', 'emperor', 'firefly', 'giant', 'hammer', 'infernalis', 'jewel']:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool application enable %s %s' % (self.ceph_cmd, self.tmp_conf, name, application), continue_if_error=False).communicate()
