@@ -754,6 +754,7 @@ class Ceph(Cluster):
         replication = str(profile.get('replication', None))
         ec_overwrites = profile.get('ec_overwrites', False)
         cache_profile = profile.get('cache_profile', None)
+        transparent = profile.get('transparent', False)
 
         # Options for cache tiering
         crush_profile = profile.get('crush_profile', None)
@@ -778,13 +779,17 @@ class Ceph(Cluster):
             if self.prefill_recov_objects > 0:
                 self.recov_pool_name = name
 
+        transparent_str = ''
+        if (transparent):
+            transparent_str = 'transparent'
+
         if replication and replication == 'erasure':
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile, transparent_str),
                         continue_if_error=False).communicate()
             if ec_overwrites is True:
                 common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s allow_ec_overwrites true' % (self.ceph_cmd, self.tmp_conf, name), continue_if_error=False).communicate()
         else:
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, transparent_str),
                         continue_if_error=False).communicate()
         if self.version_compat not in ['argonaut', 'bobcat', 'cuttlefish', 'dumpling', 'emperor', 'firefly', 'giant', 'hammer', 'infernalis', 'jewel']:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool application enable %s %s' % (self.ceph_cmd, self.tmp_conf, name, application), continue_if_error=False).communicate()
