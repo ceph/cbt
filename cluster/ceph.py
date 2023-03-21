@@ -505,11 +505,11 @@ class Ceph(Cluster):
                 # set the rgw_frontends
                 rgw_frontends = None
                 if ssl_certificate is not None:
-                    rgw_frontends = "civetweb ssl_certificate=%s" % ssl_certificate
+                    rgw_frontends = "beast ssl_certificate=%s" % ssl_certificate
                 if port is not None:
                     if rgw_frontends is None:
-                        rgw_frontends = "civetweb"
-                    rgw_frontends += " port=%s" % port
+                        rgw_frontends = "beast"
+                    rgw_frontends += " ssl_port=%s" % port
 
                 cmd = '%s -c %s -n %s --log-file=%s/rgw.log' % (self.ceph_rgw_cmd, self.tmp_conf, rgwname, self.log_dir)
                 if rgw_frontends is not None:
