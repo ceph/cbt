@@ -18,11 +18,12 @@ import re
 # or timepoint_threadclass_list in the class Environmen to extend this tool.
 # set the start_time to decide when will the test start after thread starts.
 class Task(threading.Thread):
-    def __init__(self, env):
+    def __init__(self, env, task_set):
         super().__init__()
         self.thread_num = env.thread_num
         self.start_time = 0
         self.result = None
+        self.task_set = task_set
 
     # rewrite method create_command() to define the command
     # this class will execute
@@ -56,16 +57,16 @@ class Task(threading.Thread):
 
 
 class RadosRandWriteThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.start_time = 0.01
-        self.task_set = env.args.taskset
         self.block_size = env.args.block_size
         self.time = env.args.time
         self.pool = env.pool
         self.iops_key = "rw_IOPS"
         self.latency_key = "rw_Latency"
         self.bandwidth_key = "rw_Bandwidth"
+        self.multicore_client = env.multicore_client
 
     def create_command(self):
         rados_bench_write = "sudo taskset -c " + self.task_set \
@@ -90,20 +91,23 @@ class RadosRandWriteThread(Task):
                 result_dic[self.bandwidth_key] = round(float(element[2]), 4)
             line = self.result.readline()
         self.result.close()
+        if self.multicore_client:
+            result_dic["core"] = self.task_set
         return result_dic
 
     @staticmethod
     def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosRandWriteThread]
-        test_case_result["rw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[RadosRandWriteThread]
+            test_case_result["rw_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["rw_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class RadosSeqWriteThread(RadosRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.iops_key = "sw_IOPS"
         self.latency_key = "sw_Latency"
         self.bandwidth_key = "sw_Bandwidth"
@@ -125,16 +129,17 @@ class RadosSeqWriteThread(RadosRandWriteThread):
 
     @staticmethod
     def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosSeqWriteThread]
-        test_case_result["sw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[RadosSeqWriteThread]
+            test_case_result["sw_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["sw_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class RadosRandReadThread(RadosRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.iops_key = "rr_IOPS"
         self.latency_key = "rr_Latency"
         self.bandwidth_key = "rr_Bandwidth"
@@ -154,16 +159,17 @@ class RadosRandReadThread(RadosRandWriteThread):
 
     @staticmethod
     def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosRandReadThread]
-        test_case_result["rr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[RadosRandReadThread]
+            test_case_result["rr_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["rr_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class RadosSeqReadThread(RadosRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.iops_key = "sr_IOPS"
         self.latency_key = "sr_Latency"
         self.bandwidth_key = "sr_Bandwidth"
@@ -183,16 +189,17 @@ class RadosSeqReadThread(RadosRandWriteThread):
 
     @staticmethod
     def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosSeqReadThread]
-        test_case_result["sr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[RadosSeqReadThread]
+            test_case_result["sr_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["sr_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDRandWriteThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.task_set = env.args.taskset
         self.rw = "randwrite"
         self.io_depth = env.thread_num
@@ -205,6 +212,7 @@ class FioRBDRandWriteThread(Task):
         self.lat = 'rw_Latency'
         self.bw = 'rw_Bandwidth'
         self.iops = 'rw_IOPS'
+        self.multicore_client = env.multicore_client
 
     def get_a_image(self):
         return self.images.pop(0)  # atomic
@@ -243,6 +251,8 @@ class FioRBDRandWriteThread(Task):
                     result_dic[self.iops] = float(match_res[4:-1])
             line = self.result.readline()
         self.result.close()
+        if self.multicore_client:
+            result_dic["core"] = self.task_set
         return result_dic
 
     @staticmethod
@@ -253,17 +263,18 @@ class FioRBDRandWriteThread(Task):
     def post_process(env, test_case_result):
         # clear the images record in class env
         env.remove_images()
-        # merge all clients bw and iops results
-        ratio = env.testclient_threadclass_ratio_map[FioRBDRandWriteThread]
-        test_case_result["rw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            # merge all clients bw and iops results
+            ratio = env.testclient_threadclass_ratio_map[FioRBDRandWriteThread]
+            test_case_result["rw_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["rw_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDRandReadThread(FioRBDRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.rw = "randread"
         self.lat = 'rr_Latency'
         self.bw = 'rr_Bandwidth'
@@ -277,16 +288,17 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
-        ratio = env.testclient_threadclass_ratio_map[FioRBDRandReadThread]
-        test_case_result["rr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[FioRBDRandReadThread]
+            test_case_result["rr_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["rr_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDSeqReadThread(FioRBDRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.rw = "read"
         self.lat = 'sr_Latency'
         self.bw = 'sr_Bandwidth'
@@ -300,16 +312,17 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
-        ratio = env.testclient_threadclass_ratio_map[FioRBDSeqReadThread]
-        test_case_result["sr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[FioRBDSeqReadThread]
+            test_case_result["sr_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["sr_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDSeqWriteThread(FioRBDRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.rw = "write"
         self.lat = 'sw_Latency'
         self.bw = 'sw_Bandwidth'
@@ -325,19 +338,20 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
-        ratio = env.testclient_threadclass_ratio_map[FioRBDSeqWriteThread]
-        test_case_result["sw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
+        if not env.multicore_client:
+            ratio = env.testclient_threadclass_ratio_map[FioRBDSeqWriteThread]
+            test_case_result["sw_Bandwidth"] *= \
+                int(test_case_result['Client_num'] * ratio)
+            test_case_result["sw_IOPS"] *= \
+                int(test_case_result['Client_num'] * ratio)
 
 
 class ReactorUtilizationCollectorThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.start_time = int(env.args.time)/2
         self.osd = "osd.0"
-        self.task_set = env.args.taskset
+        self.multicore_client = env.multicore_client
 
     def create_command(self):
         command = "sudo taskset -c " + self.task_set \
@@ -355,12 +369,15 @@ class ReactorUtilizationCollectorThread(Task):
                 break
             line = self.result.readline()
         self.result.close()
+        if self.multicore_client:
+            result_dic["core"] = self.task_set
         return result_dic
 
 
+# TODO PerfThread not support multicore_client = True yet.
 class PerfThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.start_time = int(env.args.time)/2
         self.last_time = 5000  # 5s
         self.pid_list = env.pid
@@ -418,9 +435,10 @@ class PerfThread(Task):
         self.result.close()
         return result_dic
 
+# TODO PerfRecordThread not support multicore_client = True yet.
 class PerfRecordThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         # perf record from 1/4 time to 1/2 time
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
@@ -467,9 +485,10 @@ class PerfRecordThread(Task):
             print("cannot find flamegraph scripts, will not generate flamegraph.")
         return
 
+# TODO IOStatThread not support multicore_client = True yet.
 class IOStatThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.start_time = 0
         self.dev = "sda"  # default if no args.dev
         if env.args.dev:
@@ -501,9 +520,10 @@ class IOStatThread(Task):
         return result_dic
 
 
+# TODO CPUFreqThread not support multicore_client = True yet.
 class CPUFreqThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, task_set):
+        super().__init__(env, task_set)
         self.start_time = int(env.args.time)/2 + 1
 
     def create_command(self):
@@ -535,9 +555,9 @@ class Tester():
             sub_ratio_client_num = int(self.trmap[thread] * self.client_num)
             self.ratio_client_num += sub_ratio_client_num
             for n in range(sub_ratio_client_num):
-                self.test_case_threads.append(thread(self.env))
+                self.test_case_threads.append(thread(self.env, self.env.args.taskset))
         for thread in self.tplist:
-            self.test_case_threads.append(thread(self.env))
+            self.test_case_threads.append(thread(self.env, self.env.args.taskset))
 
     def run(self):
         print("client num:%d, thread num:%d testing"
@@ -570,37 +590,71 @@ class Tester():
         test_case_result['Client_num'] = self.client_num
         return test_case_result
 
+class MulticoreTester():
+    def __init__(self, env):
+        self.env = env
+        self.client_num = env.client_num
+        self.thread_num = env.thread_num
+        self.trmap = env.testclient_threadclass_ratio_map
+        self.tplist = env.timepoint_threadclass_list
+        self.base_result = env.base_result
+        self.ratio_client_num = 0
+        self.test_case_threads = list()
+        self.init()
+
+    def init(self):
+        if self.env.args.perf or self.env.args.perf_record or \
+            self.env.args.iostat or self.env.args.freq:
+            raise Exception("no multicore support for perf, iostat, freq yet")
+        for thread in self.trmap:
+            sub_ratio_client_num = int(self.trmap[thread] * self.client_num)
+            self.ratio_client_num += sub_ratio_client_num
+            for n in range(sub_ratio_client_num):
+                # bound client and all time point thread for this client to one core.
+                core = self.env.core_mgr.consume_core()
+                self.test_case_threads.append(thread(self.env, core))
+                for thread in self.tplist:
+                    self.test_case_threads.append(thread(self.env, core))
+
+    def run(self):
+        print("client num:%d, thread num:%d testing"
+              % (self.client_num, self.thread_num))
+        for thread in self.test_case_threads:
+            thread.start()
+        for thread in self.test_case_threads:
+            thread.join()
+        test_case_result = dict()
+        for task in self.test_case_threads:
+            base_test_case_result = task.analyse()
+            if base_test_case_result["core"] not in test_case_result:
+                test_case_result[base_test_case_result["core"]] = base_test_case_result
+            else:
+                dic = test_case_result[base_test_case_result["core"]]
+                for key in base_test_case_result:
+                    dic[key] = base_test_case_result[key]
+
+        test_case_result['Thread_num'] = self.thread_num
+        test_case_result['Client_num'] = self.client_num
+        return test_case_result
+
 
 class TesterExecutor():
     def __init__(self):
         self.result_list = list()  # [dict]
 
     def run(self, env):
+        if env.multicore_client:
+            raise Exception("multicore_client should be false.")
         print('running...')
         for client_num in env.args.client_list:
             for thread_num in env.args.thread_list:
                 env.client_num = client_num
                 env.thread_num = thread_num
+
                 env.before_run_case()
                 tester = Tester(env)
-                temp_result = tester.run()
-                test_case_result = env.base_result.copy()
-                test_case_result.update(temp_result)
+                test_case_result = tester.run()
                 env.after_run_case(test_case_result)
-
-                if env.test_num == 1:   # Rename these columns if only one test type
-                    keys_list = list(test_case_result.keys())
-                    for key in keys_list:
-                        if "Bandwidth" in key:
-                            test_case_result["Bandwidth(MB/s)"] = \
-                                test_case_result.pop(key)
-                        elif "Latency" in key:
-                            test_case_result["Latency(ms)"] = \
-                                test_case_result.pop(key)
-                        elif "IOPS" in key:
-                            test_case_result["IOPS"] = \
-                                test_case_result.pop(key)
-    
                 self.result_list.append(test_case_result)
 
     def get_result_list(self):
@@ -642,6 +696,51 @@ class TesterExecutor():
                     f_result.write(str(result[keylist[i]])) 
         f_result.close()
 
+class MulticoreTesterExecutor():
+    def __init__(self):
+        self.result_list = list()  # [dict]
+
+    def run(self, env):
+        if not env.multicore_client:
+            raise Exception("multicore_client should be true")
+        print('running...')
+        for client_num in env.args.client_list:
+            for thread_num in env.args.thread_list:
+                env.client_num = client_num
+                env.thread_num = thread_num
+
+                env.before_run_case()
+                tester = MulticoreTester(env)
+                test_case_result = tester.run()
+                env.after_run_case(test_case_result)
+                self.result_list.append(test_case_result)
+
+
+    def get_result_list(self):
+        return self.result_list
+
+    def output(self, output, horizontal, filters):
+        for item in self.result_list:
+            print(item)
+
+class CoreManager():
+    core = []
+    consume = -1
+    def __init__(self, task_set):
+        temp_lis = task_set.split("-")
+        if len(temp_lis) == 1:
+            raise Exception("only input one core, cannot do muticore test.")
+        start = int(temp_lis[0])
+        end = int(temp_lis[1])
+        for i in range(start, end + 1):
+            self.core.append(i)
+
+    def consume_core(self):
+        self.consume += 1
+        if self.consume > self.core[-1]:
+            raise Exception("core consum exceed max size.")
+        return str(self.core[self.consume])
+
 
 class Environment():
     def __init__(self, args):
@@ -663,6 +762,8 @@ class Environment():
         self.base_result['OPtype'] = "Mixed"
         self.backend_list = ['seastore', 'bluestore', 'memstore', 'cyanstore']
         self.store = ""
+        self.multicore_client = args.multicore_client
+        self.core_mgr = None
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
@@ -800,6 +901,10 @@ class Environment():
         # waiting for rados completely ready
         time.sleep(20)
 
+        # prepare core manager
+        if self.multicore_client:
+            self.core_mgr = CoreManager(self.args.taskset)
+
     def general_post_processing(self):
         # killall
         os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
@@ -818,10 +923,26 @@ class Environment():
 
     def post_processing(self, test_case_result):
         print('post processing...')
+        append_info = env.base_result.copy()
+        test_case_result.update(append_info)
+
         for thread in self.testclient_threadclass_ratio_map:
             thread.post_process(self, test_case_result)
         for thread in self.timepoint_threadclass_list:
             thread.post_process(self, test_case_result)
+
+        if self.test_num == 1:   # Rename these columns if only one test type
+            keys_list = list(test_case_result.keys())
+            for key in keys_list:
+                if "Bandwidth" in key:
+                    test_case_result["Bandwidth(MB/s)"] = \
+                        test_case_result.pop(key)
+                elif "Latency" in key:
+                    test_case_result["Latency(ms)"] = \
+                        test_case_result.pop(key)
+                elif "IOPS" in key:
+                    test_case_result["IOPS"] = \
+                        test_case_result.pop(key)
 
     def before_run_case(self):
         self.general_pre_processing()
@@ -916,7 +1037,6 @@ class Environment():
         os.system(env_write_command + " >/dev/null")
         print('rados pre write OK.')
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--client-list',
@@ -975,6 +1095,9 @@ if __name__ == "__main__":
     parser.add_argument('--single-core',
                         action='store_true',
                         help='run osds in single core')
+    parser.add_argument('--multicore-client',
+                        action='store_true',
+                        help='record time point task for every core')
 
     # test case based thread param
     parser.add_argument('--rand-write',
@@ -1037,7 +1160,12 @@ if __name__ == "__main__":
     env.init_thread_list()
 
     # execute the tester in the tester matrix
-    tester_executor = TesterExecutor()
-    tester_executor.run(env)
-    tester_executor.output(args.output, args.output_horizontal, filters)
+    if env.multicore_client:
+        tester_executor = MulticoreTesterExecutor()
+        tester_executor.run(env)
+        tester_executor.output(args.output, args.output_horizontal, filters)
+    else:
+        tester_executor = TesterExecutor()
+        tester_executor.run(env)
+        tester_executor.output(args.output, args.output_horizontal, filters)
     print('done.')
