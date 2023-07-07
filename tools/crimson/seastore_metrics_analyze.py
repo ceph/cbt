@@ -120,7 +120,10 @@ def load_dir(dir_name, headcut, tailcut):
     benches = benches[headcut:tailcut]
     metrics = metrics[headcut:diff_tailcut]
     stats = stats[headcut:diff_tailcut]
-    bench_start = ret_times[0]
+    if len(ret_times) == 0:
+        bench_start = []
+    else:
+        bench_start = ret_times[0]
     bench_skip = 0
     for t in ret_times[0:headcut]:
         bench_skip += t
@@ -160,7 +163,16 @@ def _load_json(file):
     def parse_object_pairs(pairs):
         return pairs
     with open(file, 'r') as reader:
-        return json.load(reader, object_pairs_hook=parse_object_pairs)
+        names = file.split('_')
+        if names[2] == "stats":
+            return json.load(reader, object_pairs_hook=parse_object_pairs)
+        else:
+            assert(names[2] == "metrics")
+            json_dict = json.load(reader, object_pairs_hook=parse_object_pairs)
+            json_tmp = []
+            for i in json_dict[0][1]:
+                json_tmp.append(i[0])
+            return json_tmp
 
 def _process_json_item(json_item):
     name = json_item[0]
@@ -1215,34 +1227,35 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     for tree_type, values in tree_updates_committed_by_tree.items():
         sub_name = tree_type + "_updates"
         washed_dataset[data_name][sub_name] = values
+    
+    if len(times_sec) > 0:
+        def get_IOPS(rws, ts_sec):
+            assert(len(rws) == len(ts_sec))
+            return [rw/t for rw, t in zip(rws, ts_sec)]
+        def get_IOPS_l2(l2_rws, ts_sec):
+            ret = {}
+            for name, data in l2_rws.items():
+                iops = get_IOPS(data, ts_sec)
+                ret[name] = iops
+            return ret
 
-    def get_IOPS(rws, ts_sec):
-        assert(len(rws) == len(ts_sec))
-        return [rw/t for rw, t in zip(rws, ts_sec)]
-    def get_IOPS_l2(l2_rws, ts_sec):
-        ret = {}
-        for name, data in l2_rws.items():
-            iops = get_IOPS(data, ts_sec)
-            ret[name] = iops
-        return ret
-
-    data_name = "tree_operations_per_second"
-    tree_inserts_PS_committed_by_tree = get_IOPS_l2(
-        _tree_inserts_committed_by_tree, times_sec)
-    tree_erases_PS_committed_by_tree = get_IOPS_l2(
-        _tree_erases_committed_by_tree, times_sec)
-    tree_updates_PS_committed_by_tree = get_IOPS_l2(
-        _tree_updates_committed_by_tree, times_sec)
-    washed_dataset[data_name] = {}
-    for tree_type, values in tree_inserts_PS_committed_by_tree.items():
-        sub_name = tree_type + "_inserts"
-        washed_dataset[data_name][sub_name] = values
-    for tree_type, values in tree_erases_PS_committed_by_tree.items():
-        sub_name = tree_type + "_erases"
-        washed_dataset[data_name][sub_name] = values
-    for tree_type, values in tree_updates_PS_committed_by_tree.items():
-        sub_name = tree_type + "_updates"
-        washed_dataset[data_name][sub_name] = values
+        data_name = "tree_operations_per_second"
+        tree_inserts_PS_committed_by_tree = get_IOPS_l2(
+            _tree_inserts_committed_by_tree, times_sec)
+        tree_erases_PS_committed_by_tree = get_IOPS_l2(
+            _tree_erases_committed_by_tree, times_sec)
+        tree_updates_PS_committed_by_tree = get_IOPS_l2(
+            _tree_updates_committed_by_tree, times_sec)
+        washed_dataset[data_name] = {}
+        for tree_type, values in tree_inserts_PS_committed_by_tree.items():
+            sub_name = tree_type + "_inserts"
+            washed_dataset[data_name][sub_name] = values
+        for tree_type, values in tree_erases_PS_committed_by_tree.items():
+            sub_name = tree_type + "_erases"
+            washed_dataset[data_name][sub_name] = values
+        for tree_type, values in tree_updates_PS_committed_by_tree.items():
+            sub_name = tree_type + "_updates"
+            washed_dataset[data_name][sub_name] = values
 
     # 4. from cache_hit, cache_access
     data_name = "cache_hit_ratio_by_source"
@@ -1628,20 +1641,21 @@ def wash_dataset(dataset, writes_4KB, times_sec, absolute):
     }
 
     data_name = "segment_operation_per_second"
-    segments_count_open_journal_PS = get_IOPS(dataset["segments_count_open_journal"], times_sec)
-    segments_count_close_journal_PS = get_IOPS(dataset["segments_count_close_journal"], times_sec)
-    segments_count_release_journal_PS = get_IOPS(dataset["segments_count_release_journal"], times_sec)
-    segments_count_open_ool_PS = get_IOPS(dataset["segments_count_open_ool"], times_sec)
-    segments_count_close_ool_PS = get_IOPS(dataset["segments_count_close_ool"], times_sec)
-    segments_count_release_ool_PS = get_IOPS(dataset["segments_count_release_ool"], times_sec)
-    washed_dataset[data_name] = {
-        "open_journal": segments_count_open_journal_PS,
-        "close_journal": segments_count_close_journal_PS,
-        "release_journal": segments_count_release_journal_PS,
-        "open_ool": segments_count_open_ool_PS,
-        "close_ool": segments_count_close_ool_PS,
-        "release_ool": segments_count_release_ool_PS,
-    }
+    if len(times_sec) > 0:
+        segments_count_open_journal_PS = get_IOPS(dataset["segments_count_open_journal"], times_sec)
+        segments_count_close_journal_PS = get_IOPS(dataset["segments_count_close_journal"], times_sec)
+        segments_count_release_journal_PS = get_IOPS(dataset["segments_count_release_journal"], times_sec)
+        segments_count_open_ool_PS = get_IOPS(dataset["segments_count_open_ool"], times_sec)
+        segments_count_close_ool_PS = get_IOPS(dataset["segments_count_close_ool"], times_sec)
+        segments_count_release_ool_PS = get_IOPS(dataset["segments_count_release_ool"], times_sec)
+        washed_dataset[data_name] = {
+            "open_journal": segments_count_open_journal_PS,
+            "close_journal": segments_count_close_journal_PS,
+            "release_journal": segments_count_release_journal_PS,
+            "open_ool": segments_count_open_ool_PS,
+            "close_ool": segments_count_close_ool_PS,
+            "release_ool": segments_count_release_ool_PS,
+        }
 
     # 17. space usage
     data_name = "space_usage_MiB"
