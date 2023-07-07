@@ -149,7 +149,10 @@ class CephDrawTask(DrawTask):
                 else:
                     self.z_index.append(index)
         if not self.z_index:
-            self.z_index = ["OSD"]
+            if self.multi_stores:
+                self.z_index = ["OSD"] + ["Store"]
+            else:
+                self.z_index = ["OSD"]
 
     def parameter_set(self):
         self.optype = ""
@@ -159,6 +162,7 @@ class CephDrawTask(DrawTask):
         self.test_time = ""
         self.title = ""
         self.fig_title = ""
+        self.multi_stores = False
         titletype = ""
         block_name = "Block_size"
         op_name = "OPtype"
@@ -208,7 +212,7 @@ class CephDrawTask(DrawTask):
             crimson_store_col = list(crimson_df['Store'].unique())
             classic_store_col = list(classic_df['Store'].unique())
             if len(crimson_store_col) != 1:
-                raise Exception("Crimson Store Not Unique")
+                self.multi_stores = True
             else:
                 self.title += "Crimson " + crimson_store_col[0] + " vs "
             if len(classic_store_col) != 1:
