@@ -59,7 +59,7 @@ class RadosRandWriteThread(Task):
     def __init__(self, env):
         super().__init__(env)
         self.start_time = 0.01
-        self.task_set = env.args.taskset
+        self.task_set = env.args.bench_taskset
         self.block_size = env.args.block_size
         self.time = env.args.time
         self.pool = env.pool
@@ -193,7 +193,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
 class FioRBDRandWriteThread(Task):
     def __init__(self, env):
         super().__init__(env)
-        self.task_set = env.args.taskset
+        self.task_set = env.args.bench_taskset
         self.rw = "randwrite"
         self.io_depth = env.thread_num
         self.io_engine = "rbd"
@@ -337,7 +337,7 @@ class ReactorUtilizationCollectorThread(Task):
         super().__init__(env)
         self.start_time = int(env.args.time)/2
         self.osd = "osd.0"
-        self.task_set = env.args.taskset
+        self.task_set = env.args.bench_taskset
 
     def create_command(self):
         command = "sudo taskset -c " + self.task_set \
@@ -587,20 +587,6 @@ class TesterExecutor():
                 test_case_result = env.base_result.copy()
                 test_case_result.update(temp_result)
                 env.after_run_case(test_case_result)
-
-                if env.test_num == 1:   # Rename these columns if only one test type
-                    keys_list = list(test_case_result.keys())
-                    for key in keys_list:
-                        if "Bandwidth" in key:
-                            test_case_result["Bandwidth(MB/s)"] = \
-                                test_case_result.pop(key)
-                        elif "Latency" in key:
-                            test_case_result["Latency(ms)"] = \
-                                test_case_result.pop(key)
-                        elif "IOPS" in key:
-                            test_case_result["IOPS"] = \
-                                test_case_result.pop(key)
-    
                 self.result_list.append(test_case_result)
 
     def get_result_list(self):
@@ -823,6 +809,19 @@ class Environment():
         for thread in self.timepoint_threadclass_list:
             thread.post_process(self, test_case_result)
 
+        if self.test_num == 1:   # Rename these columns if only one test type
+            keys_list = list(test_case_result.keys())
+            for key in keys_list:
+                if "Bandwidth" in key:
+                    test_case_result["Bandwidth(MB/s)"] = \
+                        test_case_result.pop(key)
+                elif "Latency" in key:
+                    test_case_result["Latency(ms)"] = \
+                        test_case_result.pop(key)
+                elif "IOPS" in key:
+                    test_case_result["IOPS"] = \
+                        test_case_result.pop(key)
+
     def before_run_case(self):
         self.general_pre_processing()
         self.pre_processing()
@@ -929,7 +928,7 @@ if __name__ == "__main__":
                         type=int,
                         required=True,
                         help='threads list')
-    parser.add_argument('--taskset',
+    parser.add_argument('--bench-taskset',
                         type=str,
                         default="1-32",
                         help='which processors will bench thread execute on')
