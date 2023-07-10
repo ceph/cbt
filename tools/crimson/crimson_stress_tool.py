@@ -725,7 +725,8 @@ class Environment():
             raise Exception("Can not read git log from ..")
 
         # vstart. change the command here if you want to set other start params
-        command = "sudo MGR=1 MON=1 OSD=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
+        command = "sudo OSD=" + str(self.args.osd)
+        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
                 --without-dashboard "
         if self.args.crimson:
             command += "--crimson "
@@ -750,12 +751,23 @@ class Environment():
 
         command += " --nodaemon --redirect-output --nolockdep"
 
-        # config ceph
-        if self.args.single_core:
+        # config bluestore op num
+        if self.args.smp:
+            if self.args.crimson and backend == "bluestore":
+                command += " -o 'crimson_alien_op_num_threads = " + \
+                        str(self.args.smp) + "'"
             if not self.args.crimson:
-                self.base_result['OSD'] = "Classic-singlecore"
-                command += " -o 'ms_async_op_threads = 1 \
-                           osd_op_num_threads_per_shard = 1 osd_op_num_shards = 1'"
+                if self.args.smp <= 8:
+                    command += " -o 'osd_op_num_shards = 8'"
+                else:
+                    command += " -o 'osd_op_num_shards = " + \
+                        str(self.args.smp) + "'"
+
+        # config multicore for crimson
+        if self.args.smp != 0 and self.args.crimson:
+            command += " --crimson-smp " + str(self.args.smp)
+
+        # start ceph
         os.system(command)
 
         # find osd pids
@@ -775,10 +787,14 @@ class Environment():
                     self.tid.append(int(t))
                 line = p_tid.readline()
 
-        # find and pin osd tids
-        if self.args.single_core:
+        # config multicore for classic
+        # all classic osds will use cpu range 0-(smp*osd-1)
+        if self.args.smp != 0 and not self.args.crimson:
+            core = self.args.smp * self.args.osd
+            for p in self.pid:
+                os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
-                os.system("sudo taskset -pc 0 " + str(t))
+                os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(t))
 
         # pool
         os.system("sudo bin/ceph osd pool create " + self.pool + " 64 64")
@@ -971,9 +987,14 @@ if __name__ == "__main__":
                         default='bluestore',
                         help='choose from seastore, cyanstore,\
                     memstore or bluestore')
-    parser.add_argument('--single-core',
-                        action='store_true',
-                        help='run osds in single core')
+    parser.add_argument('--osd',
+                        type=int,
+                        default = 1,
+                        help='how many osds')
+    parser.add_argument('--smp',
+                        type=int,
+                        default = 0,
+                        help='core per osd')
 
     # test case based thread param
     parser.add_argument('--rand-write',
