@@ -59,7 +59,7 @@ class RadosRandWriteThread(Task):
     def __init__(self, env):
         super().__init__(env)
         self.start_time = 0.01
-        self.task_set = env.args.taskset
+        self.task_set = env.args.bench_taskset
         self.block_size = env.args.block_size
         self.time = env.args.time
         self.pool = env.pool
@@ -193,7 +193,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
 class FioRBDRandWriteThread(Task):
     def __init__(self, env):
         super().__init__(env)
-        self.task_set = env.args.taskset
+        self.task_set = env.args.bench_taskset
         self.rw = "randwrite"
         self.io_depth = env.thread_num
         self.io_engine = "rbd"
@@ -337,7 +337,7 @@ class ReactorUtilizationCollectorThread(Task):
         super().__init__(env)
         self.start_time = int(env.args.time)/2
         self.osd = "osd.0"
-        self.task_set = env.args.taskset
+        self.task_set = env.args.bench_taskset
 
     def create_command(self):
         command = "sudo taskset -c " + self.task_set \
@@ -587,20 +587,6 @@ class TesterExecutor():
                 test_case_result = env.base_result.copy()
                 test_case_result.update(temp_result)
                 env.after_run_case(test_case_result)
-
-                if env.test_num == 1:   # Rename these columns if only one test type
-                    keys_list = list(test_case_result.keys())
-                    for key in keys_list:
-                        if "Bandwidth" in key:
-                            test_case_result["Bandwidth(MB/s)"] = \
-                                test_case_result.pop(key)
-                        elif "Latency" in key:
-                            test_case_result["Latency(ms)"] = \
-                                test_case_result.pop(key)
-                        elif "IOPS" in key:
-                            test_case_result["IOPS"] = \
-                                test_case_result.pop(key)
-    
                 self.result_list.append(test_case_result)
 
     def get_result_list(self):
@@ -739,7 +725,8 @@ class Environment():
             raise Exception("Can not read git log from ..")
 
         # vstart. change the command here if you want to set other start params
-        command = "sudo MGR=1 MON=1 OSD=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
+        command = "sudo OSD=" + str(self.args.osd)
+        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
                 --without-dashboard "
         if self.args.crimson:
             command += "--crimson "
@@ -764,12 +751,23 @@ class Environment():
 
         command += " --nodaemon --redirect-output --nolockdep"
 
-        # config ceph
-        if self.args.single_core:
+        # config bluestore op num
+        if self.args.smp:
+            if self.args.crimson and backend == "bluestore":
+                command += " -o 'crimson_alien_op_num_threads = " + \
+                        str(self.args.smp) + "'"
             if not self.args.crimson:
-                self.base_result['OSD'] = "Classic-singlecore"
-                command += " -o 'ms_async_op_threads = 1 \
-                           osd_op_num_threads_per_shard = 1 osd_op_num_shards = 1'"
+                if self.args.smp <= 8:
+                    command += " -o 'osd_op_num_shards = 8'"
+                else:
+                    command += " -o 'osd_op_num_shards = " + \
+                        str(self.args.smp) + "'"
+
+        # config multicore for crimson
+        if self.args.smp != 0 and self.args.crimson:
+            command += " --crimson-smp " + str(self.args.smp)
+
+        # start ceph
         os.system(command)
 
         # find osd pids
@@ -789,10 +787,14 @@ class Environment():
                     self.tid.append(int(t))
                 line = p_tid.readline()
 
-        # find and pin osd tids
-        if self.args.single_core:
+        # config multicore for classic
+        # all classic osds will use cpu range 0-(smp*osd-1)
+        if self.args.smp != 0 and not self.args.crimson:
+            core = self.args.smp * self.args.osd
+            for p in self.pid:
+                os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
-                os.system("sudo taskset -pc 0 " + str(t))
+                os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(t))
 
         # pool
         os.system("sudo bin/ceph osd pool create " + self.pool + " 64 64")
@@ -822,6 +824,19 @@ class Environment():
             thread.post_process(self, test_case_result)
         for thread in self.timepoint_threadclass_list:
             thread.post_process(self, test_case_result)
+
+        if self.test_num == 1:   # Rename these columns if only one test type
+            keys_list = list(test_case_result.keys())
+            for key in keys_list:
+                if "Bandwidth" in key:
+                    test_case_result["Bandwidth(MB/s)"] = \
+                        test_case_result.pop(key)
+                elif "Latency" in key:
+                    test_case_result["Latency(ms)"] = \
+                        test_case_result.pop(key)
+                elif "IOPS" in key:
+                    test_case_result["IOPS"] = \
+                        test_case_result.pop(key)
 
     def before_run_case(self):
         self.general_pre_processing()
@@ -929,7 +944,7 @@ if __name__ == "__main__":
                         type=int,
                         required=True,
                         help='threads list')
-    parser.add_argument('--taskset',
+    parser.add_argument('--bench-taskset',
                         type=str,
                         default="1-32",
                         help='which processors will bench thread execute on')
@@ -972,9 +987,14 @@ if __name__ == "__main__":
                         default='bluestore',
                         help='choose from seastore, cyanstore,\
                     memstore or bluestore')
-    parser.add_argument('--single-core',
-                        action='store_true',
-                        help='run osds in single core')
+    parser.add_argument('--osd',
+                        type=int,
+                        default = 1,
+                        help='how many osds')
+    parser.add_argument('--smp',
+                        type=int,
+                        default = 0,
+                        help='core per osd')
 
     # test case based thread param
     parser.add_argument('--rand-write',
