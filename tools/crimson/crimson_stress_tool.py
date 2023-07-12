@@ -2,6 +2,7 @@
 import argparse
 import math
 import os
+import shutil
 import threading
 import time
 import re
@@ -18,11 +19,13 @@ import re
 # or timepoint_threadclass_list in the class Environmen to extend this tool.
 # set the start_time to decide when will the test start after thread starts.
 class Task(threading.Thread):
-    def __init__(self, env):
+    def __init__(self, env, id):
         super().__init__()
         self.thread_num = env.thread_num
         self.start_time = 0
         self.result = None
+        self.log = env.args.log
+        self.id = id #(tester_id, thread_id)
 
     # rewrite method create_command() to define the command
     # this class will execute
@@ -35,6 +38,14 @@ class Task(threading.Thread):
         command = self.create_command()
         print(command)
         self.result = os.popen(command)
+
+        if self.log:
+            task_log_path = self.log + "/" + str(self.id[0])+"/" \
+                + str(self.id[1]) + "." + type(self).__name__
+            with open(task_log_path, "w") as f:
+                f.write(self.result.read())
+            f.close()
+            self.result = open(task_log_path, "r")
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -56,8 +67,8 @@ class Task(threading.Thread):
 
 
 class RadosRandWriteThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.start_time = 0.01
         self.task_set = env.args.bench_taskset
         self.block_size = env.args.block_size
@@ -102,8 +113,8 @@ class RadosRandWriteThread(Task):
 
 
 class RadosSeqWriteThread(RadosRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env,id)
         self.iops_key = "sw_IOPS"
         self.latency_key = "sw_Latency"
         self.bandwidth_key = "sw_Bandwidth"
@@ -133,8 +144,8 @@ class RadosSeqWriteThread(RadosRandWriteThread):
 
 
 class RadosRandReadThread(RadosRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.iops_key = "rr_IOPS"
         self.latency_key = "rr_Latency"
         self.bandwidth_key = "rr_Bandwidth"
@@ -162,8 +173,8 @@ class RadosRandReadThread(RadosRandWriteThread):
 
 
 class RadosSeqReadThread(RadosRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.iops_key = "sr_IOPS"
         self.latency_key = "sr_Latency"
         self.bandwidth_key = "sr_Bandwidth"
@@ -191,8 +202,8 @@ class RadosSeqReadThread(RadosRandWriteThread):
 
 
 class FioRBDRandWriteThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.task_set = env.args.bench_taskset
         self.rw = "randwrite"
         self.io_depth = env.thread_num
@@ -262,8 +273,8 @@ class FioRBDRandWriteThread(Task):
 
 
 class FioRBDRandReadThread(FioRBDRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.rw = "randread"
         self.lat = 'rr_Latency'
         self.bw = 'rr_Bandwidth'
@@ -285,8 +296,8 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
 
 
 class FioRBDSeqReadThread(FioRBDRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.rw = "read"
         self.lat = 'sr_Latency'
         self.bw = 'sr_Bandwidth'
@@ -308,8 +319,8 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
 
 
 class FioRBDSeqWriteThread(FioRBDRandWriteThread):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.rw = "write"
         self.lat = 'sw_Latency'
         self.bw = 'sw_Bandwidth'
@@ -333,8 +344,8 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
 
 
 class ReactorUtilizationCollectorThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.start_time = int(env.args.time)/2
         self.osd = "osd.0"
         self.task_set = env.args.bench_taskset
@@ -359,8 +370,8 @@ class ReactorUtilizationCollectorThread(Task):
 
 
 class PerfThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.start_time = int(env.args.time)/2
         self.last_time = 5000  # 5s
         self.pid_list = env.pid
@@ -419,8 +430,8 @@ class PerfThread(Task):
         return result_dic
 
 class PerfRecordThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         # perf record from 1/4 time to 1/2 time
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
@@ -468,8 +479,8 @@ class PerfRecordThread(Task):
         return
 
 class IOStatThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.start_time = 0
         self.dev = "sda"  # default if no args.dev
         if env.args.dev:
@@ -502,8 +513,8 @@ class IOStatThread(Task):
 
 
 class CPUFreqThread(Task):
-    def __init__(self, env):
-        super().__init__(env)
+    def __init__(self, env, id):
+        super().__init__(env, id)
         self.start_time = int(env.args.time)/2 + 1
 
     def create_command(self):
@@ -519,7 +530,7 @@ class CPUFreqThread(Task):
 
 
 class Tester():
-    def __init__(self, env):
+    def __init__(self, env, tester_id):
         self.env = env
         self.client_num = env.client_num
         self.thread_num = env.thread_num
@@ -528,16 +539,23 @@ class Tester():
         self.base_result = env.base_result
         self.ratio_client_num = 0
         self.test_case_threads = list()
+        self.tester_id = tester_id
         self.init()
 
     def init(self):
+        thread_id = 0
         for thread in self.trmap:
             sub_ratio_client_num = int(self.trmap[thread] * self.client_num)
             self.ratio_client_num += sub_ratio_client_num
             for n in range(sub_ratio_client_num):
-                self.test_case_threads.append(thread(self.env))
+                task_id = (self.tester_id, thread_id)
+                self.test_case_threads.append(thread(self.env, task_id))
+                thread_id += 1
+
         for thread in self.tplist:
-            self.test_case_threads.append(thread(self.env))
+            task_id = (self.tester_id, thread_id)
+            self.test_case_threads.append(thread(self.env, task_id))
+            thread_id += 1
 
     def run(self):
         print("client num:%d, thread num:%d testing"
@@ -577,17 +595,19 @@ class TesterExecutor():
 
     def run(self, env):
         print('running...')
+        tester_id = 0
         for client_num in env.args.client_list:
             for thread_num in env.args.thread_list:
                 env.client_num = client_num
                 env.thread_num = thread_num
-                env.before_run_case()
-                tester = Tester(env)
+                env.before_run_case(tester_id)
+                tester = Tester(env, tester_id)
                 temp_result = tester.run()
                 test_case_result = env.base_result.copy()
                 test_case_result.update(temp_result)
                 env.after_run_case(test_case_result)
                 self.result_list.append(test_case_result)
+                tester_id += 1
 
     def get_result_list(self):
         return self.result_list
@@ -811,8 +831,12 @@ class Environment():
         self.pid = list()
         self.tid = list()
 
-    def pre_processing(self):
+    def pre_processing(self, tester_id):
         print('pre processing...')
+        # prepare test group directory
+        if self.args.log:
+            os.makedirs(self.args.log+"/"+str(tester_id))
+
         for thread in self.testclient_threadclass_ratio_map:
             thread.pre_process(self)
         for thread in self.timepoint_threadclass_list:
@@ -838,9 +862,9 @@ class Environment():
                     test_case_result["IOPS"] = \
                         test_case_result.pop(key)
 
-    def before_run_case(self):
+    def before_run_case(self, tester_id):
         self.general_pre_processing()
-        self.pre_processing()
+        self.pre_processing(tester_id)
 
     def after_run_case(self, test_case_result):
         self.post_processing(test_case_result)
@@ -995,6 +1019,11 @@ if __name__ == "__main__":
                         type=int,
                         default = 0,
                         help='core per osd')
+    parser.add_argument('--log',
+                        type=str,
+                        default = None,
+                        help='directory to store logs, no log by default. Will \
+                    store all tasks results and osd log and osd stdout')
 
     # test case based thread param
     parser.add_argument('--rand-write',
@@ -1050,6 +1079,13 @@ if __name__ == "__main__":
 
     # which item should not be showed in the output
     filters = []
+
+    # prepare log directory
+    if args.log:
+        e = os.listdir(".")
+        if args.log in e:
+            shutil.rmtree(args.log)
+        os.makedirs(args.log)
 
     env = Environment(args)
 
