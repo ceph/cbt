@@ -7,22 +7,24 @@ import threading
 import time
 import re
 
-
-# Divid all test threads into two categories,Test Case Based Thread and
-# Time Point Based Thread. The test threads that only care of what is the
-# system going on at a time point, such as reactor utilization are
-# classified as Time Point Based Thread and the basic test case threads
-# (such as rados bench) that are only the single small test case are
-# classified as Test Case Based Thread.
+# Divid all test threads into three categories, Test Case Based Thread, Time
+# Point Based Thread and Time Continuous thread.
+# The test threads that only care about what is the system going on at a time
+# point, such as reactor utilization are classified as Time Point Based Thread
+# and the basic test case threads (such as rados bench) that are only the
+# single small test case are classified as Test Case Based Thread. Meanwhile,
+# tasks such as perf which can last for a period are classified as Time
+# Continuous thread.
 # For developer, you can write the test class you want by implementing
-# the Task interfaces and adding it to to testclient_threadclass_list
-# or timepoint_threadclass_list in the class Environmen to extend this tool.
+# the Task interfaces and adding it to to testclient_threadclass_ratio_map
+# ,timepoint_threadclass_num_map or timecontinuous_threadclass_list
+# in the class Environmen to extend this tool.
 # set the start_time to decide when will the test start after thread starts.
 class Task(threading.Thread):
-    def __init__(self, env, id):
+    def __init__(self, env, id, start_time=0):
         super().__init__()
         self.thread_num = env.thread_num
-        self.start_time = 0
+        self.start_time = start_time
         self.result = None
         self.log = env.args.log
         self.id = id #(tester_id, thread_id)
@@ -41,7 +43,8 @@ class Task(threading.Thread):
 
         if self.log:
             task_log_path = self.log + "/" + str(self.id[0])+"/" \
-                + str(self.id[1]) + "." + type(self).__name__
+                + str(self.id[1]) + "." + type(self).__name__ \
+                + "." + str(self.start_time)
             with open(task_log_path, "w") as f:
                 f.write(self.result.read())
             f.close()
@@ -68,8 +71,7 @@ class Task(threading.Thread):
 
 class RadosRandWriteThread(Task):
     def __init__(self, env, id):
-        super().__init__(env, id)
-        self.start_time = 0.01
+        super().__init__(env, id, start_time=0.01)
         self.task_set = env.args.bench_taskset
         self.block_size = env.args.block_size
         self.time = env.args.time
@@ -103,14 +105,6 @@ class RadosRandWriteThread(Task):
         self.result.close()
         return result_dic
 
-    @staticmethod
-    def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosRandWriteThread]
-        test_case_result["rw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-
 
 class RadosSeqWriteThread(RadosRandWriteThread):
     def __init__(self, env, id):
@@ -134,14 +128,6 @@ class RadosSeqWriteThread(RadosRandWriteThread):
         env.rados_pre_write(env.args.warmup_block_size, \
                 env.args.warmup_thread_num, env.args.warmup_time)
 
-    @staticmethod
-    def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosSeqWriteThread]
-        test_case_result["sw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-
 
 class RadosRandReadThread(RadosRandWriteThread):
     def __init__(self, env, id):
@@ -163,14 +149,6 @@ class RadosRandReadThread(RadosRandWriteThread):
         env.rados_pre_write(env.args.warmup_block_size, \
                 env.args.warmup_thread_num, env.args.warmup_time)
 
-    @staticmethod
-    def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosRandReadThread]
-        test_case_result["rr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-
 
 class RadosSeqReadThread(RadosRandWriteThread):
     def __init__(self, env, id):
@@ -191,14 +169,6 @@ class RadosSeqReadThread(RadosRandWriteThread):
     def pre_process(env):
         env.rados_pre_write(env.args.warmup_block_size, \
                 env.args.warmup_thread_num, env.args.warmup_time)
-
-    @staticmethod
-    def post_process(env, test_case_result):
-        ratio = env.testclient_threadclass_ratio_map[RadosSeqReadThread]
-        test_case_result["sr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDRandWriteThread(Task):
@@ -264,12 +234,6 @@ class FioRBDRandWriteThread(Task):
     def post_process(env, test_case_result):
         # clear the images record in class env
         env.remove_images()
-        # merge all clients bw and iops results
-        ratio = env.testclient_threadclass_ratio_map[FioRBDRandWriteThread]
-        test_case_result["rw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDRandReadThread(FioRBDRandWriteThread):
@@ -288,11 +252,6 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
-        ratio = env.testclient_threadclass_ratio_map[FioRBDRandReadThread]
-        test_case_result["rr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["rr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDSeqReadThread(FioRBDRandWriteThread):
@@ -311,11 +270,6 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
-        ratio = env.testclient_threadclass_ratio_map[FioRBDSeqReadThread]
-        test_case_result["sr_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sr_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
 
 
 class FioRBDSeqWriteThread(FioRBDRandWriteThread):
@@ -336,17 +290,11 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
-        ratio = env.testclient_threadclass_ratio_map[FioRBDSeqWriteThread]
-        test_case_result["sw_Bandwidth"] *= \
-            int(test_case_result['Client_num'] * ratio)
-        test_case_result["sw_IOPS"] *= \
-            int(test_case_result['Client_num'] * ratio)
 
 
 class ReactorUtilizationCollectorThread(Task):
-    def __init__(self, env, id):
-        super().__init__(env, id)
-        self.start_time = int(env.args.time)/2
+    def __init__(self, env, id, start_time):
+        super().__init__(env, id, start_time)
         self.osd = "osd.0"
         self.task_set = env.args.bench_taskset
         if env.args.osd != 1:
@@ -487,9 +435,8 @@ class PerfRecordThread(Task):
         return
 
 class IOStatThread(Task):
-    def __init__(self, env, id):
-        super().__init__(env, id)
-        self.start_time = 0
+    def __init__(self, env, id, start_time):
+        super().__init__(env, id, start_time)
         self.dev = "sda"  # default if no args.dev
         if env.args.dev:
             self.dev = env.get_disk_name()
@@ -523,9 +470,8 @@ class IOStatThread(Task):
 
 
 class CPUFreqThread(Task):
-    def __init__(self, env, id):
-        super().__init__(env, id)
-        self.start_time = int(env.args.time)/2 + 1
+    def __init__(self, env, id, start_time):
+        super().__init__(env, id, start_time)
 
     def create_command(self):
         command = "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
@@ -545,10 +491,12 @@ class Tester():
         self.client_num = env.client_num
         self.thread_num = env.thread_num
         self.trmap = env.testclient_threadclass_ratio_map
-        self.tplist = env.timepoint_threadclass_list
+        self.tpnmap = env.timepoint_threadclass_num_map
+        self.tpclist = env.timecontinuous_threadclass_list
         self.base_result = env.base_result
-        self.ratio_client_num = 0
-        self.test_case_threads = list()
+        self.test_case_tasks = list()
+        self.timepoint_tasks = list()
+        self.timecontinuous_tasks = list()
         self.tester_id = tester_id
         self.init()
 
@@ -556,44 +504,76 @@ class Tester():
         thread_id = 0
         for thread in self.trmap:
             sub_ratio_client_num = int(self.trmap[thread] * self.client_num)
-            self.ratio_client_num += sub_ratio_client_num
             for n in range(sub_ratio_client_num):
                 task_id = (self.tester_id, thread_id)
-                self.test_case_threads.append(thread(self.env, task_id))
+                self.test_case_tasks.append(thread(self.env, task_id))
                 thread_id += 1
 
-        for thread in self.tplist:
+        for thread in self.tpnmap:
+            tp_num = self.tpnmap[thread]
+            gap = int(self.env.args.time) / (tp_num + 1)
+            start_time = gap
+            for n in range(tp_num):
+                task_id = (self.tester_id, thread_id)
+                self.timepoint_tasks.append(thread(self.env, task_id, start_time))
+                start_time += gap
+                thread_id += 1
+
+        for thread in self.tpclist:
             task_id = (self.tester_id, thread_id)
-            self.test_case_threads.append(thread(self.env, task_id))
+            self.timecontinuous_tasks.append(thread(self.env, task_id))
             thread_id += 1
 
     def run(self):
         print("client num:%d, thread num:%d testing"
               % (self.client_num, self.thread_num))
-        for thread in self.test_case_threads:
+        for thread in self.test_case_tasks:
             thread.start()
-        for thread in self.test_case_threads:
+        for thread in self.timepoint_tasks:
+            thread.start()
+        for thread in self.timecontinuous_tasks:
+            thread.start()
+        for thread in self.test_case_tasks:
+            thread.join()
+        for thread in self.timepoint_tasks:
+            thread.join()
+        for thread in self.timecontinuous_tasks:
             thread.join()
         test_case_result = dict()
-        key_count = dict()
-        for thread_index in range(self.ratio_client_num):
-            base_test_case_result = self.test_case_threads[thread_index].analyse()
-            for key in base_test_case_result:
+
+        # will add all test results(such as IOPS, BW) from every test clients
+        for thread in self.test_case_tasks:
+            res = thread.analyse()
+            for key in res:
                 if key not in test_case_result:
-                    test_case_result[key] = base_test_case_result[key]
+                    test_case_result[key] = res[key]
+                else:
+                    test_case_result[key] += res[key]
+
+        # will calculate the average of all time point tasks.
+        key_count = dict()
+        for thread in self.timepoint_tasks:
+            res = thread.analyse()
+            for key in res:
+                if key not in test_case_result:
+                    test_case_result[key] = res[key]
                     key_count[key] = 1
                 else:
-                    test_case_result[key] += base_test_case_result[key]
+                    test_case_result[key] += res[key]
                     key_count[key] += 1
         for key in test_case_result:
-            test_case_result[key] /= key_count[key]
-        for thread_index in \
-                range(self.ratio_client_num, len(self.test_case_threads)):
-            timepoint_thread_result = \
-                self.test_case_threads[thread_index].analyse()
-            for key in timepoint_thread_result:
+            if key in key_count:
+                test_case_result[key] /= key_count[key]
+
+        for thread in self.timecontinuous_tasks:
+            res = thread.analyse()
+            for key in res:
                 if key not in test_case_result:
-                    test_case_result[key] = timepoint_thread_result[key]
+                    test_case_result[key] = res[key]
+                else:
+                    raise Exception("duplicated key for different \
+                        timecontinuous_tasks.")
+
         test_case_result['Thread_num'] = self.thread_num
         test_case_result['Client_num'] = self.client_num
         return test_case_result
@@ -663,7 +643,8 @@ class Environment():
     def __init__(self, args):
         self.args = args
         self.testclient_threadclass_ratio_map = {}
-        self.timepoint_threadclass_list = []
+        self.timepoint_threadclass_num_map = {}
+        self.timecontinuous_threadclass_list = []
         self.base_result = dict()
         self.pid = list()
         self.tid = list()
@@ -729,18 +710,22 @@ class Environment():
             elif "SeqRead" in test_name:
                 self.base_result['OPtype'] = "Seq Read"        
 
-        # 2. add the time point based case thread classes to the list.
+        # 2. add the time point based case thread classes to the map.
         if self.args.ru:
-            self.timepoint_threadclass_list.append(
-                ReactorUtilizationCollectorThread)
-        if self.args.perf:
-            self.timepoint_threadclass_list.append(PerfThread)
-        if self.args.perf_record:
-            self.timepoint_threadclass_list.append(PerfRecordThread)
+            self.timepoint_threadclass_num_map[ReactorUtilizationCollectorThread] = \
+                self.args.ru
         if self.args.iostat:
-            self.timepoint_threadclass_list.append(IOStatThread)
+            self.timepoint_threadclass_num_map[IOStatThread] = \
+                self.args.iostat
         if self.args.freq:
-            self.timepoint_threadclass_list.append(CPUFreqThread)
+            self.timepoint_threadclass_num_map[CPUFreqThread] = \
+                self.args.freq
+
+        # 3. add the time continuous based case thread classes to the list.
+        if self.args.perf:
+            self.timecontinuous_threadclass_list.append(PerfThread)
+        if self.args.perf_record:
+            self.timecontinuous_threadclass_list.append(PerfRecordThread)
 
     def general_pre_processing(self):
         os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
@@ -849,14 +834,18 @@ class Environment():
 
         for thread in self.testclient_threadclass_ratio_map:
             thread.pre_process(self)
-        for thread in self.timepoint_threadclass_list:
+        for thread in self.timepoint_threadclass_num_map:
+            thread.pre_process(self)
+        for thread in self.timecontinuous_threadclass_list:
             thread.pre_process(self)
 
     def post_processing(self, test_case_result, tester_id):
         print('post processing...')
         for thread in self.testclient_threadclass_ratio_map:
             thread.post_process(self, test_case_result)
-        for thread in self.timepoint_threadclass_list:
+        for thread in self.timepoint_threadclass_num_map:
+            thread.post_process(self, test_case_result)
+        for thread in self.timecontinuous_threadclass_list:
             thread.post_process(self, test_case_result)
 
         if self.test_num == 1:   # Rename these columns if only one test type
@@ -1076,20 +1065,24 @@ if __name__ == "__main__":
 
     # time point based thread param
     parser.add_argument('--ru',
-                        action='store_true',
-                        help='collect the reactor utilization')
+                        type=int,
+                        help='how many time point to collect the \
+                            reactor utilization')
+    parser.add_argument('--iostat',
+                        type=int,
+                        help='how many time point to collect iostat information')
+    parser.add_argument('--freq',
+                        type=int,
+                        help='how many time point to collect cpu frequency information')
+
+    # time continuous based thread param
     parser.add_argument('--perf',
                         action='store_true',
                         help='collect perf information')
     parser.add_argument('--perf-record',
                         action='store_true',
                         help='collect perf record information')
-    parser.add_argument('--iostat',
-                        action='store_true',
-                        help='collect iostat information')
-    parser.add_argument('--freq',
-                        action='store_true',
-                        help='collect cpu frequency information')
+
     args = parser.parse_args()
 
     # which item should not be showed in the output
