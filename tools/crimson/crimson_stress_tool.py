@@ -349,6 +349,8 @@ class ReactorUtilizationCollectorThread(Task):
         self.start_time = int(env.args.time)/2
         self.osd = "osd.0"
         self.task_set = env.args.bench_taskset
+        if env.args.osd != 1:
+            raise Exception("ru only support single osd for now.")
 
     def create_command(self):
         command = "sudo taskset -c " + self.task_set \
@@ -359,11 +361,13 @@ class ReactorUtilizationCollectorThread(Task):
     def analyse(self):
         result_dic = {}  # reactor_utilization
         line = self.result.readline()
+        shard = 0
         while line:
             temp_lis = line.split()
             if temp_lis[0] == "\"value\":":
-                result_dic['Reactor_Utilization'] = round(float(temp_lis[1]), 2)
-                break
+                result_dic['Reactor_Utilization_' + str(shard)] = \
+                    round(float(temp_lis[1]), 2)
+                shard += 1
             line = self.result.readline()
         self.result.close()
         return result_dic
@@ -726,7 +730,7 @@ class Environment():
                 self.base_result['OPtype'] = "Seq Read"        
 
         # 2. add the time point based case thread classes to the list.
-        if self.args.reactor_utilization:
+        if self.args.ru:
             self.timepoint_threadclass_list.append(
                 ReactorUtilizationCollectorThread)
         if self.args.perf:
@@ -1070,7 +1074,7 @@ if __name__ == "__main__":
                         help='ratio of fio seq read clients')
 
     # time point based thread param
-    parser.add_argument('--reactor-utilization',
+    parser.add_argument('--ru',
                         action='store_true',
                         help='collect the reactor utilization')
     parser.add_argument('--perf',
