@@ -605,7 +605,7 @@ class TesterExecutor():
                 temp_result = tester.run()
                 test_case_result = env.base_result.copy()
                 test_case_result.update(temp_result)
-                env.after_run_case(test_case_result)
+                env.after_run_case(test_case_result, tester_id)
                 self.result_list.append(test_case_result)
                 tester_id += 1
 
@@ -842,7 +842,7 @@ class Environment():
         for thread in self.timepoint_threadclass_list:
             thread.pre_process(self)
 
-    def post_processing(self, test_case_result):
+    def post_processing(self, test_case_result, tester_id):
         print('post processing...')
         for thread in self.testclient_threadclass_ratio_map:
             thread.post_process(self, test_case_result)
@@ -862,12 +862,17 @@ class Environment():
                     test_case_result["IOPS"] = \
                         test_case_result.pop(key)
 
+        # move osd log to log path before remove them
+        if self.args.log:
+            tester_log_path = self.args.log + "/" + str(tester_id)
+            os.system("sudo mv out/osd.* " + tester_log_path + "/")
+
     def before_run_case(self, tester_id):
         self.general_pre_processing()
         self.pre_processing(tester_id)
 
-    def after_run_case(self, test_case_result):
-        self.post_processing(test_case_result)
+    def after_run_case(self, test_case_result, tester_id):
+        self.post_processing(test_case_result, tester_id)
         self.general_post_processing()
 
     def get_disk_name(self):
