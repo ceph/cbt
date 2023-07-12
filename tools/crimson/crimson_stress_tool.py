@@ -375,9 +375,11 @@ class PerfThread(Task):
         self.start_time = int(env.args.time)/2
         self.last_time = 5000  # 5s
         self.pid_list = env.pid
+        self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "sudo perf stat --timeout " + str(self.last_time)
+        command = "sudo taskset -c " + self.task_set \
+            + " perf stat --timeout " + str(self.last_time)
         command += " -e cpu-clock,context-switches,cpu-migrations," \
             + "cpu-migrations,cycles,instructions" \
             + ",branches,branch-misses,cache-misses,cache-references"
@@ -436,9 +438,11 @@ class PerfRecordThread(Task):
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
         self.pid_list = env.pid
+        self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "sudo perf record -a -g"
+        command = "sudo taskset -c " + self.task_set \
+            + " perf record -a -g"
         if self.pid_list:
             command += " -p "
             command += str(self.pid_list[0])
@@ -485,9 +489,11 @@ class IOStatThread(Task):
         self.dev = "sda"  # default if no args.dev
         if env.args.dev:
             self.dev = env.get_disk_name()
+        self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "iostat -x -k -d -y " + env.args.time + " 1" 
+        command = "sudo taskset -c " + self.task_set \
+            + " iostat -x -k -d -y " + env.args.time + " 1"
         return command
 
     def analyse(self):
