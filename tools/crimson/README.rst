@@ -102,8 +102,8 @@ Example:
 .. code-block:: console
     
     sudo ./crimson_stress_tool.py \ 
-        --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 60 \
-        --block-size 4K
+        --client-list 4 8 --thread-list 2 4 6 --bench-taskset 16-31 --time 60 \
+        --block-size 4K \
         --crimson --store seastore --dev /dev/nvme4n1 \
         --rand-write 0.75 \
         --rand-read 0.25 \
@@ -117,7 +117,7 @@ write clients in all clients and the read clients will be 25%. Also, you can set
 read clients ratio to 0 to do the write only tests, vive versa.
 Meanwhile, it will collect the reactor cpu utilization, and the perf information. 
 The test thread will run in processors 16~31. In consideration of SeaStore starts 
-in processor 0 by default, please avoid setting --taskset to 0.
+in processor 0 by default, please avoid setting --bench-taskset to 0.
 The tests will run in crimson seastore.
 
 Example of result:
@@ -191,7 +191,7 @@ Example:
 
     ./crimson_stress_tool.py \
         --thread-list  1 2 4 8 16 32 64 --client-list 1 \
-        --taskset=16-31 --block-size 4K --time=60 \
+        --bench-taskset=16-31 --block-size 4K --time=60 \
         --rand-write 1 \
         --store bluestore \
         --output classic_randwrite_4K \
