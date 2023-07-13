@@ -585,13 +585,17 @@ class TesterExecutor():
 
     def run(self, env):
         print('running...')
-        tester_id = 0
+        tester_count = 0
         for client_num in env.args.client_list:
             for thread_num in env.args.thread_list:
                 for smp_num in env.args.smp:
                     env.client_num = client_num
                     env.thread_num = thread_num
                     env.smp_num = smp_num
+                    tester_id = str(tester_count) \
+                        + ".client{" + str(client_num) \
+                        + "}" + "_thread{" + str(thread_num) \
+                        + "}" + "_smp{" + str(smp_num) + "}"
                     env.before_run_case(tester_id)
                     tester = Tester(env, tester_id)
                     temp_result = tester.run()
@@ -599,7 +603,7 @@ class TesterExecutor():
                     test_case_result.update(temp_result)
                     env.after_run_case(test_case_result, tester_id)
                     self.result_list.append(test_case_result)
-                    tester_id += 1
+                    tester_count += 1
 
     def get_result_list(self):
         return self.result_list
