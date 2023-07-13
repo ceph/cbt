@@ -586,8 +586,8 @@ class TesterExecutor():
     def run(self, env):
         print('running...')
         tester_count = 0
-        for client_num in env.args.client_list:
-            for thread_num in env.args.thread_list:
+        for client_num in env.args.client:
+            for thread_num in env.args.thread:
                 for smp_num in env.args.smp:
                     env.client_num = client_num
                     env.thread_num = thread_num
@@ -970,15 +970,15 @@ class Environment():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--client-list',
+    parser.add_argument('--client',
                         nargs='+',
                         type=int,
                         required=True,
                         help='clients list')
-    parser.add_argument('--thread-list',
+    parser.add_argument('--thread',
                         nargs='+',
                         type=int,
-                        required=True,
+                        default=[128],
                         help='threads list')
     parser.add_argument('--smp',
                         nargs='+',
