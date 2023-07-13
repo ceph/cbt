@@ -588,16 +588,18 @@ class TesterExecutor():
         tester_id = 0
         for client_num in env.args.client_list:
             for thread_num in env.args.thread_list:
-                env.client_num = client_num
-                env.thread_num = thread_num
-                env.before_run_case(tester_id)
-                tester = Tester(env, tester_id)
-                temp_result = tester.run()
-                test_case_result = env.base_result.copy()
-                test_case_result.update(temp_result)
-                env.after_run_case(test_case_result, tester_id)
-                self.result_list.append(test_case_result)
-                tester_id += 1
+                for smp_num in env.args.smp:
+                    env.client_num = client_num
+                    env.thread_num = thread_num
+                    env.smp_num = smp_num
+                    env.before_run_case(tester_id)
+                    tester = Tester(env, tester_id)
+                    temp_result = tester.run()
+                    test_case_result = env.base_result.copy()
+                    test_case_result.update(temp_result)
+                    env.after_run_case(test_case_result, tester_id)
+                    self.result_list.append(test_case_result)
+                    tester_id += 1
 
     def get_result_list(self):
         return self.result_list
@@ -652,9 +654,11 @@ class Environment():
         self.images = []
         self.thread_num = -1
         self.client_num = -1
+        self.smp_num = -1
         self.test_num = -1
         self.base_result['Block_size'] = args.block_size
         self.base_result['Time'] = args.time
+        self.base_result['Core'] = -1
         self.base_result['Tool'] = ""
         self.base_result['Version'] = None
         self.base_result['OPtype'] = "Mixed"
@@ -746,6 +750,9 @@ class Environment():
         if self.args.crimson:
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
+            # config multicore for crimson
+            if self.args.crimson:
+                command += " --crimson-smp " + str(self.smp_num)
         else:
             self.base_result['OSD'] = "Classic"
 
@@ -767,20 +774,15 @@ class Environment():
         command += " --nodaemon --redirect-output --nolockdep"
 
         # config bluestore op num
-        if self.args.smp:
-            if self.args.crimson and backend == "bluestore":
-                command += " -o 'crimson_alien_op_num_threads = " + \
-                        str(self.args.smp) + "'"
-            if not self.args.crimson:
-                if self.args.smp <= 8:
-                    command += " -o 'osd_op_num_shards = 8'"
-                else:
-                    command += " -o 'osd_op_num_shards = " + \
-                        str(self.args.smp) + "'"
-
-        # config multicore for crimson
-        if self.args.smp != 0 and self.args.crimson:
-            command += " --crimson-smp " + str(self.args.smp)
+        if self.args.crimson and backend == "bluestore":
+            command += " -o 'crimson_alien_op_num_threads = " + \
+                    str(self.smp_num) + "'"
+        if not self.args.crimson:
+            if self.smp_num <= 8:
+                command += " -o 'osd_op_num_shards = 8'"
+            else:
+                command += " -o 'osd_op_num_shards = " + \
+                    str(self.smp_num) + "'"
 
         # start ceph
         os.system(command)
@@ -804,12 +806,14 @@ class Environment():
 
         # config multicore for classic
         # all classic osds will use cpu range 0-(smp*osd-1)
-        if self.args.smp != 0 and not self.args.crimson:
-            core = self.args.smp * self.args.osd
+        if not self.args.crimson:
+            core = self.smp_num * self.args.osd
             for p in self.pid:
                 os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
                 os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(t))
+
+        self.base_result['Core'] = self.smp_num * self.args.osd
 
         # pool
         os.system("sudo bin/ceph osd pool create " + self.pool + " 64 64")
@@ -972,6 +976,11 @@ if __name__ == "__main__":
                         type=int,
                         required=True,
                         help='threads list')
+    parser.add_argument('--smp',
+                        nargs='+',
+                        type=int,
+                        default=[1],
+                        help='core per osd list')
     parser.add_argument('--bench-taskset',
                         type=str,
                         default="1-32",
@@ -1019,10 +1028,6 @@ if __name__ == "__main__":
                         type=int,
                         default = 1,
                         help='how many osds')
-    parser.add_argument('--smp',
-                        type=int,
-                        default = 0,
-                        help='core per osd')
     parser.add_argument('--log',
                         type=str,
                         default = None,
