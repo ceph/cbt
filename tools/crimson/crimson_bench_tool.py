@@ -586,24 +586,21 @@ class TesterExecutor():
     def run(self, env):
         print('running...')
         tester_count = 0
-        for client_num in env.args.client:
+        for client_index, client_num in enumerate(env.args.client):
+            env.client_num = client_num
             for thread_num in env.args.thread:
-                for smp_num in env.args.smp:
-                    env.client_num = client_num
-                    env.thread_num = thread_num
-                    env.smp_num = smp_num
-                    tester_id = str(tester_count) \
-                        + ".client{" + str(client_num) \
-                        + "}" + "_thread{" + str(thread_num) \
-                        + "}" + "_smp{" + str(smp_num) + "}"
-                    env.before_run_case(tester_id)
-                    tester = Tester(env, tester_id)
-                    temp_result = tester.run()
-                    test_case_result = env.base_result.copy()
-                    test_case_result.update(temp_result)
-                    env.after_run_case(test_case_result, tester_id)
-                    self.result_list.append(test_case_result)
-                    tester_count += 1
+                env.smp_num = env.smp_list[client_index]
+                env.thread_num = thread_num
+                tester_id = f"{tester_count}.client{{{env.client_num}}}_thread" \
+                    f"{{{env.thread_num}}}_smp{{{env.smp_num}}}"
+                env.before_run_case(tester_id)
+                tester = Tester(env, tester_id)
+                temp_result = tester.run()
+                test_case_result = env.base_result.copy()
+                test_case_result.update(temp_result)
+                env.after_run_case(test_case_result, tester_id)
+                self.result_list.append(test_case_result)
+                tester_count += 1
 
     def get_result_list(self):
         return self.result_list
@@ -651,6 +648,7 @@ class Environment():
         self.testclient_threadclass_ratio_map = {}
         self.timepoint_threadclass_num_map = {}
         self.timecontinuous_threadclass_list = []
+        self.smp_list = []
         self.base_result = dict()
         self.pid = list()
         self.tid = list()
@@ -668,6 +666,12 @@ class Environment():
         self.base_result['OPtype'] = "Mixed"
         self.backend_list = ['seastore', 'bluestore', 'memstore', 'cyanstore']
         self.store = ""
+
+        if self.args.smp == [1]:
+            for _ in self.args.client:
+                self.smp_list.append(1)
+        else:
+            self.smp_list = self.args.smp
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
@@ -984,7 +988,10 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=[1],
-                        help='core per osd list')
+                        help='core per osd list, default to be 1, should be one-to-one \
+                              correspondence with client list if not default. But if only input \
+                              one value, this tool will automatically extend it to match the \
+                              client list')
     parser.add_argument('--bench-taskset',
                         type=str,
                         default="1-32",
