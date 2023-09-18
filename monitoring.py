@@ -55,6 +55,7 @@ class PerfMonitoring(Monitoring):
         self.pid_dir = settings.cluster.get('pid_dir')
         self.pid_glob = mconfig.get('pid_glob', 'osd.*.pid')
         self.user = settings.cluster.get('user')
+        self.perf_cmd = mconfig.get('perf_cmd', 'sudo perf')
         self.args_template = mconfig.get('args')
         self.perf_runners = []
         self.perf_dir = ''  # we need the output file to extract data
@@ -64,7 +65,7 @@ class PerfMonitoring(Monitoring):
         self.perf_dir = perf_dir
         common.pdsh(self.nodes, 'mkdir -p -m0755 -- %s' % perf_dir).communicate()
 
-        perf_template = 'sudo perf {} &'.format(self.args_template)
+        perf_template = '{} {} &'.format(self.perf_cmd, self.args_template)
         local_node = common.get_localnode(self.nodes)
         if local_node:
             logger.debug("PerfMonitoring: in local_node");

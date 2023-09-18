@@ -70,8 +70,10 @@ class OsdThread(threading.Thread):
                 cmd = common.setup_valgrind(self.cl_obj.osd_valgrind, 'osd.%d' % self.osdnum, self.cl_obj.tmp_dir) + ' ' + cmd
             else:
                 cmd = '%s %s' % (self.cl_obj.ceph_run_cmd, cmd)
+            stdout_file = "%s/osd.%d.stdout" % (self.cl_obj.tmp_dir, self.osdnum)
             stderr_file = "%s/osd.%d.stderr" % (self.cl_obj.tmp_dir, self.osdnum)
-            common.pdsh(phost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s 2> %s"' % (cmd, stderr_file)).communicate()
+            common.pdsh(phost, 'sudo sh -c "ulimit -n 16384 && ulimit -c unlimited && exec %s > %s 2> %s < /dev/null &"' % (cmd, stdout_file, stderr_file)).communicate()
+
         except Exception as e:
             self.exc = e
         finally:
@@ -506,11 +508,11 @@ class Ceph(Cluster):
                 # set the rgw_frontends
                 rgw_frontends = None
                 if ssl_certificate is not None:
-                    rgw_frontends = "civetweb ssl_certificate=%s" % ssl_certificate
+                    rgw_frontends = "beast ssl_certificate=%s" % ssl_certificate
                 if port is not None:
                     if rgw_frontends is None:
-                        rgw_frontends = "civetweb"
-                    rgw_frontends += " port=%s" % port
+                        rgw_frontends = "beast"
+                    rgw_frontends += " ssl_port=%s" % port
 
                 cmd = '%s -c %s -n %s --log-file=%s/rgw.log' % (self.ceph_rgw_cmd, self.tmp_conf, rgwname, self.log_dir)
                 if rgw_frontends is not None:

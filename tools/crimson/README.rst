@@ -75,14 +75,13 @@ metrics.
 
 Finally, run ``seastore_metrics_analyze.py`` to generate plots in png format.
 
-Crimson stress tool
+Crimson bench tool
 =======================
 
-This is a crimson stress tool for multiple clients and multiple threads 
-osd writing test to understand how to stress crimson osd. Users can set the 
-number of clients and threads, which kind of test to run (eg. rados bench or 
-fio), which processors will bench threads execute on(to avoid test threads 
-influencing the result), test time, block size, etc.
+This is a crimson bench tool for multiple clients osd writing test.
+Users can set the number of clients, threads, cores, which kind of test to
+run (eg. rados bench or fio), which processors will bench threads and osd threads
+execute on, test time, block size, etc.
 Meanwhile, users can set the basic test cases and the clients ratio of each 
 type of test case threads running in the same time, for example, 75% of the 
 write clients and 25% of the read clients.
@@ -95,29 +94,31 @@ ceph cluster because the tool will do that. Put this tool in the ceph build
 directory. Since we will decide which processors the bench threads execute on
 , sudo is needed.
 
-Run ``./crimson_stress_tool.py --help`` to get the detail parameter information.
+Run ``./crimson_bench_tool.py --help`` to get the detail parameter information.
 
 Example:
 
 .. code-block:: console
-    
-    sudo ./crimson_stress_tool.py \ 
-        --client-list 4 8 --thread-list 2 4 6 --taskset 16-31 --time 60 \
-        --block-size 4K
+
+    sudo ./crimson_bench_tool.py \
+        --client 4 8 --thread 2 4 6 --bench-taskset 16-31 --time 60 \
+        --block-size 4096 \
         --crimson --store seastore --dev /dev/nvme4n1 \
         --rand-write 0.75 \
         --rand-read 0.25 \
-        --reactor-utilization \
+        --ru 3 \
         --perf \
-        --freq
+        --freq 6
 
 The tool will run rados bench write and read test case with the combination 
 of 4 or 8 clients and 2, 4 or 6 threads. In Every test case, there will be 75% of
 write clients in all clients and the read clients will be 25%. Also, you can set
 read clients ratio to 0 to do the write only tests, vive versa.
-Meanwhile, it will collect the reactor cpu utilization, and the perf information. 
+Meanwhile, it will collect the reactor cpu utilization for three time points(15s,
+30s, 45s for this case) and cpu frequence for 6 time points(8s, 16s, 24s, 32s, 40s
+, 48s, 56s for this case) and the perf information.
 The test thread will run in processors 16~31. In consideration of SeaStore starts 
-in processor 0 by default, please avoid setting --taskset to 0.
+in processor 0 by default, please avoid setting --bench-taskset to 0.
 The tests will run in crimson seastore.
 
 Example of result:
@@ -191,7 +192,7 @@ Example:
 
     ./crimson_stress_tool.py \
         --thread-list  1 2 4 8 16 32 64 --client-list 1 \
-        --taskset=16-31 --block-size 4K --time=60 \
+        --bench-taskset=16-31 --block-size 4K --time=60 \
         --rand-write 1 \
         --store bluestore \
         --output classic_randwrite_4K \

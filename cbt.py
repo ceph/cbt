@@ -74,7 +74,7 @@ def main(argv):
         for iteration in range(settings.cluster.get("iterations", 0)):
             benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             for b in benchmarks:
-                if b.exists():
+                if b.exists() and not settings.cluster.get('is_teuthology', False):
                     continue
 
                 if rebuild_every_test:
