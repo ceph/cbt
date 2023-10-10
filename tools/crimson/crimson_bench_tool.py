@@ -26,7 +26,7 @@ class Task(threading.Thread):
         self.thread_num = env.thread_num
         self.start_time = start_time
         self.result = None
-        self.log = env.args.log
+        self.log = env.log
         self.id = id #(tester_id, thread_id)
 
     # rewrite method create_command() to define the command
@@ -41,14 +41,12 @@ class Task(threading.Thread):
         print(command)
         self.result = os.popen(command)
 
-        if self.log:
-            task_log_path = self.log + "/" + str(self.id[0])+"/" \
-                + str(self.id[1]) + "." + type(self).__name__ \
-                + "." + str(self.start_time)
-            with open(task_log_path, "w") as f:
-                f.write(self.result.read())
-            f.close()
-            self.result = open(task_log_path, "r")
+        task_log_path = f"{self.log}/{self.id[0]}/" \
+            f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
+        with open(task_log_path, "w") as f:
+            f.write(self.result.read())
+        f.close()
+        self.result = open(task_log_path, "r")
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -586,30 +584,26 @@ class TesterExecutor():
     def run(self, env):
         print('running...')
         tester_count = 0
-        for client_num in env.args.client:
+        for client_index, client_num in enumerate(env.args.client):
+            env.client_num = client_num
             for thread_num in env.args.thread:
-                for smp_num in env.args.smp:
-                    env.client_num = client_num
-                    env.thread_num = thread_num
-                    env.smp_num = smp_num
-                    tester_id = str(tester_count) \
-                        + ".client{" + str(client_num) \
-                        + "}" + "_thread{" + str(thread_num) \
-                        + "}" + "_smp{" + str(smp_num) + "}"
-                    env.before_run_case(tester_id)
-                    tester = Tester(env, tester_id)
-                    temp_result = tester.run()
-                    test_case_result = env.base_result.copy()
-                    test_case_result.update(temp_result)
-                    env.after_run_case(test_case_result, tester_id)
-                    self.result_list.append(test_case_result)
-                    tester_count += 1
+                env.smp_num = env.smp_list[client_index]
+                env.thread_num = thread_num
+                tester_id = f"{tester_count}.client{{{env.client_num}}}_thread" \
+                    f"{{{env.thread_num}}}_smp{{{env.smp_num}}}"
+                env.before_run_case(tester_id)
+                tester = Tester(env, tester_id)
+                temp_result = tester.run()
+                test_case_result = env.base_result.copy()
+                test_case_result.update(temp_result)
+                env.after_run_case(test_case_result, tester_id)
+                self.result_list.append(test_case_result)
+                tester_count += 1
 
     def get_result_list(self):
         return self.result_list
 
     def output(self, output, horizontal, filters):
-        output = output + ".csv"
         f_result = open(output,"w")
         if horizontal:
             for key in self.result_list[0]:
@@ -651,6 +645,7 @@ class Environment():
         self.testclient_threadclass_ratio_map = {}
         self.timepoint_threadclass_num_map = {}
         self.timecontinuous_threadclass_list = []
+        self.smp_list = []
         self.base_result = dict()
         self.pid = list()
         self.tid = list()
@@ -668,6 +663,22 @@ class Environment():
         self.base_result['OPtype'] = "Mixed"
         self.backend_list = ['seastore', 'bluestore', 'memstore', 'cyanstore']
         self.store = ""
+        self.log = ""
+
+        if len(self.args.smp) == 1:
+            for _ in self.args.client:
+                self.smp_list.append(self.args.smp[0])
+        else:
+            self.smp_list = self.args.smp
+            if len(self.args.smp) != len(self.args.client):
+                raise Exception("smp list should match the client list")
+
+        # prepare log directory
+        with os.popen("date +%Y%m%d.%H%M%S") as date:
+            line = date.readline()
+            res = line.split()[0]
+            self.log = args.log + "." + str(res)
+        os.makedirs(self.log)
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
@@ -834,11 +845,13 @@ class Environment():
         self.pid = list()
         self.tid = list()
 
+        # group gap
+        time.sleep(self.args.gap)
+
     def pre_processing(self, tester_id):
         print('pre processing...')
         # prepare test group directory
-        if self.args.log:
-            os.makedirs(self.args.log+"/"+str(tester_id))
+        os.makedirs(self.log+"/"+str(tester_id))
 
         for thread in self.testclient_threadclass_ratio_map:
             thread.pre_process(self)
@@ -870,9 +883,8 @@ class Environment():
                         test_case_result.pop(key)
 
         # move osd log to log path before remove them
-        if self.args.log:
-            tester_log_path = self.args.log + "/" + str(tester_id)
-            os.system("sudo mv out/osd.* " + tester_log_path + "/")
+        tester_log_path = self.log + "/" + str(tester_id)
+        os.system("sudo mv out/osd.* " + tester_log_path + "/")
 
     def before_run_case(self, tester_id):
         self.general_pre_processing()
@@ -984,7 +996,10 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=[1],
-                        help='core per osd list')
+                        help='core per osd list, default to be 1, should be one-to-one \
+                              correspondence with client list if not default. But if only input \
+                              one value, this tool will automatically extend it to match the \
+                              client list')
     parser.add_argument('--bench-taskset',
                         type=str,
                         default="1-32",
@@ -1034,9 +1049,13 @@ if __name__ == "__main__":
                         help='how many osds')
     parser.add_argument('--log',
                         type=str,
-                        default = None,
-                        help='directory to store logs, no log by default. Will \
+                        default = "log",
+                        help='directory to store logs, ./log by default. Will \
                     store all tasks results and osd log and osd stdout')
+    parser.add_argument('--gap',
+                        type=int,
+                        default = 1,
+                        help='time gap between different test cases')
 
     # test case based thread param
     parser.add_argument('--rand-write',
@@ -1097,13 +1116,6 @@ if __name__ == "__main__":
     # which item should not be showed in the output
     filters = []
 
-    # prepare log directory
-    if args.log:
-        e = os.listdir(".")
-        if args.log in e:
-            shutil.rmtree(args.log)
-        os.makedirs(args.log)
-
     env = Environment(args)
 
     # change this method to add new thread class
@@ -1112,5 +1124,7 @@ if __name__ == "__main__":
     # execute the tester in the tester matrix
     tester_executor = TesterExecutor()
     tester_executor.run(env)
-    tester_executor.output(args.output, args.output_horizontal, filters)
+
+    output_dir = f"{env.log}/{args.output}.csv"
+    tester_executor.output(output_dir, args.output_horizontal, filters)
     print('done.')
