@@ -28,6 +28,8 @@ class Task(threading.Thread):
         self.result = None
         self.log = env.log
         self.id = id #(tester_id, thread_id)
+        self.task_log_path = f"{self.log}/{self.id[0]}/" \
+            f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
 
     # rewrite method create_command() to define the command
     # this class will execute
@@ -41,12 +43,10 @@ class Task(threading.Thread):
         print(command)
         self.result = os.popen(command)
 
-        task_log_path = f"{self.log}/{self.id[0]}/" \
-            f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
-        with open(task_log_path, "w") as f:
+        with open(self.task_log_path, "w") as f:
             f.write(self.result.read())
         f.close()
-        self.result = open(task_log_path, "r")
+        self.result = open(self.task_log_path, "r")
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -399,19 +399,11 @@ class PerfRecordThread(Task):
             for pid_index in range(1, len(self.pid_list)):
                 command += ","
                 command += str(self.pid_list[pid_index])
-        command += " -o perf.data"
+        command += " -o "+ self.task_log_path +".perf.data"
         command += " -- sleep "
         command += str(self.last_time)
         command += " 2>&1"
-        return command
 
-    def analyse(self):
-        result_dic = {}
-        return result_dic
-
-    @staticmethod
-    def post_process(self, test_case_result):
-        print("perf.data generated at current directory.")
         # generate fire flame if there are stackcollapse-perf.pl
         # and flamegraph.pl in the current directory
         # these tools are in https://github.com/brendangregg/FlameGraph
@@ -424,13 +416,16 @@ class PerfRecordThread(Task):
             if file == "flamegraph.pl":
                 flamegraph = True
         if stackcollapse_perf and flamegraph:
-            time.sleep(5)
-            os.system("sudo perf script -i perf.data | ./stackcollapse-perf.pl \
-                --all | ./flamegraph.pl > flamegraph.svg")
-            print("flamegraph generated at current directory.")
+            command += " && sudo perf script -i " + self.task_log_path \
+                + ".perf.data | ./stackcollapse-perf.pl --all | ./flamegraph.pl > " \
+                + self.task_log_path + ".flamegraph.svg"
         else:
             print("cannot find flamegraph scripts, will not generate flamegraph.")
-        return
+        return command
+
+    def analyse(self):
+        result_dic = {}
+        return result_dic
 
 class IOStatThread(Task):
     def __init__(self, env, id, start_time):
