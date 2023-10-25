@@ -747,9 +747,10 @@ class Environment():
         os.system("sudo rm -rf ./dev/* ./out/*")
 
         # get ceph version
-        version = self.get_version()
+        version, commitID = self.get_version_and_commitID()
         if version:
             self.base_result['Version'] = version
+            self.base_result['CommitID'] = commitID
         else:
             raise Exception("Can not read git log from ..")
 
@@ -904,7 +905,7 @@ class Environment():
             line = lsblk.readline()
         return par
 
-    def get_version(self):
+    def get_version_and_commitID(self):
         month_dic={
             "Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04",
             "May":"05", "Jun":"06", "Jul":"07", "Aug":"08",
@@ -912,14 +913,17 @@ class Environment():
         }
         gitlog = os.popen("git log ..")
         line = gitlog.readline()
+        commitID = None
         version = None
         while line:
             ll = line.split()
+            if ll[0] == "commit" :
+                commitID = ll[1][:8]
             if ll[0] == "Date:":
                 version = ll[5] + month_dic[ll[2]] + ll[3]
                 break
             line = gitlog.readline()
-        return version
+        return version, commitID
 
     def create_images(self):
         image_name_prefix = "images_"
