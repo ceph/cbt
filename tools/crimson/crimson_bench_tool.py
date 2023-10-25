@@ -538,10 +538,18 @@ class Tester():
         for thread in self.test_case_tasks:
             res = thread.analyse()
             for key in res:
-                if key not in test_case_result:
-                    test_case_result[key] = res[key]
+                # results such as Latency should be divided by client number
+                if "Latency" in key:
+                    sub_client_num = self.trmap[type(thread)] * self.client_num
+                    if key not in test_case_result:
+                        test_case_result[key] = (res[key] / sub_client_num)
+                    else:
+                        test_case_result[key] += (res[key] / sub_client_num)
                 else:
-                    test_case_result[key] += res[key]
+                    if key not in test_case_result:
+                        test_case_result[key] = res[key]
+                    else:
+                        test_case_result[key] += res[key]
 
         # will calculate the average of all time point tasks.
         key_count = dict()
