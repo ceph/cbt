@@ -538,10 +538,18 @@ class Tester():
         for thread in self.test_case_tasks:
             res = thread.analyse()
             for key in res:
-                if key not in test_case_result:
-                    test_case_result[key] = res[key]
+                # results such as Latency should be divided by client number
+                if "Latency" in key:
+                    sub_client_num = self.trmap[type(thread)] * self.client_num
+                    if key not in test_case_result:
+                        test_case_result[key] = (res[key] / sub_client_num)
+                    else:
+                        test_case_result[key] += (res[key] / sub_client_num)
                 else:
-                    test_case_result[key] += res[key]
+                    if key not in test_case_result:
+                        test_case_result[key] = res[key]
+                    else:
+                        test_case_result[key] += res[key]
 
         # will calculate the average of all time point tasks.
         key_count = dict()
@@ -747,9 +755,10 @@ class Environment():
         os.system("sudo rm -rf ./dev/* ./out/*")
 
         # get ceph version
-        version = self.get_version()
+        version, commitID = self.get_version_and_commitID()
         if version:
             self.base_result['Version'] = version
+            self.base_result['CommitID'] = commitID
         else:
             raise Exception("Can not read git log from ..")
 
@@ -904,7 +913,7 @@ class Environment():
             line = lsblk.readline()
         return par
 
-    def get_version(self):
+    def get_version_and_commitID(self):
         month_dic={
             "Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04",
             "May":"05", "Jun":"06", "Jul":"07", "Aug":"08",
@@ -912,14 +921,17 @@ class Environment():
         }
         gitlog = os.popen("git log ..")
         line = gitlog.readline()
+        commitID = None
         version = None
         while line:
             ll = line.split()
+            if ll[0] == "commit" :
+                commitID = ll[1][:8]
             if ll[0] == "Date:":
                 version = ll[5] + month_dic[ll[2]] + ll[3]
                 break
             line = gitlog.readline()
-        return version
+        return version, commitID
 
     def create_images(self):
         image_name_prefix = "images_"
