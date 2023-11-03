@@ -844,7 +844,12 @@ class Environment():
         self.base_result['Core'] = self.smp_num * self.args.osd
 
         # pool
-        os.system("sudo bin/ceph osd pool create " + self.pool + " 64 64")
+        os.system(f"sudo bin/ceph osd pool create {self.pool} "
+                    f"{self.args.pg} {self.args.pg}")
+        if self.args.osd < self.args.pool_size:
+            raise Exception("pool size should <= osd number")
+        os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                    f" size {self.args.pool_size} --yes-i-really-mean-it")
 
         # waiting for rados completely ready
         time.sleep(20)
@@ -1026,6 +1031,14 @@ if __name__ == "__main__":
                         type=str,
                         required=True,
                         help='data block size')
+    parser.add_argument('--pg',
+                        type=int,
+                        default=128,
+                        help='pg number for pool, default to be 128')
+    parser.add_argument('--pool-size',
+                        type=int,
+                        default=1,
+                        help='pool size, default to be 1')
     parser.add_argument('--warmup-block-size',
                         type=str,
                         default="4K",
