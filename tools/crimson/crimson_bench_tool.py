@@ -667,6 +667,7 @@ class Environment():
         self.backend_list = ['seastore', 'bluestore', 'memstore', 'cyanstore']
         self.store = ""
         self.log = ""
+        self.test_case_id = 0
 
         if len(self.args.smp) == 1:
             for _ in self.args.client:
@@ -792,10 +793,18 @@ class Environment():
 
         command += " --nodaemon --redirect-output --nolockdep"
 
-        # config bluestore op num
+        # add additional crimson bluestore ceph config
         if self.args.crimson and backend == "bluestore":
-            command += " -o 'crimson_alien_op_num_threads = " + \
-                    str(self.smp_num) + "'"
+            op_num_threads = self.smp_num
+            if self.args.crimson_alien_op_num_threads:
+                op_num_threads = \
+                    self.args.crimson_alien_op_num_threads[self.test_case_id]
+            command += f" -o 'crimson_alien_op_num_threads = {op_num_threads}'"
+            thread_cpu_cores = self.smp_num - 1
+            if self.args.crimson_alien_thread_cpu_cores:
+                thread_cpu_cores = \
+                    self.args.crimson_alien_thread_cpu_cores[self.test_case_id]
+            command += f" -o 'crimson_alien_thread_cpu_cores = 0-{thread_cpu_cores}'"
         if not self.args.crimson:
             if self.smp_num <= 8:
                 command += " -o 'osd_op_num_shards = 8'"
@@ -835,7 +844,12 @@ class Environment():
         self.base_result['Core'] = self.smp_num * self.args.osd
 
         # pool
-        os.system("sudo bin/ceph osd pool create " + self.pool + " 64 64")
+        os.system(f"sudo bin/ceph osd pool create {self.pool} "
+                    f"{self.args.pg} {self.args.pg}")
+        if self.args.osd < self.args.pool_size:
+            raise Exception("pool size should <= osd number")
+        os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                    f" size {self.args.pool_size} --yes-i-really-mean-it")
 
         # waiting for rados completely ready
         time.sleep(20)
@@ -891,12 +905,14 @@ class Environment():
         os.system("sudo mv out/osd.* " + tester_log_path + "/")
 
     def before_run_case(self, tester_id):
+        print(f"Running the {self.test_case_id} th test case")
         self.general_pre_processing()
         self.pre_processing(tester_id)
 
     def after_run_case(self, test_case_result, tester_id):
         self.post_processing(test_case_result, tester_id)
         self.general_post_processing()
+        self.test_case_id += 1
 
     def get_disk_name(self):
         par = self.args.dev.split('/')[-1]
@@ -1015,6 +1031,14 @@ if __name__ == "__main__":
                         type=str,
                         required=True,
                         help='data block size')
+    parser.add_argument('--pg',
+                        type=int,
+                        default=128,
+                        help='pg number for pool, default to be 128')
+    parser.add_argument('--pool-size',
+                        type=int,
+                        default=1,
+                        help='pool size, default to be 1')
     parser.add_argument('--warmup-block-size',
                         type=str,
                         default="4K",
@@ -1117,6 +1141,20 @@ if __name__ == "__main__":
     parser.add_argument('--perf-record',
                         action='store_true',
                         help='collect perf record information')
+
+    # ceph config param
+    parser.add_argument('--crimson-alien-op-num-threads',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set crimson_alien_op_num_threads. \
+                            Equal to smp number by default.')
+    parser.add_argument('--crimson-alien-thread-cpu-cores',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set crimson_alien_thread_cpu_cores. \
+                            Equal to smp number - 1 by default.')
 
     args = parser.parse_args()
 
