@@ -802,11 +802,20 @@ class Environment():
                     self.args.crimson_alien_thread_cpu_cores[self.test_case_id]
             command += f" -o 'crimson_alien_thread_cpu_cores = 0-{thread_cpu_cores}'"
         if not self.args.crimson:
-            if self.smp_num <= 8:
-                command += " -o 'osd_op_num_shards = 8'"
+            if self.args.osd_op_num_shards:
+                command += f" -o 'osd_op_num_shards = "\
+                    f"{self.args.osd_op_num_shards[self.test_case_id]}'"
             else:
-                command += " -o 'osd_op_num_shards = " + \
-                    str(self.smp_num) + "'"
+                if self.smp_num <= 8:
+                    command += " -o 'osd_op_num_shards = 8'"
+                else:
+                    command += f" -o 'osd_op_num_shards = {self.smp_num}'"
+            if self.args.osd_op_num_threads_per_shard:
+                command += f" -o 'osd_op_num_threads_per_shard = "\
+                    f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
+            if self.args.ms_async_op_threads:
+                command += f" -o 'ms_async_op_threads = "\
+                    f"{self.args.ms_async_op_threads[self.test_case_id]}'"
 
         # start ceph
         os.system(command)
@@ -1173,6 +1182,22 @@ if __name__ == "__main__":
                         default=None,
                         help='set crimson_alien_thread_cpu_cores. \
                             Equal to smp number - 1 by default.')
+    parser.add_argument('--osd-op-num-shards',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set osd_op_num_shards. \
+                            Equal to smp number when > 8, else = 8 by default.')
+    parser.add_argument('--osd-op-num-threads-per-shard',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set osd_op_num_threads_per_shard.')
+    parser.add_argument('--ms-async-op-threads',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set ms_async_op_threads.')
 
     args = parser.parse_args()
 
