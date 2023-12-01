@@ -123,8 +123,7 @@ class RadosSeqWriteThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
 
 class RadosRandReadThread(RadosRandWriteThread):
@@ -144,8 +143,7 @@ class RadosRandReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
 
 class RadosSeqReadThread(RadosRandWriteThread):
@@ -165,8 +163,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
 
 class FioRBDRandWriteThread(Task):
@@ -245,7 +242,7 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.fio_pre_write('randwrite', env.args.warmup_block_size, env.args.warmup_time)
+        env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -263,7 +260,7 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.fio_pre_write('write', env.args.warmup_block_size, env.args.warmup_time)
+        env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -282,8 +279,7 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -966,11 +962,18 @@ class Environment():
     def remove_images(self):
         self.images = []
 
-    def fio_pre_write(self, rw, bs, time):
+    # will fullly prewrite the image with the same block size as read by default.
+    def fio_pre_write(self):
+        print('fio pre write START.')
         pool = self.pool
         thread_num = self.thread_num
+        bs = ""
+        if self.args.warmup_block_size:
+            bs = self.args.warmup_block_size
+        else:
+            bs = self.args.block_size
         class ImageWriteThread(threading.Thread):
-            def __init__(self, image):
+            def __init__(self, image, args_time):
                 super().__init__()
                 self.command = "sudo fio" \
                     + " -ioengine=" + "rbd" \
@@ -978,27 +981,44 @@ class Environment():
                     + " -rbdname=" + image \
                     + " -direct=1" \
                     + " -iodepth=" + str(thread_num) \
-                    + " -rw=" + rw \
+                    + " -rw=write" \
                     + " -bs=" + str(bs) \
                     + " -numjobs=1" \
-                    + " -runtime=" + str(time) \
                     + " -group_reporting -name=fio"
+                if args_time:
+                    self.command += " -runtime=" + str(args_time)
+                else:
+                    self.command += " -size=100%"
             def run(self):
+                print(self.command)
                 os.system(self.command + " >/dev/null")
         thread_list = []
         for image in self.images:
-            thread_list.append(ImageWriteThread(image))
+            thread_list.append(ImageWriteThread(image, self.args.warmup_time))
         for thread in thread_list:
             thread.start()
         for thread in thread_list:
             thread.join()
         print('fio pre write OK.')
 
-    def rados_pre_write(self, block_size, thread_num, time):
+    def rados_pre_write(self):
+        print('rados pre write START.')
+        block_size = ""
+        time = ""
+        if self.args.warmup_block_size:
+            block_size = self.args.warmup_block_size
+        else:
+            block_size = self.args.block_size
+        if self.args.warmup_time:
+            time = self.args.warmup_time
+        else:
+            time = 5 * int(self.args.time)
+        thread_num = self.thread_num
         env_write_command = "sudo bin/rados bench -p " + self.pool + " " \
             + str(time) + " write -t " \
             + str(thread_num) + " -b " + str(block_size) + " " \
             + "--no-cleanup"
+        print(env_write_command)
         os.system(env_write_command + " >/dev/null")
         print('rados pre write OK.')
 
@@ -1039,22 +1059,20 @@ if __name__ == "__main__":
                         type=int,
                         default=1,
                         help='pool size, default to be 1')
-    parser.add_argument('--warmup-block-size',
-                        type=str,
-                        default="4K",
-                        help='warmup data block size, default 4KB')
     parser.add_argument('--time',
                         type=str,
                         default="10",
                         help='test time for every test case')
+    parser.add_argument('--warmup-block-size',
+                        type=str,
+                        default="",
+                        help='warmup data block size, default equal to block size')
     parser.add_argument('--warmup-time',
                         type=str,
-                        default="10",
-                        help='warmup time for every test case, default 10s')
-    parser.add_argument('--warmup-thread-num',
-                        type=str,
-                        default="64",
-                        help='warmup thread num for every test case, default 64')
+                        default="",
+                        help='warmup time for every test case, default equal to \
+                    5 * time in rados read case or or filling the entire rbd image \
+                    in fio read case')
     parser.add_argument('--dev',
                         type=str,
                         help='test device path, default is the vstart default \
