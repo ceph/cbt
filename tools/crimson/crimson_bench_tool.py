@@ -647,7 +647,8 @@ class Environment():
         self.smp_list = []
         self.base_result = dict()
         self.pid = list()
-        self.tid = list()
+        self.tid = list() # without alien threads
+        self.tid_alien = list()
         self.pool = "_benchtest_"
         self.images = []
         self.thread_num = -1
@@ -790,17 +791,27 @@ class Environment():
         command += " --nodaemon --redirect-output --nolockdep"
 
         # add additional crimson bluestore ceph config
+        crimson_alien_thread_cpu_cores = ''
         if self.args.crimson and backend == "bluestore":
             op_num_threads = self.smp_num
             if self.args.crimson_alien_op_num_threads:
                 op_num_threads = \
                     self.args.crimson_alien_op_num_threads[self.test_case_id]
             command += f" -o 'crimson_alien_op_num_threads = {op_num_threads}'"
-            thread_cpu_cores = self.smp_num - 1
             if self.args.crimson_alien_thread_cpu_cores:
-                thread_cpu_cores = \
+                crimson_alien_thread_cpu_cores = \
                     self.args.crimson_alien_thread_cpu_cores[self.test_case_id]
-            command += f" -o 'crimson_alien_thread_cpu_cores = 0-{thread_cpu_cores}'"
+                alien_core_range = crimson_alien_thread_cpu_cores.split('-')
+                if 0 <= int(alien_core_range[0]) <= self.smp_num-1 or \
+                    0 <= int(alien_core_range[1]) <= self.smp_num-1:
+                    raise Exception("alien threads' cores should not collide "
+                                     "with non-alien threads' cores")
+                if int(alien_core_range[1]) < int(alien_core_range[0]):
+                    raise Exception("wrong value for crimson_alien_thread_cpu_cores")
+
+            else:
+                crimson_alien_thread_cpu_cores = f"0-{self.smp_num - 1}"
+            command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
         if not self.args.crimson:
             if self.args.osd_op_num_shards:
                 command += f" -o 'osd_op_num_shards = "\
@@ -827,24 +838,46 @@ class Environment():
             line = p_pid.readline().split()
             for item in line:
                 self.pid.append(int(item))
-        # find all osd tids
+        # find all osd tids and alienstore tids(if there are)
         for p in self.pid:
-            p_tid = os.popen("ls /proc/"+str(p)+"/task")
-            line = p_tid.readline()
-            while line:
-                element = line.split()
-                for t in element:
-                    self.tid.append(int(t))
-                line = p_tid.readline()
+            _tid = os.listdir(f"/proc/{p}/task")
+            while(len(_tid) <= 1):
+                time.sleep(1)
+                _tid = os.listdir(f"/proc/{p}/task")
+
+            if self.args.crimson and backend == "bluestore":
+                for t in _tid:
+                    res = os.popen(f"cat /proc/{t}/comm")
+                    line = res.readline().split()
+                    if line:
+                        t_name = line[0]
+                        if t_name in ['alien-store-tp', 'bstore_aio'] or 'rocksdb' in t_name:
+                            self.tid_alien.append(t)
+                            print(f"found alien threads {t_name}, tid {t}")
+                        else:
+                            self.tid.append(t)
+                            print(f"found threads {t_name}, tid {t}")
+            else:
+                self.tid.extend(_tid)
+                print("found threads:(", end="")
+                for item in _tid:
+                    print(f"{item} ", end="")
+                print(f") for process {p}")
 
         # config multicore for classic
         # all classic osds will use cpu range 0-(smp*osd-1)
+        # crimson multicore settings has already been set in vstart smp param.
         if not self.args.crimson:
             core = self.smp_num * self.args.osd
             for p in self.pid:
                 os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
                 os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(t))
+
+        # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
+        if self.args.crimson and backend == "bluestore":
+            for t in self.tid_alien:
+                os.system(f"sudo taskset -pc {crimson_alien_thread_cpu_cores} {t}")
 
         self.base_result['Core'] = self.smp_num * self.args.osd
 
@@ -1176,12 +1209,15 @@ if __name__ == "__main__":
                         default=None,
                         help='set crimson_alien_op_num_threads. \
                             Equal to smp number by default.')
+    # TODO: dependent multicore range settings for multiple OSDs
     parser.add_argument('--crimson-alien-thread-cpu-cores',
                         nargs='+',
-                        type=int,
+                        type=str,
                         default=None,
-                        help='set crimson_alien_thread_cpu_cores. \
-                            Equal to smp number - 1 by default.')
+                        help='set crimson_alien_thread_cpu_cores. The input should be ranges. \
+                            Such as 0-3 2-6. 0-smp number-1 by default. For Crimson with \
+                            AlienStore, alien-store-tp, bstore_aio and rocksdb threads will \
+                            also be binded to this CPU range.')
     parser.add_argument('--osd-op-num-shards',
                         nargs='+',
                         type=int,
