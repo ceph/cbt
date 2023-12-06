@@ -762,8 +762,8 @@ class Environment():
 
         # vstart. change the command here if you want to set other start params
         command = "sudo OSD=" + str(self.args.osd)
-        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
-                --without-dashboard "
+        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x "\
+                "--without-dashboard "
         if self.args.crimson:
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
@@ -827,6 +827,11 @@ class Environment():
             if self.args.ms_async_op_threads:
                 command += f" -o 'ms_async_op_threads = "\
                     f"{self.args.ms_async_op_threads[self.test_case_id]}'"
+        if backend == "seastore":
+            command += " -o 'seastore_cache_lru_size = 512M'"
+            command += " -o 'seastore_max_concurrent_transactions = 128'"
+        if backend == "memstore":
+            command += " -o 'memstore_device_bytes = 8G'"
 
         # start ceph
         os.system(command)
@@ -884,10 +889,22 @@ class Environment():
         # pool
         os.system(f"sudo bin/ceph osd pool create {self.pool} "
                     f"{self.args.pg} {self.args.pg}")
-        if self.args.osd < self.args.pool_size:
-            raise Exception("pool size should <= osd number")
-        os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+        if self.args.pool_size:
+            if self.args.osd < self.args.pool_size:
+                raise Exception("pool size should <= osd number")
+            os.system(f"sudo bin/ceph osd pool set {self.pool}" \
                     f" size {self.args.pool_size} --yes-i-really-mean-it")
+            os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                    f" min_size {self.args.pool_size} --yes-i-really-mean-it")
+        else:
+            if self.args.osd < 3:
+                os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                        f" size {self.args.osd} --yes-i-really-mean-it")
+                os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                        f" min_size {self.args.osd} --yes-i-really-mean-it")
+            else:
+                # use ceph default setting when osd >= 3
+                pass
 
         # waiting for rados completely ready
         time.sleep(20)
@@ -1099,8 +1116,9 @@ if __name__ == "__main__":
                         help='pg number for pool, default to be 128')
     parser.add_argument('--pool-size',
                         type=int,
-                        default=1,
-                        help='pool size, default to be 1')
+                        default=None,
+                        help='pool size. By default, pool_size = osd if osd < 3 \
+                        or use ceph default setting')
     parser.add_argument('--time',
                         type=str,
                         default="10",
@@ -1209,7 +1227,6 @@ if __name__ == "__main__":
                         default=None,
                         help='set crimson_alien_op_num_threads. \
                             Equal to smp number by default.')
-    # TODO: dependent multicore range settings for multiple OSDs
     parser.add_argument('--crimson-alien-thread-cpu-cores',
                         nargs='+',
                         type=str,
