@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 import argparse
-import math
 import os
-import shutil
 import threading
 import time
 import re
+from subprocess import Popen, PIPE
 
 # Divid all test threads into three categories, Test Case Based Thread, Time
 # Point Based Thread and Time Continuous thread.
@@ -23,12 +22,13 @@ import re
 class Task(threading.Thread):
     def __init__(self, env, id, start_time=0):
         super().__init__()
+        self.env = env
         self.thread_num = env.thread_num
         self.start_time = start_time
         self.result = None
         self.log = env.log
         self.id = id #(tester_id, thread_id)
-        self.task_log_path = f"{self.log}/{self.id[0]}/" \
+        self.task_log_path = f"{env.tester_log_path}/" \
             f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
 
     # rewrite method create_command() to define the command
@@ -41,12 +41,23 @@ class Task(threading.Thread):
         time.sleep(self.start_time)
         command = self.create_command()
         print(command)
-        self.result = os.popen(command)
 
-        with open(self.task_log_path, "w") as f:
-            f.write(self.result.read())
-        f.close()
-        self.result = open(self.task_log_path, "r")
+        proc = Popen("exec " + command, shell=True, \
+                     stdout=PIPE, encoding="utf-8")
+        done = proc.poll()
+        fail = self.env.check_failure()
+        while done is None and not fail:
+            time.sleep(1)
+            done = proc.poll()
+            fail = self.env.check_failure()
+        if done is not None:
+            ret = proc.stdout.read()
+            with open(self.task_log_path, "w") as f:
+                f.write(ret)
+            f.close()
+            self.result = open(self.task_log_path, "r")
+        if fail:
+            proc.kill()
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -473,6 +484,70 @@ class CPUFreqThread(Task):
         self.result.close()
         return result_dic
 
+class TestFailError(Exception):
+    def __init__(self, message, env):
+        env.set_failure_signal()
+        self.message = message
+        with os.popen("date +%H:%M:%S") as date:
+            line = date.readline()
+            time = line.split()[0]
+        error_msg = f"time:{time} test:{env.test_num} client:{env.client_num} "\
+            f"thread:{env.thread_num} smp:{env.smp_num} {message}"
+        print(error_msg)
+        os.system(f"echo \"{error_msg}\" >> {env.failure_log}")
+
+    def __str__(self):
+        return self.message
+
+class FailureDetect(threading.Thread):
+    def __init__(self, env):
+        super().__init__()
+        self.time = int(env.args.time)
+        self.task_set = env.args.bench_taskset
+        self.client_num = env.client_num
+        self.env = env
+
+        self.track_client = "bin/rados fio"
+        self.track_osd = "crimson-osd ceph-osd"
+
+        # if client still alive after waiting for time + tolerance_time,
+        # this detector will consider this tester failed.
+        self.tolerance_time = env.args.tolerance_time
+
+    def run(self):
+        time.sleep(1)
+        wait_count = 1
+        p_pids = os.popen(f"sudo taskset -c {self.task_set} "\
+                          f"pidof {self.track_client}")
+        res = p_pids.readline().split()
+        while(len(res) != self.client_num):
+            time.sleep(1)
+            wait_count += 1
+            if wait_count > self.time + self.tolerance_time:
+                raise TestFailError("Tester failed: clients startup failed.", self.env)
+            p_pids = os.popen(f"sudo taskset -c {self.task_set} "\
+                              f"pidof {self.track_client}")
+            res = p_pids.readline().split()
+
+        wait_time = 0
+        while(wait_time < self.time + self.tolerance_time):
+            # check osd
+            p_osd_pids_af = os.popen(f"sudo taskset -c {self.task_set} "\
+                             f"pidof {self.track_osd}")
+            res = p_osd_pids_af.readline().split()
+            if (not len(res)):
+                raise TestFailError("Tester failed: osd crashed unexpectedly.", self.env)
+
+            wait_time += 1
+            time.sleep(1)
+
+        # check clients
+        p_pids_af = os.popen(f"sudo taskset -c {self.task_set} "\
+                             f"pidof {self.track_client}")
+        res = p_pids_af.readline().split()
+        if (len(res)):
+            raise TestFailError("Tester failed: client didn't close.", self.env)
+
 
 class Tester():
     def __init__(self, env, tester_id):
@@ -482,7 +557,6 @@ class Tester():
         self.trmap = env.testclient_threadclass_ratio_map
         self.tpnmap = env.timepoint_threadclass_num_map
         self.tpclist = env.timecontinuous_threadclass_list
-        self.base_result = env.base_result
         self.test_case_tasks = list()
         self.timepoint_tasks = list()
         self.timecontinuous_tasks = list()
@@ -513,6 +587,8 @@ class Tester():
             self.timecontinuous_tasks.append(thread(self.env, task_id))
             thread_id += 1
 
+        self.detector = FailureDetect(self.env)
+
     def run(self):
         print("client num:%d, thread num:%d testing"
               % (self.client_num, self.thread_num))
@@ -522,12 +598,19 @@ class Tester():
             thread.start()
         for thread in self.timecontinuous_tasks:
             thread.start()
+        self.detector.start()
+
         for thread in self.test_case_tasks:
             thread.join()
         for thread in self.timepoint_tasks:
             thread.join()
         for thread in self.timecontinuous_tasks:
             thread.join()
+        self.detector.join()
+
+        if self.env.check_failure():
+            raise TestFailError("Tester Failed", self.env)
+
         test_case_result = dict()
 
         # will add all test results(such as IOPS, BW) from every test clients
@@ -575,6 +658,16 @@ class Tester():
         test_case_result['Client_num'] = self.client_num
         return test_case_result
 
+    def rollback(self, retry_count):
+        tester_failure_log_path = f"{self.env.failure_osd_log}/"\
+            f"{self.tester_id}_{retry_count}/"
+        os.makedirs(tester_failure_log_path)
+        os.system(f"sudo mv out/osd.* {tester_failure_log_path}")
+        os.system(f"sudo rm -rf {self.env.tester_log_path}")
+
+        self.env.general_post_processing()
+        self.env.reset_failure_signal()
+
 
 class TesterExecutor():
     def __init__(self):
@@ -590,12 +683,30 @@ class TesterExecutor():
                 env.thread_num = thread_num
                 tester_id = f"{tester_count}.client{{{env.client_num}}}_thread" \
                     f"{{{env.thread_num}}}_smp{{{env.smp_num}}}"
-                env.before_run_case(tester_id)
-                tester = Tester(env, tester_id)
-                temp_result = tester.run()
-                test_case_result = env.base_result.copy()
-                test_case_result.update(temp_result)
-                env.after_run_case(test_case_result, tester_id)
+
+                retry_count = 0
+                test_case_result = dict()
+                succeed = False
+                tester = None
+                while not succeed:
+                    if retry_count > env.args.retry_limit:
+                        raise Exception(f"Test Failed: Maximum retry limit exceeded.")
+                    try:
+                        env.before_run_case(tester_id)
+                        tester = Tester(env, tester_id)
+                        temp_result = tester.run()
+                        test_case_result = env.base_result.copy()
+                        test_case_result.update(temp_result)
+                    except TestFailError:
+                        print("will retry...")
+                        retry_count += 1
+                        test_case_result = dict()
+                        if tester:
+                            tester.rollback(retry_count)
+                            del tester
+                    else:
+                        succeed = True
+                env.after_run_case(test_case_result)
                 self.result_list.append(test_case_result)
                 tester_count += 1
 
@@ -665,6 +776,10 @@ class Environment():
         self.store = ""
         self.log = ""
         self.test_case_id = 0
+        self.tester_log_path = ""
+        self.failure_log = ""
+        self.failure_osd_log = ""
+        self.FAILURE_SIGNAL = False
 
         if len(self.args.smp) == 1:
             for _ in self.args.client:
@@ -678,8 +793,19 @@ class Environment():
         with os.popen("date +%Y%m%d.%H%M%S") as date:
             line = date.readline()
             res = line.split()[0]
-            self.log = args.log + "." + str(res)
+            self.log = f"{args.log}.{res}"
+        if self.args.crimson:
+            self.log += "_crimson"
+        else:
+            self.log += "_classic"
+        self.log += f"_{self.args.store}"
+        self.log += f"_osd:{self.args.osd}_ps:{self.args.pool_size}"
         os.makedirs(self.log)
+        self.failure_log = f"{self.log}/failure_log.txt"
+        os.system(f"touch {self.failure_log}")
+
+        self.failure_osd_log = f"{self.log}/failure_osd_log"
+        os.makedirs(self.failure_osd_log)
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
@@ -762,8 +888,8 @@ class Environment():
 
         # vstart. change the command here if you want to set other start params
         command = "sudo OSD=" + str(self.args.osd)
-        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x "\
-                "--without-dashboard "
+        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
+                --without-dashboard --no-restart "
         if self.args.crimson:
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
@@ -834,7 +960,18 @@ class Environment():
             command += " -o 'memstore_device_bytes = 8G'"
 
         # start ceph
-        os.system(command)
+        ceph_start_max_watting_time = 40
+        start_proc = Popen("exec " + command, shell=True, \
+                           stdout=PIPE, encoding="utf-8")
+        wait_count = 0
+        done = start_proc.poll()
+        while done is None:
+            time.sleep(1)
+            done = start_proc.poll()
+            wait_count += 1
+            if wait_count > ceph_start_max_watting_time:
+                start_proc.kill()
+                raise TestFailError("Tester failed: osd startup failed.", self)
 
         # find osd pids
         while not self.pid:
@@ -912,7 +1049,7 @@ class Environment():
     def general_post_processing(self):
         # killall
         os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
-                crimson-osd rados node")
+                crimson-osd rados fio node")
         # delete dev
         os.system("sudo rm -rf ./dev/* ./out/*")
         self.pid = list()
@@ -924,7 +1061,8 @@ class Environment():
     def pre_processing(self, tester_id):
         print('pre processing...')
         # prepare test group directory
-        os.makedirs(self.log+"/"+str(tester_id))
+        self.tester_log_path = self.log+"/"+str(tester_id)
+        os.makedirs(self.tester_log_path)
 
         for thread in self.testclient_threadclass_ratio_map:
             thread.pre_process(self)
@@ -933,7 +1071,7 @@ class Environment():
         for thread in self.timecontinuous_threadclass_list:
             thread.pre_process(self)
 
-    def post_processing(self, test_case_result, tester_id):
+    def post_processing(self, test_case_result):
         print('post processing...')
         for thread in self.testclient_threadclass_ratio_map:
             thread.post_process(self, test_case_result)
@@ -956,16 +1094,15 @@ class Environment():
                         test_case_result.pop(key)
 
         # move osd log to log path before remove them
-        tester_log_path = self.log + "/" + str(tester_id)
-        os.system("sudo mv out/osd.* " + tester_log_path + "/")
+        os.system("sudo mv out/osd.* " + self.tester_log_path + "/")
 
     def before_run_case(self, tester_id):
         print(f"Running the {self.test_case_id} th test case")
         self.general_pre_processing()
         self.pre_processing(tester_id)
 
-    def after_run_case(self, test_case_result, tester_id):
-        self.post_processing(test_case_result, tester_id)
+    def after_run_case(self, test_case_result):
+        self.post_processing(test_case_result)
         self.general_post_processing()
         self.test_case_id += 1
 
@@ -1080,6 +1217,15 @@ class Environment():
         print(env_write_command)
         os.system(env_write_command + " >/dev/null")
         print('rados pre write OK.')
+
+    def set_failure_signal(self):
+        self.FAILURE_SIGNAL = True
+
+    def reset_failure_signal(self):
+        self.FAILURE_SIGNAL = False
+
+    def check_failure(self):
+        return self.FAILURE_SIGNAL
 
 
 if __name__ == "__main__":
@@ -1251,6 +1397,17 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help='set ms_async_op_threads.')
+
+    parser.add_argument('--retry-limit',
+                        type=int,
+                        default=5,
+                        help='max retry limit for every test client')
+    parser.add_argument('--tolerance-time',
+                        type=int,
+                        default=10,
+                        help='tolerance time for every test client, if waiting for a task \
+                            more than time+tolerance time, this task will be considered as failed and \
+                            this task will automatically retry')
 
     args = parser.parse_args()
 
