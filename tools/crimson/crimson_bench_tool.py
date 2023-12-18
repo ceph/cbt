@@ -123,8 +123,7 @@ class RadosSeqWriteThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
 
 class RadosRandReadThread(RadosRandWriteThread):
@@ -144,8 +143,7 @@ class RadosRandReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
 
 class RadosSeqReadThread(RadosRandWriteThread):
@@ -165,8 +163,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
 
 class FioRBDRandWriteThread(Task):
@@ -245,7 +242,7 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.fio_pre_write('randwrite', env.args.warmup_block_size, env.args.warmup_time)
+        env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -263,7 +260,7 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.fio_pre_write('write', env.args.warmup_block_size, env.args.warmup_time)
+        env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -282,8 +279,7 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images()
-        env.rados_pre_write(env.args.warmup_block_size, \
-                env.args.warmup_thread_num, env.args.warmup_time)
+        env.rados_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -651,7 +647,8 @@ class Environment():
         self.smp_list = []
         self.base_result = dict()
         self.pid = list()
-        self.tid = list()
+        self.tid = list() # without alien threads
+        self.tid_alien = list()
         self.pool = "_benchtest_"
         self.images = []
         self.thread_num = -1
@@ -765,8 +762,8 @@ class Environment():
 
         # vstart. change the command here if you want to set other start params
         command = "sudo OSD=" + str(self.args.osd)
-        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
-                --without-dashboard "
+        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x "\
+                "--without-dashboard "
         if self.args.crimson:
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
@@ -794,23 +791,47 @@ class Environment():
         command += " --nodaemon --redirect-output --nolockdep"
 
         # add additional crimson bluestore ceph config
+        crimson_alien_thread_cpu_cores = ''
         if self.args.crimson and backend == "bluestore":
             op_num_threads = self.smp_num
             if self.args.crimson_alien_op_num_threads:
                 op_num_threads = \
                     self.args.crimson_alien_op_num_threads[self.test_case_id]
             command += f" -o 'crimson_alien_op_num_threads = {op_num_threads}'"
-            thread_cpu_cores = self.smp_num - 1
             if self.args.crimson_alien_thread_cpu_cores:
-                thread_cpu_cores = \
+                crimson_alien_thread_cpu_cores = \
                     self.args.crimson_alien_thread_cpu_cores[self.test_case_id]
-            command += f" -o 'crimson_alien_thread_cpu_cores = 0-{thread_cpu_cores}'"
-        if not self.args.crimson:
-            if self.smp_num <= 8:
-                command += " -o 'osd_op_num_shards = 8'"
+                alien_core_range = crimson_alien_thread_cpu_cores.split('-')
+                if 0 <= int(alien_core_range[0]) <= self.smp_num-1 or \
+                    0 <= int(alien_core_range[1]) <= self.smp_num-1:
+                    raise Exception("alien threads' cores should not collide "
+                                     "with non-alien threads' cores")
+                if int(alien_core_range[1]) < int(alien_core_range[0]):
+                    raise Exception("wrong value for crimson_alien_thread_cpu_cores")
+
             else:
-                command += " -o 'osd_op_num_shards = " + \
-                    str(self.smp_num) + "'"
+                crimson_alien_thread_cpu_cores = f"0-{self.smp_num - 1}"
+            command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
+        if not self.args.crimson:
+            if self.args.osd_op_num_shards:
+                command += f" -o 'osd_op_num_shards = "\
+                    f"{self.args.osd_op_num_shards[self.test_case_id]}'"
+            else:
+                if self.smp_num <= 8:
+                    command += " -o 'osd_op_num_shards = 8'"
+                else:
+                    command += f" -o 'osd_op_num_shards = {self.smp_num}'"
+            if self.args.osd_op_num_threads_per_shard:
+                command += f" -o 'osd_op_num_threads_per_shard = "\
+                    f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
+            if self.args.ms_async_op_threads:
+                command += f" -o 'ms_async_op_threads = "\
+                    f"{self.args.ms_async_op_threads[self.test_case_id]}'"
+        if backend == "seastore":
+            command += " -o 'seastore_cache_lru_size = 512M'"
+            command += " -o 'seastore_max_concurrent_transactions = 128'"
+        if backend == "memstore":
+            command += " -o 'memstore_device_bytes = 8G'"
 
         # start ceph
         os.system(command)
@@ -822,18 +843,35 @@ class Environment():
             line = p_pid.readline().split()
             for item in line:
                 self.pid.append(int(item))
-        # find all osd tids
+        # find all osd tids and alienstore tids(if there are)
         for p in self.pid:
-            p_tid = os.popen("ls /proc/"+str(p)+"/task")
-            line = p_tid.readline()
-            while line:
-                element = line.split()
-                for t in element:
-                    self.tid.append(int(t))
-                line = p_tid.readline()
+            _tid = os.listdir(f"/proc/{p}/task")
+            while(len(_tid) <= 1):
+                time.sleep(1)
+                _tid = os.listdir(f"/proc/{p}/task")
+
+            if self.args.crimson and backend == "bluestore":
+                for t in _tid:
+                    res = os.popen(f"cat /proc/{t}/comm")
+                    line = res.readline().split()
+                    if line:
+                        t_name = line[0]
+                        if t_name in ['alien-store-tp', 'bstore_aio'] or 'rocksdb' in t_name:
+                            self.tid_alien.append(t)
+                            print(f"found alien threads {t_name}, tid {t}")
+                        else:
+                            self.tid.append(t)
+                            print(f"found threads {t_name}, tid {t}")
+            else:
+                self.tid.extend(_tid)
+                print("found threads:(", end="")
+                for item in _tid:
+                    print(f"{item} ", end="")
+                print(f") for process {p}")
 
         # config multicore for classic
         # all classic osds will use cpu range 0-(smp*osd-1)
+        # crimson multicore settings has already been set in vstart smp param.
         if not self.args.crimson:
             core = self.smp_num * self.args.osd
             for p in self.pid:
@@ -841,15 +879,32 @@ class Environment():
             for t in self.tid:
                 os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(t))
 
+        # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
+        if self.args.crimson and backend == "bluestore":
+            for t in self.tid_alien:
+                os.system(f"sudo taskset -pc {crimson_alien_thread_cpu_cores} {t}")
+
         self.base_result['Core'] = self.smp_num * self.args.osd
 
         # pool
         os.system(f"sudo bin/ceph osd pool create {self.pool} "
                     f"{self.args.pg} {self.args.pg}")
-        if self.args.osd < self.args.pool_size:
-            raise Exception("pool size should <= osd number")
-        os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+        if self.args.pool_size:
+            if self.args.osd < self.args.pool_size:
+                raise Exception("pool size should <= osd number")
+            os.system(f"sudo bin/ceph osd pool set {self.pool}" \
                     f" size {self.args.pool_size} --yes-i-really-mean-it")
+            os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                    f" min_size {self.args.pool_size} --yes-i-really-mean-it")
+        else:
+            if self.args.osd < 3:
+                os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                        f" size {self.args.osd} --yes-i-really-mean-it")
+                os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+                        f" min_size {self.args.osd} --yes-i-really-mean-it")
+            else:
+                # use ceph default setting when osd >= 3
+                pass
 
         # waiting for rados completely ready
         time.sleep(20)
@@ -966,11 +1021,18 @@ class Environment():
     def remove_images(self):
         self.images = []
 
-    def fio_pre_write(self, rw, bs, time):
+    # will fullly prewrite the image with the same block size as read by default.
+    def fio_pre_write(self):
+        print('fio pre write START.')
         pool = self.pool
         thread_num = self.thread_num
+        bs = ""
+        if self.args.warmup_block_size:
+            bs = self.args.warmup_block_size
+        else:
+            bs = self.args.block_size
         class ImageWriteThread(threading.Thread):
-            def __init__(self, image):
+            def __init__(self, image, args_time):
                 super().__init__()
                 self.command = "sudo fio" \
                     + " -ioengine=" + "rbd" \
@@ -978,27 +1040,44 @@ class Environment():
                     + " -rbdname=" + image \
                     + " -direct=1" \
                     + " -iodepth=" + str(thread_num) \
-                    + " -rw=" + rw \
+                    + " -rw=write" \
                     + " -bs=" + str(bs) \
                     + " -numjobs=1" \
-                    + " -runtime=" + str(time) \
                     + " -group_reporting -name=fio"
+                if args_time:
+                    self.command += " -runtime=" + str(args_time)
+                else:
+                    self.command += " -size=100%"
             def run(self):
+                print(self.command)
                 os.system(self.command + " >/dev/null")
         thread_list = []
         for image in self.images:
-            thread_list.append(ImageWriteThread(image))
+            thread_list.append(ImageWriteThread(image, self.args.warmup_time))
         for thread in thread_list:
             thread.start()
         for thread in thread_list:
             thread.join()
         print('fio pre write OK.')
 
-    def rados_pre_write(self, block_size, thread_num, time):
+    def rados_pre_write(self):
+        print('rados pre write START.')
+        block_size = ""
+        time = ""
+        if self.args.warmup_block_size:
+            block_size = self.args.warmup_block_size
+        else:
+            block_size = self.args.block_size
+        if self.args.warmup_time:
+            time = self.args.warmup_time
+        else:
+            time = 5 * int(self.args.time)
+        thread_num = self.thread_num
         env_write_command = "sudo bin/rados bench -p " + self.pool + " " \
             + str(time) + " write -t " \
             + str(thread_num) + " -b " + str(block_size) + " " \
             + "--no-cleanup"
+        print(env_write_command)
         os.system(env_write_command + " >/dev/null")
         print('rados pre write OK.')
 
@@ -1037,24 +1116,23 @@ if __name__ == "__main__":
                         help='pg number for pool, default to be 128')
     parser.add_argument('--pool-size',
                         type=int,
-                        default=1,
-                        help='pool size, default to be 1')
-    parser.add_argument('--warmup-block-size',
-                        type=str,
-                        default="4K",
-                        help='warmup data block size, default 4KB')
+                        default=None,
+                        help='pool size. By default, pool_size = osd if osd < 3 \
+                        or use ceph default setting')
     parser.add_argument('--time',
                         type=str,
                         default="10",
                         help='test time for every test case')
+    parser.add_argument('--warmup-block-size',
+                        type=str,
+                        default="",
+                        help='warmup data block size, default equal to block size')
     parser.add_argument('--warmup-time',
                         type=str,
-                        default="10",
-                        help='warmup time for every test case, default 10s')
-    parser.add_argument('--warmup-thread-num',
-                        type=str,
-                        default="64",
-                        help='warmup thread num for every test case, default 64')
+                        default="",
+                        help='warmup time for every test case, default equal to \
+                    5 * time in rados read case or or filling the entire rbd image \
+                    in fio read case')
     parser.add_argument('--dev',
                         type=str,
                         help='test device path, default is the vstart default \
@@ -1151,10 +1229,28 @@ if __name__ == "__main__":
                             Equal to smp number by default.')
     parser.add_argument('--crimson-alien-thread-cpu-cores',
                         nargs='+',
+                        type=str,
+                        default=None,
+                        help='set crimson_alien_thread_cpu_cores. The input should be ranges. \
+                            Such as 0-3 2-6. 0-smp number-1 by default. For Crimson with \
+                            AlienStore, alien-store-tp, bstore_aio and rocksdb threads will \
+                            also be binded to this CPU range.')
+    parser.add_argument('--osd-op-num-shards',
+                        nargs='+',
                         type=int,
                         default=None,
-                        help='set crimson_alien_thread_cpu_cores. \
-                            Equal to smp number - 1 by default.')
+                        help='set osd_op_num_shards. \
+                            Equal to smp number when > 8, else = 8 by default.')
+    parser.add_argument('--osd-op-num-threads-per-shard',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set osd_op_num_threads_per_shard.')
+    parser.add_argument('--ms-async-op-threads',
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help='set ms_async_op_threads.')
 
     args = parser.parse_args()
 
