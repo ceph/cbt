@@ -690,6 +690,7 @@ class TesterExecutor():
                 tester = None
                 while not succeed:
                     if retry_count > env.args.retry_limit:
+                        os.system(f"touch {env.log}/__failed__")
                         raise Exception(f"Test Failed: Maximum retry limit exceeded.")
                     try:
                         env.before_run_case(tester_id)
@@ -761,6 +762,7 @@ class Environment():
         self.tid = list() # without alien threads
         self.tid_alien = list()
         self.pool = "_benchtest_"
+        self.pool_size = None
         self.images = []
         self.thread_num = -1
         self.client_num = -1
@@ -789,23 +791,40 @@ class Environment():
             if len(self.args.smp) != len(self.args.client):
                 raise Exception("smp list should match the client list")
 
-        # prepare log directory
-        with os.popen("date +%Y%m%d.%H%M%S") as date:
-            line = date.readline()
-            res = line.split()[0]
-            self.log = f"{args.log}.{res}"
-        if self.args.crimson:
-            self.log += "_crimson"
+        # decide pool size
+        if self.args.pool_size:
+            if self.args.osd < self.args.pool_size:
+                raise Exception("pool size should <= osd number")
+            self.pool_size = self.args.pool_size
         else:
-            self.log += "_classic"
-        self.log += f"_{self.args.store}"
-        self.log += f"_osd:{self.args.osd}_ps:{self.args.pool_size}"
+            if self.args.osd < 3:
+                self.pool_size = self.args.osd
+
+        # prepare log directory
+        if not self.args.log:
+            self.log = "log"
+            with os.popen("date +%Y%m%d.%H%M%S") as date:
+                line = date.readline()
+                res = line.split()[0]
+                self.log = f"{self.log}.{res}"
+        else:
+            self.log = self.args.log
+        self.add_log_suffix()
+
         os.makedirs(self.log)
         self.failure_log = f"{self.log}/failure_log.txt"
         os.system(f"touch {self.failure_log}")
 
         self.failure_osd_log = f"{self.log}/failure_osd_log"
         os.makedirs(self.failure_osd_log)
+
+    def add_log_suffix(self):
+        if self.args.crimson:
+            self.log += "_crimson"
+        else:
+            self.log += "_classic"
+        self.log += f"_{self.args.store}"
+        self.log += f"_osd:{self.args.osd}_ps:{self.pool_size}"
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
@@ -1026,22 +1045,14 @@ class Environment():
         # pool
         os.system(f"sudo bin/ceph osd pool create {self.pool} "
                     f"{self.args.pg} {self.args.pg}")
-        if self.args.pool_size:
-            if self.args.osd < self.args.pool_size:
-                raise Exception("pool size should <= osd number")
+        if self.pool_size:
             os.system(f"sudo bin/ceph osd pool set {self.pool}" \
-                    f" size {self.args.pool_size} --yes-i-really-mean-it")
+                    f" size {self.pool_size} --yes-i-really-mean-it")
             os.system(f"sudo bin/ceph osd pool set {self.pool}" \
-                    f" min_size {self.args.pool_size} --yes-i-really-mean-it")
+                    f" min_size {self.pool_size} --yes-i-really-mean-it")
         else:
-            if self.args.osd < 3:
-                os.system(f"sudo bin/ceph osd pool set {self.pool}" \
-                        f" size {self.args.osd} --yes-i-really-mean-it")
-                os.system(f"sudo bin/ceph osd pool set {self.pool}" \
-                        f" min_size {self.args.osd} --yes-i-really-mean-it")
-            else:
-                # use ceph default setting when osd >= 3
-                pass
+            # use ceph default setting when osd >= 3
+            pass
 
         # waiting for rados completely ready
         time.sleep(20)
@@ -1304,9 +1315,12 @@ if __name__ == "__main__":
                         help='how many osds')
     parser.add_argument('--log',
                         type=str,
-                        default = "log",
-                        help='directory to store logs, ./log by default. Will \
-                    store all tasks results and osd log and osd stdout')
+                        default = None,
+                        help='directory prefix to store logs, ./log_date by default.\
+                    This tool will add _crimson/classic_backend_osd_poolsize to be log \
+                    dir name and store all tasks results and osd log and osd stdout.\
+                    e.g. By default, log directory might be named log_20231222.165125\
+                    _crimson_bluestore_osd:1_ps:1')
     parser.add_argument('--gap',
                         type=int,
                         default = 1,
