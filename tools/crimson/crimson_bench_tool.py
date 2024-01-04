@@ -768,6 +768,7 @@ class Environment():
         self.pid = list()
         self.tid = list() # without alien threads
         self.tid_alien = list()
+        self.tid2name = dict()
         self.pool = "_benchtest_"
         self.pool_size = None
         self.images = []
@@ -1000,6 +1001,21 @@ class Environment():
                 start_proc.kill()
                 raise TestFailError("Tester failed: osd startup failed.", self)
 
+        # pool
+        os.system(f"bin/ceph osd pool create {self.pool} "
+                    f"{self.args.pg} {self.args.pg}")
+        if self.pool_size:
+            os.system(f"bin/ceph osd pool set {self.pool}" \
+                    f" size {self.pool_size} --yes-i-really-mean-it")
+            os.system(f"bin/ceph osd pool set {self.pool}" \
+                    f" min_size {self.pool_size} --yes-i-really-mean-it")
+        else:
+            # use ceph default setting when osd >= 3
+            pass
+
+        # waiting for rados completely ready
+        time.sleep(20)
+
         # find osd pids
         while not self.pid:
             time.sleep(1)
@@ -1013,19 +1029,23 @@ class Environment():
             while(len(_tid) <= 1):
                 time.sleep(1)
                 _tid = os.listdir(f"/proc/{p}/task")
-
+            for t in _tid:
+                res = os.popen(f"cat /proc/{t}/comm")
+                line = res.readline().split()
+                if line:
+                    t_name = line[0]
+                self.tid2name[t] = t_name
             if self.args.crimson and backend == "bluestore":
-                for t in _tid:
-                    res = os.popen(f"cat /proc/{t}/comm")
-                    line = res.readline().split()
-                    if line:
-                        t_name = line[0]
-                        if t_name in ['alien-store-tp', 'bstore_aio'] or 'rocksdb' in t_name:
-                            self.tid_alien.append(t)
-                            print(f"found alien threads {t_name}, tid {t}")
-                        else:
-                            self.tid.append(t)
-                            print(f"found threads {t_name}, tid {t}")
+                for t in self.tid2name:
+                    t_name = self.tid2name[t]
+                    if t_name in ['alien-store-tp', 'log', 'cfin'] \
+                        or 'rocksdb' in t_name \
+                        or 'bstore' in t_name:
+                        self.tid_alien.append(t)
+                        print(f"found alien threads {t_name}, tid {t}")
+                    else:
+                        self.tid.append(t)
+                        print(f"found threads {t_name}, tid {t}")
             else:
                 self.tid.extend(_tid)
                 print("found threads:(", end="")
@@ -1050,20 +1070,12 @@ class Environment():
 
         self.base_result['Core'] = self.smp_num * self.args.osd
 
-        # pool
-        os.system(f"bin/ceph osd pool create {self.pool} "
-                    f"{self.args.pg} {self.args.pg}")
-        if self.pool_size:
-            os.system(f"bin/ceph osd pool set {self.pool}" \
-                    f" size {self.pool_size} --yes-i-really-mean-it")
-            os.system(f"bin/ceph osd pool set {self.pool}" \
-                    f" min_size {self.pool_size} --yes-i-really-mean-it")
-        else:
-            # use ceph default setting when osd >= 3
-            pass
-
-        # waiting for rados completely ready
-        time.sleep(20)
+        print("osd core usage information:")
+        for t in self.tid2name:
+            check_res = os.popen(f"sudo taskset -pc {t}")
+            line = check_res.readline()
+            print(f"thread name: {self.tid2name[t]}, {line}", end="")
+        print()
 
     def general_post_processing(self):
         # killall
