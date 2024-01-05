@@ -490,6 +490,52 @@ class CPUFreqThread(Task):
         self.result.close()
         return result_dic
 
+
+class TUsageThread(Task):
+    def __init__(self, env, id, start_time):
+        super().__init__(env, id, start_time)
+        self.tu_target = env.args.tusage_target
+        self.tid2name = env.tid2name
+        self.pids = env.pid
+
+    def create_command(self):
+        command = f"ps H -o tid,%cpu,%mem -p "
+        for p in self.pids:
+            command += f"{p}"
+            command += f" & ps -o tid,%cpu,%mem -p {p}"
+        return command
+
+    def analyse(self):
+        result_dic = {}
+        line = self.result.readline()
+        mem_usage = None
+        while line:
+            temp_lis = line.split()
+            if temp_lis[0] == 'TID':
+                line = self.result.readline()
+                continue
+            t = temp_lis[0]
+            usage = float(temp_lis[1])
+            if not mem_usage:
+                mem_usage = float(temp_lis[2])
+            if t not in self.tid2name:
+                print(f"Warning: tid {t} not found in startup tid lists")
+                line = self.result.readline()
+                continue
+            t_name = self.tid2name[t]
+            if self.tu_target and t_name not in self.tu_target:
+                line = self.result.readline()
+                continue
+            name = f"cpu_{t_name}(%)"
+            if name in result_dic:
+                result_dic[name] += usage
+            else:
+                result_dic[name] = usage
+            line = self.result.readline()
+        result_dic['memory_usage(%)'] = mem_usage
+        return result_dic
+
+
 class TestFailError(Exception):
     def __init__(self, message, env):
         env.set_failure_signal()
@@ -893,6 +939,9 @@ class Environment():
         if self.args.freq:
             self.timepoint_threadclass_num_map[CPUFreqThread] = \
                 self.args.freq
+        if self.args.tusage:
+            self.timepoint_threadclass_num_map[TUsageThread] = \
+                self.args.tusage
 
         # 3. add the time continuous based case thread classes to the list.
         if self.args.perf:
@@ -1396,6 +1445,21 @@ if __name__ == "__main__":
     parser.add_argument('--freq',
                         type=int,
                         help='how many time point to collect cpu frequency information')
+    parser.add_argument('--tusage',
+                        type=int,
+                        help='how many time point to collect cpu usage for --tusage-name \
+                            target threads. If there is no --tusage-name, all osd threads \
+                            will be collected. Threads that are in same name will be added \
+                            together. The output will be named as usage_{thread name}')
+
+
+    parser.add_argument('--tusage-target',
+                        nargs='+',
+                        type=str,
+                        default=None,
+                        help='collect cpu usage of target thread name. You can input\
+                            multiple threads name. By default, all osd threads will be \
+                            collected.')
 
     # time continuous based thread param
     parser.add_argument('--perf',
