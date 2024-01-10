@@ -2,15 +2,15 @@
 
 rand_write: 1
 client: 1 2
-block_size: 4096
+block_size: 4K
 smp: 1 2
 time: 5
 tolerance_time: 5
 retry_limit: 2
 ---
 fio_rbd_rand_write: 1
-client: 2 4
-block_size: 4096
+client: 1 2
+block_size: 4K
 smp: 1 2
 time: 5
 tolerance_time: 5
