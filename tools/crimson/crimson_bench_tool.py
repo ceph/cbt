@@ -450,6 +450,7 @@ class IOStatThread(Task):
     def analyse(self):
         result_dic = {}
         line = self.result.readline()
+        print(line)
         while line:
             temp_lis = line.split()
             if temp_lis and temp_lis[0] == self.dev:
@@ -715,6 +716,7 @@ class TesterExecutor():
         return self.result_list
 
     def output(self, output, horizontal, filters):
+        print(f"writing results to {output}")
         f_result = open(output,"w")
         if horizontal:
             for key in self.result_list[0]:
@@ -908,6 +910,7 @@ class Environment():
         # vstart. change the command here if you want to set other start params
         command = f"OSD={str(self.args.osd)} MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
                 --without-dashboard --no-restart "
+        print(command)
         if self.args.crimson:
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
@@ -1138,6 +1141,7 @@ class Environment():
             "May":"05", "Jun":"06", "Jul":"07", "Aug":"08",
             "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12",
         }
+
         gitlog = os.popen("git log ..")
         line = gitlog.readline()
         commitID = None
