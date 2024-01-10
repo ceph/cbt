@@ -28,7 +28,8 @@ def prefix_match(prefix, target):
         return False
 
 def read_config(config_file, x = None, comp = None):
-    f = open(config_file, 'r')
+    config_file_pwd = f"{real_path}/{config_file}"
+    f = open(config_file_pwd, 'r')
     _config = yaml.safe_load_all(f.read())
     f.close()
 
@@ -54,11 +55,11 @@ def read_config(config_file, x = None, comp = None):
 
 def do_bench(configs, repeat):
     # all files' root for this auto bench test
-    root = ''
+    root = f"{real_path}"
     with os.popen("date +%Y%m%d.%H%M%S") as date:
         line = date.readline()
         res = line.split()[0]
-        root = f"autobench.{res}"
+        root = f"{root}/autobench.{res}"
     os.makedirs(root)
 
     # do bench
@@ -66,14 +67,15 @@ def do_bench(configs, repeat):
         repeat_path = f"{root}/rep:{repeat_id}"
         os.makedirs(repeat_path)
         for test_id, test_config in enumerate(configs):
-            command = "sudo ./crimson_bench_tool.py"
+            command = f"{real_path}/crimson_bench_tool.py"
             for key in test_config:
                 if key in no_value_attributes:
                     command += f" {trans(key)}"
                 else:
                     command += f" {trans(key)} {test_config[key]}"
-            test_path_prefix = f"./{repeat_path}/test:{test_id}"
+            test_path_prefix = f"{repeat_path}/test:{test_id}"
             command += f" --log {test_path_prefix}"
+            print(command)
             os.system(command)
     return root
 
@@ -263,6 +265,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     res_path_prefix = 'graphic'
     files = os.listdir('.')
+    real_path = (os.path.dirname(os.path.realpath(__file__)))
 
     _ana = 0
     if args.ana:
@@ -276,7 +279,7 @@ if __name__ == "__main__":
         root = do_bench(configs, args.repeat)
         results = read_results(root)
         print(root)
-        res_path = f"{res_path_prefix}.{root}"
+        res_path = f"{root}.{res_path_prefix}"
         delete_and_create_at_local(res_path)
         for y in args.y:
             analysed_results = adjust_results(results, y)

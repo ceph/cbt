@@ -1259,6 +1259,10 @@ if __name__ == "__main__":
                               correspondence with client list if not default. But if only input \
                               one value, this tool will automatically extend it to match the \
                               client list')
+    parser.add_argument('--build',
+                        type=str,
+                        default='.',
+                        help='build directory of ceph. Default to be .')
     parser.add_argument('--bench-taskset',
                         type=str,
                         default="1-32",
@@ -1424,6 +1428,9 @@ if __name__ == "__main__":
                             this task will automatically retry')
 
     args = parser.parse_args()
+
+    os.chdir(args.build)
+    print(f"target ceph build directory: {args.build}")
 
     # which item should not be showed in the output
     filters = []
