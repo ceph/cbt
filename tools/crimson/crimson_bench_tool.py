@@ -449,24 +449,29 @@ class IOStatThread(Task):
 
     def analyse(self):
         result_dic = {}
+        result_dic_index = {}
         line = self.result.readline()
         print(line)
         while line:
             temp_lis = line.split()
+            if temp_lis and temp_lis[0] == 'Device':
+                for index in range(len(temp_lis)):
+                        result_dic_index.__setitem__(temp_lis[index], index)
             if temp_lis and temp_lis[0] == self.dev:
-                result_dic['Device_IPS'] = float(temp_lis[1])
-                result_dic['Device_OPS'] = float(temp_lis[7]) 
+                result_dic['Device_IPS'] = float(result_dic_index['wrqm/s'])
+                result_dic['Device_OPS'] = float(result_dic_index['rrqm/s'])
                 result_dic['Device_Read(MB/s)'] \
-                        = round(float(temp_lis[2])/1000, 3)  # MB per second
+                        = round(float(result_dic_index['rkB/s'])/1000, 3)  # MB per second
                 result_dic['Device_Write(MB/s)'] \
-                        = round(float(temp_lis[8])/1000, 3)  # MB per second
-                result_dic['Device_aqu-sz'] = float(temp_lis[19]) 
+                        = round(float(temp_lis[result_dic_index['wkB/s']])/1000, 3)  # MB per second
+                result_dic['Device_aqu-sz'] = float(temp_lis[result_dic_index['aqu-sz']])
                 # The average queue length of the requests
-                result_dic['Device_Rawait(ms)'] = float(temp_lis[5]) # ms
-                result_dic['Device_Wawait(ms)'] = float(temp_lis[11]) # ms
+                result_dic['Device_Rawait(ms)'] = float(temp_lis[result_dic_index['r_await']]) # ms
+                result_dic['Device_Wawait(ms)'] = float(temp_lis[result_dic_index['w_await']]) # ms
                 break
             line = self.result.readline()
         self.result.close()
+        print(result_dic)
         return result_dic
 
 
