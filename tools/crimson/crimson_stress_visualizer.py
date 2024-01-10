@@ -471,7 +471,7 @@ if __name__ == "__main__":
     parser.add_argument('--task-args',
                         type=str,
                         nargs='+',
-                        help='Args passed to one task')
+                        help='Args passed to one task, e.g \'IOPS\' \'Core\'')
 
     parser.add_argument('--divide',
                         type=str,
