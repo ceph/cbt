@@ -90,7 +90,7 @@ class RadosRandWriteThread(Task):
         self.bandwidth_key = "rw_Bandwidth"
 
     def create_command(self):
-        rados_bench_write = "sudo taskset -c " + self.task_set \
+        rados_bench_write = "taskset -c " + self.task_set \
             + " bin/rados bench -p " + self.pool + " " \
             + self.time + " write -t " \
             + str(self.thread_num) + " -b " + self.block_size + " " \
@@ -124,7 +124,7 @@ class RadosSeqWriteThread(RadosRandWriteThread):
         self.block_size = env.args.block_size
 
     def create_command(self):
-        rados_bench_write = "sudo taskset -c " + self.task_set \
+        rados_bench_write = "taskset -c " + self.task_set \
             + " bin/rados bench -p " + self.pool + " " \
             + self.time + " write -t " \
             + str(self.thread_num) \
@@ -145,7 +145,7 @@ class RadosRandReadThread(RadosRandWriteThread):
         self.bandwidth_key = "rr_Bandwidth"
 
     def create_command(self):
-        rados_bench_rand_read = "sudo taskset -c " + self.task_set \
+        rados_bench_rand_read = "taskset -c " + self.task_set \
             + " bin/rados bench -p " + self.pool + " " \
             + self.time + " rand -t " \
             + str(self.thread_num) \
@@ -165,7 +165,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
         self.bandwidth_key = "sr_Bandwidth"
 
     def create_command(self):
-        rados_bench_seq_read = "sudo taskset -c " + self.task_set \
+        rados_bench_seq_read = "taskset -c " + self.task_set \
             + " bin/rados bench -p " + self.pool + " " \
             + self.time + " seq -t " \
             + str(self.thread_num) \
@@ -197,7 +197,7 @@ class FioRBDRandWriteThread(Task):
         return self.images.pop(0)  # atomic
 
     def create_command(self):
-        return "sudo taskset -c " + self.task_set \
+        return "taskset -c " + self.task_set \
             + " fio" \
             + " -ioengine=" + self.io_engine \
             + " -pool=" + str(self.pool) \
@@ -306,7 +306,7 @@ class ReactorUtilizationCollectorThread(Task):
             raise Exception("ru only support single osd for now.")
 
     def create_command(self):
-        command = "sudo taskset -c " + self.task_set \
+        command = "taskset -c " + self.task_set \
             + " bin/ceph tell " \
             + self.osd + " dump_metrics reactor_utilization"
         return command
@@ -335,7 +335,7 @@ class PerfThread(Task):
         self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "sudo taskset -c " + self.task_set \
+        command = "taskset -c " + self.task_set \
             + " perf stat --timeout " + str(self.last_time)
         command += " -e cpu-clock,context-switches,cpu-migrations," \
             + "cpu-migrations,cycles,instructions" \
@@ -398,7 +398,7 @@ class PerfRecordThread(Task):
         self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "sudo taskset -c " + self.task_set \
+        command = "taskset -c " + self.task_set \
             + " perf record -a -g"
         if self.pid_list:
             command += " -p "
@@ -423,7 +423,7 @@ class PerfRecordThread(Task):
             if file == "flamegraph.pl":
                 flamegraph = True
         if stackcollapse_perf and flamegraph:
-            command += " && sudo perf script -i " + self.task_log_path \
+            command += " && perf script -i " + self.task_log_path \
                 + ".perf.data | ./stackcollapse-perf.pl --all | ./flamegraph.pl > " \
                 + self.task_log_path + ".flamegraph.svg"
         else:
@@ -443,7 +443,7 @@ class IOStatThread(Task):
         self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "sudo taskset -c " + self.task_set \
+        command = "taskset -c " + self.task_set \
             + " iostat -x -k -d -y " + env.args.time + " 1"
         return command
 
@@ -517,7 +517,7 @@ class FailureDetect(threading.Thread):
     def run(self):
         time.sleep(1)
         wait_count = 1
-        p_pids = os.popen(f"sudo taskset -c {self.task_set} "\
+        p_pids = os.popen(f"taskset -c {self.task_set} "\
                           f"pidof {self.track_client}")
         res = p_pids.readline().split()
         while(len(res) != self.client_num):
@@ -525,14 +525,14 @@ class FailureDetect(threading.Thread):
             wait_count += 1
             if wait_count > self.time + self.tolerance_time:
                 raise TestFailError("Tester failed: clients startup failed.", self.env)
-            p_pids = os.popen(f"sudo taskset -c {self.task_set} "\
+            p_pids = os.popen(f"taskset -c {self.task_set} "\
                               f"pidof {self.track_client}")
             res = p_pids.readline().split()
 
         wait_time = 0
         while(wait_time < self.time + self.tolerance_time):
             # check osd
-            p_osd_pids_af = os.popen(f"sudo taskset -c {self.task_set} "\
+            p_osd_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_osd}")
             res = p_osd_pids_af.readline().split()
             if (not len(res)):
@@ -542,7 +542,7 @@ class FailureDetect(threading.Thread):
             time.sleep(1)
 
         # check clients
-        p_pids_af = os.popen(f"sudo taskset -c {self.task_set} "\
+        p_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_client}")
         res = p_pids_af.readline().split()
         if (len(res)):
@@ -906,8 +906,7 @@ class Environment():
             raise Exception("Can not read git log from ..")
 
         # vstart. change the command here if you want to set other start params
-        command = "sudo OSD=" + str(self.args.osd)
-        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
+        command = f"OSD={str(self.args.osd)} MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
                 --without-dashboard --no-restart "
         if self.args.crimson:
             command += "--crimson "
@@ -980,7 +979,8 @@ class Environment():
 
         # start ceph
         ceph_start_max_watting_time = 40
-        start_proc = Popen("exec " + command, shell=True, \
+        os.chdir('/home/matan/ceph/build/')
+        start_proc = Popen(command, shell=True, \
                            stdout=PIPE, encoding="utf-8")
         wait_count = 0
         done = start_proc.poll()
@@ -1031,24 +1031,24 @@ class Environment():
         if not self.args.crimson:
             core = self.smp_num * self.args.osd
             for p in self.pid:
-                os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(p))
+                os.system("taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
-                os.system("sudo taskset -pc 0-" + str(core-1) + " " + str(t))
+                os.system("taskset -pc 0-" + str(core-1) + " " + str(t))
 
         # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
         if self.args.crimson and backend == "bluestore":
             for t in self.tid_alien:
-                os.system(f"sudo taskset -pc {crimson_alien_thread_cpu_cores} {t}")
+                os.system(f"taskset -pc {crimson_alien_thread_cpu_cores} {t}")
 
         self.base_result['Core'] = self.smp_num * self.args.osd
 
         # pool
-        os.system(f"sudo bin/ceph osd pool create {self.pool} "
+        os.system(f"bin/ceph osd pool create {self.pool} "
                     f"{self.args.pg} {self.args.pg}")
         if self.pool_size:
-            os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+            os.system(f"bin/ceph osd pool set {self.pool}" \
                     f" size {self.pool_size} --yes-i-really-mean-it")
-            os.system(f"sudo bin/ceph osd pool set {self.pool}" \
+            os.system(f"bin/ceph osd pool set {self.pool}" \
                     f" min_size {self.pool_size} --yes-i-really-mean-it")
         else:
             # use ceph default setting when osd >= 3
@@ -1158,7 +1158,7 @@ class Environment():
         for i in range(self.client_num):
             image_name = image_name_prefix + str(i)
             print(image_name)
-            command = "sudo bin/rbd create " + image_name \
+            command = "bin/rbd create " + image_name \
                 + " --size 20G --image-format=2 \
                     --rbd_default_features=3 --pool " + self.pool
             command += " 2>/dev/null"
@@ -1182,7 +1182,7 @@ class Environment():
         class ImageWriteThread(threading.Thread):
             def __init__(self, image, args_time):
                 super().__init__()
-                self.command = "sudo fio" \
+                self.command = "fio" \
                     + " -ioengine=" + "rbd" \
                     + " -pool=" + pool \
                     + " -rbdname=" + image \
@@ -1221,7 +1221,7 @@ class Environment():
         else:
             time = 5 * int(self.args.time)
         thread_num = self.thread_num
-        env_write_command = "sudo bin/rados bench -p " + self.pool + " " \
+        env_write_command = "bin/rados bench -p " + self.pool + " " \
             + str(time) + " write -t " \
             + str(thread_num) + " -b " + str(block_size) + " " \
             + "--no-cleanup"
