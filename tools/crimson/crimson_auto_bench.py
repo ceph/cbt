@@ -10,7 +10,10 @@ import matplotlib.pyplot as plt
     test:{test_id} is the output directory from crimson_bench_tool.
 
     graphic directory:
-    graphic.autobench.{date}/test:{test_id}
+    autobench.{date}.graphic
+
+    cross analyse graphic directory:
+    autobench.{date1}.autobench.{date2}.graphic
 '''
 
 no_value_attributes= ['crimson', 'output_horizontal', 'perf', \
@@ -266,46 +269,62 @@ def adjust_results(results, y):
         all_test_res.append(test_res)
     return all_test_res
 
-def draw(analysed_results, configs, x, y, res_path, comp):
-    for test_id, test in enumerate(analysed_results):
-        if test == []:
-            print('failed happen')
-            continue
-        if comp and test_id+1 not in comp:
-            continue
-        x_data = configs[test_id][x].split()
-        y_data = test
-        y_data_mean = list()
-        for items in y_data:
-            y_data_mean.append(sum(items)/len(items))
+def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
+    for auto_bench_id, analysed_results in enumerate(m_analysed_results):
+        configs = m_configs[auto_bench_id]
+        output_auto_bench_name = None
+        if alias:
+            output_auto_bench_name = alias[auto_bench_id]
+        else:
+            output_auto_bench_name = f"bench_{auto_bench_id}"
+        comp = None
+        if m_comp:
+            comp = m_comp[auto_bench_id]
+        for test_id, test in enumerate(analysed_results):
+            if test == []:
+                print('failed happen')
+                continue
+            if comp and test_id+1 not in comp:
+                continue
+            x_data = configs[test_id][x].split()
+            y_data = test
+            y_data_mean = list()
+            for items in y_data:
+                y_data_mean.append(sum(items)/len(items))
 
-        df = pd.DataFrame({f'{x}':[], f'{y}':[]})
-        for x_id, x_content in enumerate(x_data):
-            for y_content in y_data[x_id]:
-                df.loc[len(df.index)] = {f'{x}': x_content, f'{y}' : y_content}
+            df = pd.DataFrame({f'{x}':[], f'{y}':[]})
+            for x_id, x_content in enumerate(x_data):
+                for y_content in y_data[x_id]:
+                    df.loc[len(df.index)] = {f'{x}': x_content, f'{y}' : y_content}
 
-        plt.title(f"{x}-{y}".lower())
-        plt.xlabel(f"{x}")
-        plt.ylabel(f"{y}")
-        plt.plot(f'{x}', f'{y}', data=df, linestyle='none',\
-                 marker='o', label=f'test_{test_id}')
-        plt.plot(x_data, y_data_mean, linestyle='-', label=f'test_{test_id} mean')
-        plt.legend()
-        # TODO: additional information to graphics
-        if not comp:
-            plt.savefig(f'{res_path}/test:{test_id}_x:{x}_y:{y}.png'.lower())
-            plt.close()
+            plt.title(f"{x}-{y}".lower())
+            plt.xlabel(f"{x}")
+            plt.ylabel(f"{y}")
+            plt.plot(f'{x}', f'{y}', data=df, linestyle='none',\
+                    marker='o', label=f'{output_auto_bench_name}_test_{test_id}')
+            plt.plot(x_data, y_data_mean, linestyle='-', \
+                     label=f'{output_auto_bench_name}_test_{test_id} mean')
+            plt.grid(True, color='gray', linestyle='--')
+            plt.legend()
+            # TODO: additional information to graphics
+            if not comp:
+                plt.savefig(f"{res_path}/{output_auto_bench_name}_test"\
+                            f":{test_id}_x:{x}_y:{y}.png".lower(), dpi=500)
+                plt.close()
 
-        # raw data to csv
-        df.to_csv(f'{res_path}/test:{test_id}_x:{x}_y:{y}.csv'.lower())
-        # average to csv
-        df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
-        for x_id, x_content in enumerate(x_data):
-            df_avg.loc[len(df_avg.index)] = \
-                {f'{x}': x_content, f'{y}_avg' : y_data_mean[x_id]}
-        df_avg.to_csv(f'{res_path}/test:{test_id}_x:{x}_y:{y}_avg.csv'.lower())
-    if comp:
-        plt.savefig(f'{res_path}/test_x:{x}_y:{y}.png'.lower())
+            # raw data to csv
+            df.to_csv(f"{res_path}/{output_auto_bench_name}_test"\
+                      f":{test_id}_x:{x}_y:{y}.csv".lower())
+            # average to csv
+            df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
+            for x_id, x_content in enumerate(x_data):
+                df_avg.loc[len(df_avg.index)] = \
+                    {f"{x}": x_content, f'{y}_avg' : y_data_mean[x_id]}
+            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}_test"\
+                          f":{test_id}_x:{x}_y:{y}_avg.csv".lower())
+
+    if m_comp:
+        plt.savefig(f'{res_path}/test_x:{x}_y:{y}.png'.lower(), dpi=500)
         plt.close()
 
 if __name__ == "__main__":
@@ -318,17 +337,28 @@ if __name__ == "__main__":
                         action='store_true',
                         help= "only do bench")
     parser.add_argument('--ana',
+                        nargs='+',
                         type=str,
                         default=None,
-                        help= "the root directory storing the raw bench data, to"\
-                            " adjust results and draw pictures. require --x, --y")
+                        help= "input the root directory storing the auto bench results, to"\
+                            " adjust results and draw pictures. require --x, --y."\
+                            " You can input mulitiple root bench results directory,"\
+                            " and input --comp to do cross auto bench analyse")
     parser.add_argument('--comp',
                         nargs='+',
-                        type=int,
+                        type=str,
                         default=None,
                         help= "will merge target index tests into one graphics. The "\
                             "index corresponds to the order in which the configuration "\
-                            "appears in the config file.")
+                            "appears in the config file."\
+                            "Index in different auto bench results shuold be divided by"\
+                            " space, index in same auto bench results should be divided by ,")
+    parser.add_argument('--alias',
+                        nargs='+',
+                        type=str,
+                        default=None,
+                        help= "alias for each auto bench results correspoding to --ana"\
+                            "This alias will show in output graphics")
     parser.add_argument('--clean',
                         action='store_true',
                         help= "remove all history graphic and bench results")
@@ -355,7 +385,7 @@ if __name__ == "__main__":
                         help="the label name of y asix of the result graphics, IOPS by default")
 
     args = parser.parse_args()
-    res_path_prefix = 'graphic'
+    res_path_suffix = 'graphic'
     files = os.listdir('.')
     real_path = (os.path.dirname(os.path.realpath(__file__)))
 
@@ -366,16 +396,25 @@ if __name__ == "__main__":
         raise Exception("Error: should run in one of run/bench/ana/clean")
     if args.run:
         if not args.x:
-            raise Exception("Error should input --x to run")
-        configs = read_config(args.config, x=args.x, comp=args.comp)
+            raise Exception("Error: should input --x to run")
+        if len(args.comp) != 1:
+            raise Exception("Error: should only do one auto bench when --run")
+        comp = None
+        if args.comp:
+            comp = list()
+            _comp = args.comp[0].split(',')
+            for index in _comp:
+                comp.append(int(index))
+        configs = read_config(args.config, x=args.x, comp=comp)
         root = do_bench(args.config, configs, args.repeat)
         results = read_results(root)
         print(root)
-        res_path = f"{root}.{res_path_prefix}"
+        res_path = f"{root}.{res_path_suffix}"
         delete_and_create_at_local(res_path)
         for y in args.y:
             analysed_results = adjust_results(results, y)
-            draw(analysed_results, configs, args.x, y, res_path, args.comp)
+            draw([analysed_results], [configs], args.x, y, res_path, \
+                 [comp], args.alias)
 
     if args.bench:
         configs = read_config(args.config)
@@ -383,20 +422,53 @@ if __name__ == "__main__":
         print(root)
 
     if args.ana:
-        root = ''
-        if args.ana[-1] == '/':
-            root = args.ana[:-1]
-        else:
-            root = args.ana
+        roots = list()
+        for root in args.ana:
+            if root[-1] == '/':
+                roots.append(root[:-1])
+            else:
+                roots.append(root)
         if not args.x:
             raise Exception("Error: should input --x to analyse")
-        configs = read_config(f"{root}/config.yaml", x=args.x, comp=args.comp)
-        results = read_results(root)
-        res_path = f"{res_path_prefix}.{root}"
+        if args.comp and len(args.ana) != len(args.comp):
+            raise Exception("Error: len of --comp shuold match the len of --ana")
+        if args.alias and len(args.ana) != len(args.alias):
+            raise Exception("Error: len of --alias shuold match the len of --ana")
+        if len(args.ana) > 1 and not args.comp:
+            raise Exception("Error: must use --comp when len of --ana > 1, which means"\
+                            " you must use comp mode if you want to anaylse multiple auto"\
+                            " bench results")
+        m_configs = list()
+        m_results = list()
+        m_comp = None
+        if args.comp:
+            m_comp = list()
+        res_path = ''
+        for root_index, root in enumerate(roots):
+            comp = None
+            if args.comp:
+                comp = list()
+                _comp = args.comp[root_index].split(',')
+                for index in _comp:
+                    comp.append(int(index))
+                m_comp.append(comp)
+
+            configs = read_config(f"{root}/config.yaml", x=args.x, comp=comp)
+            results = read_results(root)
+
+            res_path += f"{root}."
+            m_configs.append(configs)
+            m_results.append(results)
+        res_path += f"{res_path_suffix}"
         delete_and_create_at_local(res_path)
+
         for y in args.y:
-            analysed_results = adjust_results(results, y)
-            draw(analysed_results, configs, args.x, y, res_path, args.comp)
+            m_analysed_results = list()
+            for results in m_results:
+                analysed_results = adjust_results(results, y)
+                m_analysed_results.append(analysed_results)
+            draw(m_analysed_results, m_configs, args.x, y, res_path, \
+                 m_comp, args.alias)
 
     if args.clean:
         os.system("sudo rm -rf autobench.*")
