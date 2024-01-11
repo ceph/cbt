@@ -412,7 +412,7 @@ class PerfRecordThread(Task):
         command += " 2>&1"
 
         # generate fire flame if there are stackcollapse-perf.pl
-        # and flamegraph.pl in the current directory
+        # and flamegraph.pl in the build directory
         # these tools are in https://github.com/brendangregg/FlameGraph
         stackcollapse_perf = False
         flamegraph = False
