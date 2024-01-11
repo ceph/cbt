@@ -161,6 +161,8 @@ def do_bench(config_file, configs, repeat):
             for key in test_config:
                 if key in no_value_attributes:
                     command += f" {trans(key)}"
+                elif key == 'alias':
+                    pass
                 else:
                     command += f" {trans(key)} {test_config[key]}"
             test_path_prefix = f"{repeat_path}/test:{test_id}"
@@ -287,6 +289,11 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
             if comp and test_id+1 not in comp:
                 continue
             x_data = configs[test_id][x].split()
+            test_alias = None
+            if 'alias' in configs[test_id]:
+                test_alias = configs[test_id]['alias']
+            else:
+                test_alias = f"test_{test_id}"
             y_data = test
             y_data_mean = list()
             for items in y_data:
@@ -301,27 +308,27 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
             plt.xlabel(f"{x}")
             plt.ylabel(f"{y}")
             plt.plot(f'{x}', f'{y}', data=df, linestyle='none',\
-                    marker='o', label=f'{output_auto_bench_name}_test_{test_id}')
+                    marker='o', label=f'{output_auto_bench_name}_{test_alias}')
             plt.plot(x_data, y_data_mean, linestyle='-', \
-                     label=f'{output_auto_bench_name}_test_{test_id} mean')
+                     label=f'{output_auto_bench_name}_{test_alias} mean')
             plt.grid(True, color='gray', linestyle='--')
             plt.legend()
             # TODO: additional information to graphics
             if not comp:
-                plt.savefig(f"{res_path}/{output_auto_bench_name}_test"\
-                            f":{test_id}_x:{x}_y:{y}.png".lower(), dpi=500)
+                plt.savefig(f"{res_path}/{output_auto_bench_name}_"\
+                            f"{test_alias}_x:{x}_y:{y}.png".lower(), dpi=500)
                 plt.close()
 
             # raw data to csv
-            df.to_csv(f"{res_path}/{output_auto_bench_name}_test"\
-                      f":{test_id}_x:{x}_y:{y}.csv".lower())
+            df.to_csv(f"{res_path}/{output_auto_bench_name}_"\
+                      f"{test_alias}_x:{x}_y:{y}.csv".lower())
             # average to csv
             df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
             for x_id, x_content in enumerate(x_data):
                 df_avg.loc[len(df_avg.index)] = \
                     {f"{x}": x_content, f'{y}_avg' : y_data_mean[x_id]}
-            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}_test"\
-                          f":{test_id}_x:{x}_y:{y}_avg.csv".lower())
+            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}_"\
+                          f"{test_alias}_x:{x}_y:{y}_avg.csv".lower())
 
     if m_comp:
         plt.savefig(f'{res_path}/test_x:{x}_y:{y}.png'.lower(), dpi=500)
@@ -366,7 +373,8 @@ if __name__ == "__main__":
     parser.add_argument('--config',
                         type=str,
                         default="bench_config.yaml",
-                        help="bench config yaml file path, bench_config.yaml by default")
+                        help="bench config yaml file path, bench_config.yaml by default."\
+                            "You can add alias label for every test, which will show in graphic.")
 
     parser.add_argument('--repeat',
                         type=int,
