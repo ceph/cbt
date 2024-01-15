@@ -844,6 +844,9 @@ class Environment():
         self.failure_osd_log = ""
         self.FAILURE_SIGNAL = False
 
+        if self.args.dev:
+            self.root_protect(self.args.dev)
+
         if len(self.args.smp) == 1:
             for _ in self.args.client:
                 self.smp_list.append(self.args.smp[0])
@@ -1230,6 +1233,24 @@ class Environment():
                 last = ll[0]
             line = lsblk.readline()
         return par
+
+    def root_protect(self, dev):
+        protect_dir = '/'
+        tgt_par = dev.split('/')[-1]
+        lsblk = os.popen("lsblk")
+        disk = None
+        line = lsblk.readline()
+        while line:
+            ll = line.split()
+            if ll[0][0:2] == '├─' or ll[0][0:2] == '└─':
+                par = ll[0][2:]
+            if ll[0][0:2] != '├─' and ll[0][0:2] != '└─':
+                disk = ll[0]
+            if ll[-1] == protect_dir:
+                if disk == tgt_par or par == tgt_par:
+                    raise Exception("Be awake! You should not write "\
+                                    "to the disk/partition that root exist!")
+            line = lsblk.readline()
 
     def get_version_and_commitID(self):
         month_dic={
