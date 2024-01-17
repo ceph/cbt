@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import re
+import sys
 from subprocess import Popen, PIPE
 
 # Divid all test threads into three categories, Test Case Based Thread, Time
@@ -20,7 +21,7 @@ from subprocess import Popen, PIPE
 # in the class Environmen to extend this tool.
 # set the start_time to decide when will the test start after thread starts.
 class Task(threading.Thread):
-    def __init__(self, env, id, start_time=0):
+    def __init__(self, env, id, start_time=0, disable_log=False):
         super().__init__()
         self.env = env
         self.thread_num = env.thread_num
@@ -30,6 +31,7 @@ class Task(threading.Thread):
         self.id = id #(tester_id, thread_id)
         self.task_log_path = f"{env.tester_log_path}/" \
             f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
+        self.disable_log = disable_log
 
     # rewrite method create_command() to define the command
     # this class will execute
@@ -42,7 +44,7 @@ class Task(threading.Thread):
         command = self.create_command()
         print(command)
 
-        proc = Popen("exec " + command, shell=True, \
+        proc = Popen(command, shell=True, \
                      stdout=PIPE, encoding="utf-8")
         done = proc.poll()
         fail = self.env.check_failure()
@@ -51,13 +53,16 @@ class Task(threading.Thread):
             done = proc.poll()
             fail = self.env.check_failure()
         if done is not None:
-            ret = proc.stdout.read()
-            with open(self.task_log_path, "w") as f:
-                f.write(ret)
-            f.close()
-            self.result = open(self.task_log_path, "r")
+            ret = proc.stdout
+            if self.disable_log:
+                self.result = ret
+            else:
+                with open(self.task_log_path, "w") as f:
+                    f.write(ret.read())
+                f.close()
+                self.result = open(self.task_log_path, "r")
         if fail:
-            proc.kill()
+            os.system(f"kill -9 {proc.pid}")
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -390,7 +395,7 @@ class PerfThread(Task):
 
 class PerfRecordThread(Task):
     def __init__(self, env, id):
-        super().__init__(env, id)
+        super().__init__(env, id, disable_log=True)
         # perf record from 1/4 time to 1/2 time
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
@@ -436,7 +441,7 @@ class PerfRecordThread(Task):
 
 class IOStatThread(Task):
     def __init__(self, env, id):
-        super().__init__(env, id)
+        super().__init__(env, id, disable_log=True)
         # iostat record from 1/4 time to 1/2 time
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
@@ -555,7 +560,7 @@ class TestFailError(Exception):
         return self.message
 
 class FailureDetect(threading.Thread):
-    def __init__(self, env):
+    def __init__(self, env, time_limit):
         super().__init__()
         self.time = int(env.args.time)
         self.task_set = env.args.bench_taskset
@@ -565,13 +570,8 @@ class FailureDetect(threading.Thread):
         self.track_client = "bin/rados fio"
         self.track_osd = "crimson-osd ceph-osd"
 
-        # if client still alive after waiting for time + tolerance_time,
-        # this detector will consider this tester failed.
-        if env.args.tolerance_time:
-            self.tolerance_time = env.args.tolerance_time
-        else:
-            self.tolerance_time = self.time
-        print(f"retry tolerance time: {self.tolerance_time}s")
+        self.time_limit = time_limit
+        print(f"retry time limit: {time_limit}s")
 
     def run(self):
         time.sleep(1)
@@ -582,14 +582,14 @@ class FailureDetect(threading.Thread):
         while(len(res) != self.client_num):
             time.sleep(1)
             wait_count += 1
-            if wait_count > self.time + self.tolerance_time:
+            if wait_count > self.time_limit:
                 raise TestFailError("Tester failed: clients startup failed.", self.env)
             p_pids = os.popen(f"taskset -c {self.task_set} "\
                               f"pidof {self.track_client}")
             res = p_pids.readline().split()
 
         wait_time = 0
-        while(wait_time < self.time + self.tolerance_time):
+        while(wait_time < self.time_limit):
             # check osd
             p_osd_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_osd}")
@@ -646,7 +646,14 @@ class Tester():
             self.timecontinuous_tasks.append(thread(self.env, task_id))
             thread_id += 1
 
-        self.detector = FailureDetect(self.env)
+        # if client still alive after waiting for time + tolerance_time,
+        # the detector will consider this tester failed.
+        time_limit = 0
+        if self.env.args.tolerance_time:
+            time_limit = int(self.env.time) + int(self.env.args.tolerance_time)
+        else:
+            time_limit = int(self.env.args.time) + int(self.env.args.time)
+        self.detector = FailureDetect(self.env, time_limit)
 
     def run(self):
         print("client num:%d, thread num:%d testing"
@@ -717,16 +724,6 @@ class Tester():
         test_case_result['Client_num'] = self.client_num
         return test_case_result
 
-    def rollback(self, retry_count):
-        tester_failure_log_path = f"{self.env.failure_osd_log}/"\
-            f"{self.tester_id}_{retry_count}/"
-        os.makedirs(tester_failure_log_path)
-        os.system(f"sudo mv out/osd.* {tester_failure_log_path}")
-        os.system(f"sudo rm -rf {self.env.tester_log_path}")
-
-        self.env.general_post_processing()
-        self.env.reset_failure_signal()
-
 
 class TesterExecutor():
     def __init__(self):
@@ -761,8 +758,8 @@ class TesterExecutor():
                         print("will retry...")
                         retry_count += 1
                         test_case_result = dict()
+                        self.rollback(env, tester_id, retry_count)
                         if tester:
-                            tester.rollback(retry_count)
                             del tester
                     else:
                         succeed = True
@@ -772,6 +769,16 @@ class TesterExecutor():
 
     def get_result_list(self):
         return self.result_list
+
+    def rollback(self, env, tester_id, retry_count):
+        tester_failure_log_path = f"{env.failure_osd_log}/"\
+            f"{tester_id}_{retry_count}/"
+        os.makedirs(tester_failure_log_path)
+        os.system(f"mv out/osd.* {tester_failure_log_path}")
+        os.system(f"rm -rf {env.tester_log_path}")
+
+        env.general_post_processing()
+        env.reset_failure_signal()
 
     def output(self, output, horizontal, filters):
         print(f"writing results to {output}")
@@ -1068,7 +1075,7 @@ class Environment():
         print(command)
         # start ceph
         ceph_start_max_watting_time = 40
-        start_proc = Popen("exec " + command, shell=True, \
+        start_proc = Popen(command, shell=True, \
                            stdout=PIPE, encoding="utf-8")
         wait_count = 0
         done = start_proc.poll()
@@ -1077,7 +1084,7 @@ class Environment():
             done = start_proc.poll()
             wait_count += 1
             if wait_count > ceph_start_max_watting_time:
-                start_proc.kill()
+                os.system(f"kill -9 {start_proc.pid}")
                 raise TestFailError("Tester failed: osd startup failed.", self)
 
         # pool
@@ -1100,6 +1107,7 @@ class Environment():
             time.sleep(1)
             wait_count += 1
             if wait_count > ceph_start_max_watting_time:
+                os.system(f"kill -9 {start_proc.pid}")
                 raise TestFailError("Tester failed: osd startup failed.", self)
             p_pid = os.popen("pidof crimson-osd ceph-osd")
             line = p_pid.readline().split()
@@ -1164,8 +1172,8 @@ class Environment():
 
     def general_post_processing(self):
         # killall
-        os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
-                crimson-osd rados fio node")
+        os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
+                "crimson-osd rados fio node ceph ceph-run")
         # delete dev
         os.system("sudo rm -rf ./dev/* ./out/*")
         self.pid = list()
@@ -1292,41 +1300,55 @@ class Environment():
 
     # will fullly prewrite the image with the same block size as read by default.
     def fio_pre_write(self):
-        print('fio pre write START.')
-        pool = self.pool
-        thread_num = self.thread_num
-        bs = ""
-        if self.args.warmup_block_size:
-            bs = self.args.warmup_block_size
-        else:
-            bs = self.args.block_size
-        class ImageWriteThread(threading.Thread):
-            def __init__(self, image, args_time):
-                super().__init__()
-                self.command = "fio" \
+        class ImageWriteThread(Task):
+            def __init__(self, image, env):
+                super().__init__(env, id=('', ''), start_time=0, disable_log=True)
+                self.env = env
+                self.bs = ""
+                self.image = image
+                if env.args.warmup_block_size:
+                    self.bs = env.args.warmup_block_size
+                else:
+                    self.bs = env.args.block_size
+            def create_command(self):
+                command = "fio" \
                     + " -ioengine=" + "rbd" \
-                    + " -pool=" + pool \
-                    + " -rbdname=" + image \
+                    + " -pool=" + self.env.pool \
+                    + " -rbdname=" + self.image \
                     + " -direct=1" \
-                    + " -iodepth=" + str(thread_num) \
+                    + " -iodepth=" + str(self.env.thread_num) \
                     + " -rw=write" \
-                    + " -bs=" + str(bs) \
+                    + " -bs=" + str(self.bs) \
                     + " -numjobs=1" \
                     + " -group_reporting -name=fio"
-                if args_time:
-                    self.command += " -runtime=" + str(args_time)
+                if self.env.args.warmup_time:
+                    command += " -runtime=" + str(self.env.args.warmup_time)
                 else:
-                    self.command += " -size=100%"
-            def run(self):
-                print(self.command)
-                os.system(self.command + " >/dev/null")
+                    command += " -size=100%"
+                command += " >/dev/null"
+                return command
+
+        print('fio pre write START.')
         thread_list = []
         for image in self.images:
-            thread_list.append(ImageWriteThread(image, self.args.warmup_time))
+            thread_list.append(ImageWriteThread(image, self))
+        time_limit = 0
+        if self.args.warmup_time:
+            if self.args.tolerance_time:
+                time_limit = int(self.args.warmup_time) + int(self.args.tolerance_time)
+            else:
+                time_limit = int(self.args.warmup_time) + int(self.args.warmup_time)
+        else:
+            time_limit = sys.maxsize
+        detector = FailureDetect(self, time_limit)
         for thread in thread_list:
             thread.start()
+        detector.start()
         for thread in thread_list:
             thread.join()
+        detector.join()
+        if self.check_failure():
+            raise TestFailError("Warmup Failed", self)
         print('fio pre write OK.')
 
     def rados_pre_write(self):
