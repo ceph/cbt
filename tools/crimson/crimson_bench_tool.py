@@ -416,23 +416,12 @@ class PerfRecordThread(Task):
         command += str(self.last_time)
         command += " 2>&1"
 
-        # generate fire flame if there are stackcollapse-perf.pl
-        # and flamegraph.pl in the build directory
+        # generate fire flame
+        # stackcollapse-perf.pl and flamegraph.pl should be in the build directory
         # these tools are in https://github.com/brendangregg/FlameGraph
-        stackcollapse_perf = False
-        flamegraph = False
-        file_list = os.listdir('.')
-        for file in file_list:
-            if file ==  "stackcollapse-perf.pl":
-                stackcollapse_perf = True
-            if file == "flamegraph.pl":
-                flamegraph = True
-        if stackcollapse_perf and flamegraph:
-            command += " && perf script -i " + self.task_log_path \
-                + ".perf.data | ./stackcollapse-perf.pl --all | ./flamegraph.pl > " \
-                + self.task_log_path + ".flamegraph.svg"
-        else:
-            print("cannot find flamegraph scripts, will not generate flamegraph.")
+        command += " && perf script -i " + self.task_log_path \
+            + ".perf.data | ./stackcollapse-perf.pl --all | ./flamegraph.pl > " \
+            + self.task_log_path + ".flamegraph.svg"
         return command
 
     def analyse(self):
@@ -1381,6 +1370,32 @@ class Environment():
     def check_failure(self):
         return self.FAILURE_SIGNAL
 
+def software_dependency_check(args):
+    def not_exist(tgt):
+        res = os.popen(f"whereis {tgt}")
+        if len(res.readline().split()) == 1:
+            print(f"{tgt} not exist!")
+            return True
+        else:
+            return False
+    no_pass = False
+    if (args.fio_rbd_rand_read or args.fio_rbd_rand_write \
+        or args.fio_rbd_seq_read or args.fio_rbd_seq_write):
+        no_pass += not_exist('fio')
+    if (args.perf or args.perf_record):
+        no_pass += not_exist('perf')
+    if args.perf_record:
+        files = os.listdir('.')
+        if 'stackcollapse-perf.pl' not in files or \
+            'flamegraph.pl' not in files:
+            print("cannot find flamegraph scripts: stackcollapse-perf.pl " \
+                  "and flamegraph.pl at build directory.")
+            no_pass += 1
+    if args.iostat:
+        no_pass += not_exist('iostat')
+    if no_pass:
+        raise Exception("software dependency check not passed.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
@@ -1601,6 +1616,7 @@ if __name__ == "__main__":
 
     os.chdir(args.build)
     print(f"target ceph build directory: {args.build}")
+    software_dependency_check(args)
 
     # which item should not be showed in the output
     filters = []
