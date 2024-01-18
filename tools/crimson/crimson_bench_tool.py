@@ -1037,6 +1037,24 @@ class Environment():
         if backend == "memstore":
             command += " -o 'memstore_device_bytes = 8G'"
 
+        # customize ceph config
+        if self.args.ceph_config:
+            f_configs = open(self.args.ceph_config, "r")
+            line = f_configs.readline()
+            while line:
+                items = line.split()
+                _osd = items[0]
+                _store = items[1]
+                _name = items[2]
+                _values = items[3: len(items)]
+                if (self.args.crimson and _osd == "crimson") \
+                    or (not self.args.crimson and _osd == "classic"):
+                    if self.args.store == _store:
+                        command += f" -o '{_name} = {_values[self.test_case_id]}'"
+                line = f_configs.readline()
+            f_configs.close()
+
+        print(command)
         # start ceph
         ceph_start_max_watting_time = 40
         os.chdir('/home/matan/ceph/build/')
@@ -1502,6 +1520,17 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help='set ms_async_op_threads.')
+    parser.add_argument('--ceph-config',
+                        type=str,
+                        default=None,
+                        help='customize ceph configs file path. The format should be \
+                            osd_type store_type config_name value1 value2 value3...\
+                            e.g. crimson bluestore osd_op_num_shards 2 4 6. You can \
+                            input multiple line for multiple customize configs. \
+                            The number of value should corresponding to the number of \
+                            test cases. If the osd_type and store_type in the file do \
+                            not match the osd, store param type of this tool, that \
+                            config will not be effective.')
 
     parser.add_argument('--retry-limit',
                         type=int,
