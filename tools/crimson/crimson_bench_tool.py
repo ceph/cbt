@@ -567,7 +567,11 @@ class FailureDetect(threading.Thread):
 
         # if client still alive after waiting for time + tolerance_time,
         # this detector will consider this tester failed.
-        self.tolerance_time = env.args.tolerance_time
+        if env.args.tolerance_time:
+            self.tolerance_time = env.args.tolerance_time
+        else:
+            self.tolerance_time = self.time
+        print(f"retry tolerance time: {self.tolerance_time}s")
 
     def run(self):
         time.sleep(1)
@@ -951,10 +955,14 @@ class Environment():
         if self.args.iostat:
             self.timecontinuous_threadclass_list.append(IOStatThread)
 
-    def general_pre_processing(self):
+    def general_pre_processing(self, tester_id):
         os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
                 crimson-osd rados node")
         os.system("sudo rm -rf ./dev/* ./out/*")
+
+        # prepare test group directory
+        self.tester_log_path = self.log+"/"+str(tester_id)
+        os.makedirs(self.tester_log_path)
 
         # get ceph version
         version, commitID = self.get_version_and_commitID()
@@ -965,9 +973,9 @@ class Environment():
             raise Exception("Can not read git log from ..")
 
         # vstart. change the command here if you want to set other start params
-        command = f"OSD={str(self.args.osd)} MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x \
-                --without-dashboard --no-restart "
-        print(command)
+        command = "OSD=" + str(self.args.osd)
+        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x " \
+                "--without-dashboard --no-restart "
         if self.args.crimson:
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
@@ -1057,8 +1065,7 @@ class Environment():
         print(command)
         # start ceph
         ceph_start_max_watting_time = 40
-        os.chdir('/home/matan/ceph/build/')
-        start_proc = Popen(command, shell=True, \
+        start_proc = Popen("exec " + command, shell=True, \
                            stdout=PIPE, encoding="utf-8")
         wait_count = 0
         done = start_proc.poll()
@@ -1084,10 +1091,13 @@ class Environment():
 
         # waiting for rados completely ready
         time.sleep(20)
-
         # find osd pids
+        wait_count = 0
         while not self.pid:
             time.sleep(1)
+            wait_count += 1
+            if wait_count > ceph_start_max_watting_time:
+                raise TestFailError("Tester failed: osd startup failed.", self)
             p_pid = os.popen("pidof crimson-osd ceph-osd")
             line = p_pid.readline().split()
             for item in line:
@@ -1140,10 +1150,13 @@ class Environment():
         self.base_result['Core'] = self.smp_num * self.args.osd
 
         print("osd core usage information:")
+        proc_path = f"{self.tester_log_path}/proc.txt"
+        os.system(f"touch {proc_path}")
         for t in self.tid2name:
             check_res = os.popen(f"sudo taskset -pc {t}")
             line = check_res.readline()
             print(f"thread name: {self.tid2name[t]}, {line}", end="")
+            os.system(f"echo \"thread name: {self.tid2name[t]}, {line}\" >> {proc_path}")
         print()
 
     def general_post_processing(self):
@@ -1158,11 +1171,8 @@ class Environment():
         # group gap
         time.sleep(self.args.gap)
 
-    def pre_processing(self, tester_id):
+    def pre_processing(self):
         print('pre processing...')
-        # prepare test group directory
-        self.tester_log_path = self.log+"/"+str(tester_id)
-        os.makedirs(self.tester_log_path)
 
         for thread in self.testclient_threadclass_ratio_map:
             thread.pre_process(self)
@@ -1198,8 +1208,8 @@ class Environment():
 
     def before_run_case(self, tester_id):
         print(f"Running the {self.test_case_id} th test case")
-        self.general_pre_processing()
-        self.pre_processing(tester_id)
+        self.general_pre_processing(tester_id)
+        self.pre_processing()
 
     def after_run_case(self, test_case_result):
         self.post_processing(test_case_result)
@@ -1538,10 +1548,11 @@ if __name__ == "__main__":
                         help='max retry limit for every test client')
     parser.add_argument('--tolerance-time',
                         type=int,
-                        default=10,
+                        default=None,
                         help='tolerance time for every test client, if waiting for a task \
-                            more than time+tolerance time, this task will be considered as failed and \
-                            this task will automatically retry')
+                            more than time+tolerance time, this task will be considered as \
+                            failed and this task will automatically retry. By default, \
+                            tolerance time will be the same as the --time')
 
     args = parser.parse_args()
 
