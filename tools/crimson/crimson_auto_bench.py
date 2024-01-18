@@ -113,11 +113,15 @@ def read_config(config_file, x = None, comp = None):
     for config in _config:
         configs.append(config)
 
+        for key in config:
+            if key in no_value_attributes and config[key] != True:
+                raise Exception("Error: no value attributes should only be True")
+
     if x:
         for config in configs:
             if args.x not in config:
                 raise Exception("Error: x param should exist in config yaml file")
-            if len(config[args.x]) <= 1:
+            if type(config[args.x]) != str or len(config[args.x].split()) <= 1:
                 raise Exception("Error: cannot use single param as x axis")
     if comp:
         if not x:
@@ -127,9 +131,13 @@ def read_config(config_file, x = None, comp = None):
             if config[x] != same_x:
                 raise Exception("Error: x must be the same "\
                                 "between different test in --comp mode")
+        for index in comp:
+            if index > len(configs) or index <= 0:
+                raise Exception(f"Error: comp index error. Shoud between" \
+                                f" 1-{len(configs)}")
     return configs
 
-def do_bench(configs, repeat):
+def do_bench(config_file, configs, repeat):
     # all files' root for this auto bench test
     root = f"{real_path}"
     with os.popen("date +%Y%m%d.%H%M%S") as date:
@@ -262,6 +270,8 @@ def draw(analysed_results, configs, x, y, res_path, comp):
         if test == []:
             print('failed happen')
             continue
+        if comp and test_id+1 not in comp:
+            continue
         x_data = configs[test_id][x].split()
         y_data = test
         y_data_mean = list()
@@ -310,11 +320,14 @@ if __name__ == "__main__":
                         type=str,
                         default=None,
                         help= "the root directory storing the raw bench data, to"\
-                            " adjust results and draw pictures."\
-                            " require --x, --y, config file should match the results.")
+                            " adjust results and draw pictures. require --x, --y")
     parser.add_argument('--comp',
-                        action='store_true',
-                        help= "will merge multiple test into one graphics")
+                        nargs='+',
+                        type=int,
+                        default=None,
+                        help= "will merge target index tests into one graphics. The "\
+                            "index corresponds to the order in which the configuration "\
+                            "appears in the config file.")
     parser.add_argument('--clean',
                         action='store_true',
                         help= "remove all history graphic and bench results")
@@ -354,7 +367,7 @@ if __name__ == "__main__":
         if not args.x:
             raise Exception("Error should input --x to run")
         configs = read_config(args.config, x=args.x, comp=args.comp)
-        root = do_bench(configs, args.repeat)
+        root = do_bench(args.config, configs, args.repeat)
         results = read_results(root)
         print(root)
         res_path = f"{root}.{res_path_prefix}"
@@ -365,15 +378,20 @@ if __name__ == "__main__":
 
     if args.bench:
         configs = read_config(args.config)
-        root = do_bench(configs, args.repeat)
+        root = do_bench(args.config, configs, args.repeat)
         print(root)
 
     if args.ana:
+        root = ''
+        if args.ana[-1] == '/':
+            root = args.ana[:-1]
+        else:
+            root = args.ana
         if not args.x:
             raise Exception("Error: should input --x to analyse")
-        configs = read_config(args.config, x=args.x, comp=args.comp)
-        results = read_results(args.ana)
-        res_path = f"{res_path_prefix}.{args.ana}"
+        configs = read_config(f"{root}/config.yaml", x=args.x, comp=args.comp)
+        results = read_results(root)
+        res_path = f"{res_path_prefix}.{root}"
         delete_and_create_at_local(res_path)
         for y in args.y:
             analysed_results = adjust_results(results, y)
