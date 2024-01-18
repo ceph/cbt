@@ -743,6 +743,9 @@ class TesterExecutor():
                         temp_result = tester.run()
                         test_case_result = env.base_result.copy()
                         test_case_result.update(temp_result)
+                        if env.args.full_result:
+                            test_case_result.update(env.additional_result.copy())
+                        test_case_result.update({'==========':'=============='})
                     except TestFailError:
                         print("will retry...")
                         retry_count += 1
@@ -814,6 +817,7 @@ class Environment():
         self.timecontinuous_threadclass_list = []
         self.smp_list = []
         self.base_result = dict()
+        self.additional_result = dict()
         self.pid = list()
         self.tid = list() # without alien threads
         self.tid_alien = list()
@@ -859,6 +863,7 @@ class Environment():
         else:
             if self.args.osd < 3:
                 self.pool_size = self.args.osd
+        self.additional_result['Pool_size'] = self.pool_size
 
         # prepare log directory
         if not self.args.log:
@@ -1009,6 +1014,7 @@ class Environment():
                 op_num_threads = \
                     self.args.crimson_alien_op_num_threads[self.test_case_id]
             command += f" -o 'crimson_alien_op_num_threads = {op_num_threads}'"
+            self.additional_result['alien_op_num_threads'] = op_num_threads
             if self.args.crimson_alien_thread_cpu_cores:
                 crimson_alien_thread_cpu_cores = \
                     self.args.crimson_alien_thread_cpu_cores[self.test_case_id]
@@ -1023,26 +1029,37 @@ class Environment():
             else:
                 crimson_alien_thread_cpu_cores = f"0-{self.smp_num - 1}"
             command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
+            self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
         if not self.args.crimson:
             if self.args.osd_op_num_shards:
                 command += f" -o 'osd_op_num_shards = "\
                     f"{self.args.osd_op_num_shards[self.test_case_id]}'"
+                self.additional_result['osd_op_num_shards'] = self.args.osd_op_num_shards
             else:
                 if self.smp_num <= 8:
                     command += " -o 'osd_op_num_shards = 8'"
+                    self.additional_result['osd_op_num_shards'] = '8'
                 else:
                     command += f" -o 'osd_op_num_shards = {self.smp_num}'"
+                    self.additional_result['osd_op_num_shards'] = self.smp_num
             if self.args.osd_op_num_threads_per_shard:
                 command += f" -o 'osd_op_num_threads_per_shard = "\
                     f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
+                self.additional_result['osd_op_num_threads_per_shard'] = \
+                    self.args.osd_op_num_threads_per_shard[self.test_case_id]
             if self.args.ms_async_op_threads:
                 command += f" -o 'ms_async_op_threads = "\
                     f"{self.args.ms_async_op_threads[self.test_case_id]}'"
+                self.additional_result['ms_async_op_threads'] = \
+                    self.args.ms_async_op_threads[self.test_case_id]
         if backend == "seastore":
             command += " -o 'seastore_cache_lru_size = 512M'"
             command += " -o 'seastore_max_concurrent_transactions = 128'"
+            self.additional_result['cache_lru_size'] = '512M'
+            self.additional_result['max_concurrent_transactions'] = '128'
         if backend == "memstore":
             command += " -o 'memstore_device_bytes = 8G'"
+            self.additional_result['memstore_device_bytes'] = '8G'
 
         # customize ceph config
         if self.args.ceph_config:
@@ -1158,6 +1175,16 @@ class Environment():
             print(f"thread name: {self.tid2name[t]}, {line}", end="")
             os.system(f"echo \"thread name: {self.tid2name[t]}, {line}\" >> {proc_path}")
         print()
+
+        # additional results
+        self.additional_result['PG'] = self.args.pg
+        if self.args.warmup_block_size:
+            self.additional_result['warmup_block_size'] = self.args.warmup_block_size
+        if self.args.warmup_time:
+            self.additional_result['warmup_time'] = self.args.warmup_time
+        if self.args.dev:
+            self.additional_result['device'] = self.args.dev
+        self.additional_result['bench_thread_taskset'] = self.args.bench_taskset
 
     def general_post_processing(self):
         # killall
@@ -1483,6 +1510,9 @@ if __name__ == "__main__":
                     dir name and store all tasks results and osd log and osd stdout.\
                     e.g. By default, log directory might be named log_20231222.165125\
                     _crimson_bluestore_osd:1_ps:1')
+    parser.add_argument('--full-result',
+                        action='store_true',
+                        help='output full results, including ceph config etc.')
     parser.add_argument('--gap',
                         type=int,
                         default = 1,
