@@ -22,10 +22,86 @@ def trans(param):
     return res
 
 def prefix_match(prefix, target):
+    prefix = prefix.lower()
+    target = target.lower()
     if target[:len(prefix)] == prefix:
         return True
     else:
         return False
+
+def get_version_and_commitID():
+    month_dic={
+        "Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04",
+        "May":"05", "Jun":"06", "Jul":"07", "Aug":"08",
+        "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12",
+    }
+    gitlog = os.popen("git log ..")
+    line = gitlog.readline()
+    commitID = None
+    version = None
+    while line:
+        ll = line.split()
+        if ll[0] == "commit" :
+            commitID = ll[1][:8]
+        if ll[0] == "Date:":
+            version = ll[5] + month_dic[ll[2]] + ll[3]
+            break
+        line = gitlog.readline()
+    return version, commitID
+
+def record_system_info(root, configs):
+    path = f"{root}/sys_info.txt"
+    os.system(f"touch {path}")
+
+    os.system(f"echo \"0.Ceph Source Code Info\">> {path}")
+    version, commitID = get_version_and_commitID()
+    os.system(f"echo \"version: {version}\" >> {path}")
+    os.system(f"echo \"commit ID: {commitID}\" >> {path}")
+    os.system(f"echo >> {path}")
+
+    os.system(f"echo \"1.Linux Release\">> {path}")
+    os.system(f"lsb_release -a >> {path}")
+    os.system(f"echo >> {path}")
+
+    os.system(f"echo \"2.Linux Kernel\">> {path}")
+    os.system(f"uname -r  >> {path}")
+    os.system(f"echo >> {path}")
+
+    os.system(f"echo \"3.CPU\" >> {path}")
+    os.system(f"lscpu >> {path}")
+    os.system(f"echo >> {path}")
+
+    os.system(f"echo \"4.Disk\" >> {path}")
+    os.system(f"lsblk -O --raw -a >> {path}")
+    os.system(f"echo >> {path}")
+    os.system(f"sudo fdisk -l >> {path}")
+    os.system(f"echo >> {path}")
+    # will only show device detail configed in config yaml
+    devs = set()
+    for config in configs:
+        if 'dev' in config:
+            devs.add(config['dev'])
+    for dev_id, dev in enumerate(devs):
+        os.system(f"echo \"4.{dev_id+1} Disk: {dev}\" >> {path}")
+        if dev[5:8] == 'nvm':
+            os.system(f"sudo nvme id-ctrl {dev} >> {path}")
+        else:
+            os.system(f"sudo hdparm -I {dev} >> {path}")
+        os.system(f"echo >> {path}")
+
+    os.system(f"echo \"5.Memory\" >> {path}")
+    os.system(f"lsmem >> {path}")
+    os.system(f"echo >> {path}")
+    os.system(f"sudo dmidecode -t memory >> {path}")
+    os.system(f"echo >> {path}")
+
+    os.system(f"echo \"6.Board\" >> {path}")
+    os.system(f"sudo dmidecode|grep -A16 \"System Information$\" >> {path}")
+    os.system(f"echo >> {path}")
+
+    os.system(f"echo \"7.PCIe\" >> {path}")
+    os.system(f"lspci -vv >> {path}")
+    os.system(f"echo >> {path}")
 
 def read_config(config_file, x = None, comp = None):
     config_file_pwd = f"{real_path}/{config_file}"
@@ -61,6 +137,8 @@ def do_bench(configs, repeat):
         res = line.split()[0]
         root = f"{root}/autobench.{res}"
     os.makedirs(root)
+    record_system_info(root, configs)
+    os.system(f"cp {config_file} {root}/config.yaml")
 
     # do bench
     for repeat_id in range(repeat):
@@ -88,7 +166,7 @@ def read_results(root):
         first = True
         os.system(f"touch {failure_path}")
 
-    repeat = len(os.listdir(root)) - 1
+    repeat = len(os.listdir(root)) - 3 # skip config.yaml, failure_log.txt, sys_info.txt
     # read root directory to get results
     results = dict()
     # results - repeat_results - test_results - (tester_id, all results)
