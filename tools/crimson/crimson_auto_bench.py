@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
     graphic.autobench.{date}/test:{test_id}
 '''
 
-no_value_attributes= ['crimson', 'output_horizontal', 'perf', 'perf_record']
+no_value_attributes= ['crimson', 'output_horizontal', 'perf', \
+                      'perf_record', 'iostat']
 
 # transfer to crimson_bench_tool param
 def trans(param):

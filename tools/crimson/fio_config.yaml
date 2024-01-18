@@ -7,4 +7,4 @@ tolerance_time: 5
 retry_limit: 2
 crimson: True
 store: bluestore
-iostat: 6
+iostat: True

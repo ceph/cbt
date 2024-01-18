@@ -1,20 +1,23 @@
 # this is an example for the config file of crimson_auto_bench
 
+alias: eg.0.classic
 rand_write: 1
 client: 1 2
 block_size: 4K
 smp: 1 2
 time: 5
-tolerance_time: 5
+tolerance_time: 10
 retry_limit: 2
+iostat: True
 ---
-fio_rbd_rand_write: 1
+alias: eg.1.crimson
+rand_write: 1
 client: 1 2
 block_size: 4K
 smp: 1 2
 time: 5
-tolerance_time: 5
+tolerance_time: 10
 retry_limit: 2
 crimson: True
 store: bluestore
-iostat: 6
+iostat: True

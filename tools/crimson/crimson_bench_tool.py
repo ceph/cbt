@@ -435,16 +435,19 @@ class PerfRecordThread(Task):
         return result_dic
 
 class IOStatThread(Task):
-    def __init__(self, env, id, start_time):
-        super().__init__(env, id, start_time)
+    def __init__(self, env, id):
+        super().__init__(env, id)
+        # iostat record from 1/4 time to 1/2 time
+        self.start_time = round(int(env.args.time) * 0.25)
+        self.last_time = round(int(env.args.time) * 0.5)
         self.dev = "sda"  # default if no args.dev
         if env.args.dev:
             self.dev = env.get_disk_name()
         self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "taskset -c " + self.task_set \
-            + " iostat -x -k -d -y " + env.args.time + " 1"
+        command = f"taskset -c {self.task_set} "\
+            f"iostat -p {self.dev} -xkdy interval {self.last_time} 1"
         return command
 
     def analyse(self):
@@ -933,9 +936,6 @@ class Environment():
         if self.args.ru:
             self.timepoint_threadclass_num_map[ReactorUtilizationCollectorThread] = \
                 self.args.ru
-        if self.args.iostat:
-            self.timepoint_threadclass_num_map[IOStatThread] = \
-                self.args.iostat
         if self.args.freq:
             self.timepoint_threadclass_num_map[CPUFreqThread] = \
                 self.args.freq
@@ -948,6 +948,8 @@ class Environment():
             self.timecontinuous_threadclass_list.append(PerfThread)
         if self.args.perf_record:
             self.timecontinuous_threadclass_list.append(PerfRecordThread)
+        if self.args.iostat:
+            self.timecontinuous_threadclass_list.append(IOStatThread)
 
     def general_pre_processing(self):
         os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
@@ -1439,9 +1441,6 @@ if __name__ == "__main__":
                         type=int,
                         help='how many time point to collect the \
                             reactor utilization')
-    parser.add_argument('--iostat',
-                        type=int,
-                        help='how many time point to collect iostat information')
     parser.add_argument('--freq',
                         type=int,
                         help='how many time point to collect cpu frequency information')
@@ -1468,6 +1467,9 @@ if __name__ == "__main__":
     parser.add_argument('--perf-record',
                         action='store_true',
                         help='collect perf record information')
+    parser.add_argument('--iostat',
+                        action='store_true',
+                        help='collect iostat information')
 
     # ceph config param
     parser.add_argument('--crimson-alien-op-num-threads',
