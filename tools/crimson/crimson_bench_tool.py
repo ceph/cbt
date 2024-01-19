@@ -61,6 +61,7 @@ class Task(threading.Thread):
                     f.write(ret.read())
                 f.close()
                 self.result = open(self.task_log_path, "r")
+            self.env.set_task_done()
         if fail:
             os.system(f"kill -9 {proc.pid}")
 
@@ -536,6 +537,7 @@ class TUsageThread(Task):
 class TestFailError(Exception):
     def __init__(self, message, env):
         env.set_failure_signal()
+        self.env = env
         self.message = message
         with os.popen("date +%H:%M:%S") as date:
             line = date.readline()
@@ -578,7 +580,8 @@ class FailureDetect(threading.Thread):
             res = p_pids.readline().split()
 
         wait_time = 0
-        while(wait_time < self.time_limit):
+        while(wait_time < self.time_limit and \
+              self.env.check_task_done() != self.client_num):
             # check osd
             p_osd_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_osd}")
@@ -591,11 +594,21 @@ class FailureDetect(threading.Thread):
 
         # check clients
         p_pids_af = os.popen(f"taskset -c {self.task_set} "\
-                             f"pidof {self.track_client}")
+                                f"pidof {self.track_client}")
         res = p_pids_af.readline().split()
+        remain_clients = len(res)
+        while(wait_time < self.time_limit and remain_clients != 0):
+
+            p_pids_af = os.popen(f"taskset -c {self.task_set} "\
+                                f"pidof {self.track_client}")
+            res = p_pids_af.readline().split()
+            remain_clients = len(res)
+
+            wait_time += 1
+            time.sleep(1)
+
         if (len(res)):
             raise TestFailError("Tester failed: client didn't close.", self.env)
-
 
 class Tester():
     def __init__(self, env, tester_id):
@@ -842,6 +855,8 @@ class Environment():
         self.tester_log_path = ""
         self.failure_log = ""
         self.failure_osd_log = ""
+        self.DONE = 0
+        self.DONE_LOCK = threading.Lock()
         self.FAILURE_SIGNAL = False
 
         if self.args.dev:
@@ -1241,6 +1256,7 @@ class Environment():
     def after_run_case(self, test_case_result):
         self.post_processing(test_case_result)
         self.general_post_processing()
+        self.reset_task_done()
         self.test_case_id += 1
 
     def get_disk_name(self):
@@ -1387,6 +1403,17 @@ class Environment():
         print(env_write_command)
         os.system(env_write_command + " >/dev/null")
         print('rados pre write OK.')
+
+    def set_task_done(self):
+        self.DONE_LOCK.acquire()
+        self.DONE += 1
+        self.DONE_LOCK.release()
+
+    def check_task_done(self):
+        return self.DONE
+
+    def reset_task_done(self):
+        self.DONE = 0
 
     def set_failure_signal(self):
         self.FAILURE_SIGNAL = True
