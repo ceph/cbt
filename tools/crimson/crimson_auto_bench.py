@@ -150,7 +150,7 @@ def do_bench(config_file, configs, repeat):
         root = f"{root}/autobench.{res}"
     os.makedirs(root)
     record_system_info(root, configs)
-    os.system(f"cp {config_file} {root}/config.yaml")
+    os.system(f"cp {real_path}/{config_file} {root}/config.yaml")
 
     # do bench
     for repeat_id in range(repeat):
@@ -461,8 +461,8 @@ if __name__ == "__main__":
                     comp.append(int(index))
                 m_comp.append(comp)
 
-            configs = read_config(f"{root}/config.yaml", x=args.x, comp=comp)
-            results = read_results(root)
+            configs = read_config(f"{real_path}/{root}/config.yaml", x=args.x, comp=comp)
+            results = read_results(f"{real_path}/{root}")
 
             res_path += f"{root}."
             m_configs.append(configs)
@@ -479,5 +479,5 @@ if __name__ == "__main__":
                  m_comp, args.alias)
 
     if args.clean:
-        os.system("sudo rm -rf autobench.*")
-        os.system("sudo rm -rf graphic.autobench.*")
+        os.system(f"sudo rm -rf {real_path}/autobench.*")
+        os.system(f"sudo rm -rf {real_path}/graphic.autobench.*")
