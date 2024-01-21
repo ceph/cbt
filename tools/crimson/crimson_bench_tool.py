@@ -639,7 +639,7 @@ class Tester():
         # the detector will consider this tester failed.
         time_limit = 0
         if self.env.args.tolerance_time:
-            time_limit = int(self.env.time) + int(self.env.args.tolerance_time)
+            time_limit = int(self.env.args.time) + int(self.env.args.tolerance_time)
         else:
             time_limit = int(self.env.args.time) + int(self.env.args.time)
         self.detector = FailureDetect(self.env, time_limit)
