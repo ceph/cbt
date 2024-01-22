@@ -61,6 +61,7 @@ class Task(threading.Thread):
                     f.write(ret.read())
                 f.close()
                 self.result = open(self.task_log_path, "r")
+            self.env.set_task_done()
         if fail:
             os.system(f"kill -9 {proc.pid}")
 
@@ -185,6 +186,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
 class FioRBDRandWriteThread(Task):
     def __init__(self, env, id):
         super().__init__(env, id)
+        self.args = env.args
         self.task_set = env.args.bench_taskset
         self.rw = "randwrite"
         self.io_depth = env.thread_num
@@ -202,7 +204,7 @@ class FioRBDRandWriteThread(Task):
         return self.images.pop(0)  # atomic
 
     def create_command(self):
-        return "taskset -c " + self.task_set \
+        command = "taskset -c " + self.task_set \
             + " fio" \
             + " -ioengine=" + self.io_engine \
             + " -pool=" + str(self.pool) \
@@ -215,6 +217,11 @@ class FioRBDRandWriteThread(Task):
             + " -runtime=" + self.run_time \
             + " -group_reporting" \
             + " -name=fio"
+        if self.rw == 'randwrite':
+            command += f' -random_distribution {self.args.fio_random_distribution}'
+            if self.args.fio_norandommap:
+                command += ' -norandommap'
+        return command
 
     def analyse(self):
         result_dic = {}
@@ -239,12 +246,14 @@ class FioRBDRandWriteThread(Task):
 
     @staticmethod
     def pre_process(env):
-        env.create_images()
+        env.create_images(env.args.fio_rbd_image_size)
 
     @staticmethod
     def post_process(env, test_case_result):
         # clear the images record in class env
         env.remove_images()
+        test_case_result.update({'Image_size': env.args.fio_rbd_image_size})
+        test_case_result.update({'Distribution': env.args.fio_random_distribution})
 
 
 class FioRBDRandReadThread(FioRBDRandWriteThread):
@@ -257,12 +266,13 @@ class FioRBDRandReadThread(FioRBDRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.create_images()
+        env.create_images(env.args.fio_rbd_image_size)
         env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
+        test_case_result.update({'Image_size': env.args.fio_rbd_image_size})
 
 
 class FioRBDSeqReadThread(FioRBDRandWriteThread):
@@ -275,12 +285,13 @@ class FioRBDSeqReadThread(FioRBDRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.create_images()
+        env.create_images(env.args.fio_rbd_image_size)
         env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
+        test_case_result.update({'Image_size': env.args.fio_rbd_image_size})
 
 
 class FioRBDSeqWriteThread(FioRBDRandWriteThread):
@@ -294,12 +305,13 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
 
     @staticmethod
     def pre_process(env):
-        env.create_images()
+        env.create_images(env.args.fio_rbd_image_size)
         env.rados_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
         env.remove_images()
+        test_case_result.update({'Image_size': env.args.fio_rbd_image_size})
 
 
 class ReactorUtilizationCollectorThread(Task):
@@ -536,6 +548,7 @@ class TUsageThread(Task):
 class TestFailError(Exception):
     def __init__(self, message, env):
         env.set_failure_signal()
+        self.env = env
         self.message = message
         with os.popen("date +%H:%M:%S") as date:
             line = date.readline()
@@ -578,7 +591,8 @@ class FailureDetect(threading.Thread):
             res = p_pids.readline().split()
 
         wait_time = 0
-        while(wait_time < self.time_limit):
+        while(wait_time < self.time_limit and \
+              self.env.check_task_done() != self.client_num):
             # check osd
             p_osd_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_osd}")
@@ -591,11 +605,21 @@ class FailureDetect(threading.Thread):
 
         # check clients
         p_pids_af = os.popen(f"taskset -c {self.task_set} "\
-                             f"pidof {self.track_client}")
+                                f"pidof {self.track_client}")
         res = p_pids_af.readline().split()
+        remain_clients = len(res)
+        while(wait_time < self.time_limit and remain_clients != 0):
+
+            p_pids_af = os.popen(f"taskset -c {self.task_set} "\
+                                f"pidof {self.track_client}")
+            res = p_pids_af.readline().split()
+            remain_clients = len(res)
+
+            wait_time += 1
+            time.sleep(1)
+
         if (len(res)):
             raise TestFailError("Tester failed: client didn't close.", self.env)
-
 
 class Tester():
     def __init__(self, env, tester_id):
@@ -842,6 +866,8 @@ class Environment():
         self.tester_log_path = ""
         self.failure_log = ""
         self.failure_osd_log = ""
+        self.DONE = 0
+        self.DONE_LOCK = threading.Lock()
         self.FAILURE_SIGNAL = False
 
         if self.args.dev:
@@ -1241,6 +1267,7 @@ class Environment():
     def after_run_case(self, test_case_result):
         self.post_processing(test_case_result)
         self.general_post_processing()
+        self.reset_task_done()
         self.test_case_id += 1
 
     def get_disk_name(self):
@@ -1297,16 +1324,17 @@ class Environment():
             line = gitlog.readline()
         return version, commitID
 
-    def create_images(self):
+    def create_images(self, image_size):
         image_name_prefix = "images_"
         # must be client_num here.
         for i in range(self.client_num):
             image_name = image_name_prefix + str(i)
             print(image_name)
-            command = "bin/rbd create " + image_name \
-                + " --size 20G --image-format=2 \
-                    --rbd_default_features=3 --pool " + self.pool
-            command += " 2>/dev/null"
+            command = f"bin/rbd create {image_name}" \
+                        f" --size {image_size} --image-format=2" \
+                        f" --rbd_default_features=3 --pool {self.pool}" \
+                        f" 2>/dev/null"
+            print(command)
             os.system(command)
             self.images.append(image_name)
         print('images create OK.')
@@ -1326,6 +1354,7 @@ class Environment():
                     self.bs = env.args.warmup_block_size
                 else:
                     self.bs = env.args.block_size
+                print(f'fio prewrite warmup block size: {self.bs}')
             def create_command(self):
                 command = "fio" \
                     + " -ioengine=" + "rbd" \
@@ -1339,8 +1368,12 @@ class Environment():
                     + " -group_reporting -name=fio"
                 if self.env.args.warmup_time:
                     command += " -runtime=" + str(self.env.args.warmup_time)
+                    print(f"fio prewrite warmup time: "\
+                          f"{self.env.args.warmup_time}s, writing...")
                 else:
                     command += " -size=100%"
+                    print('no config for fio prewrite warmup time, will keep '\
+                          'pre writing until the rbd image is full, writing...')
                 command += " >/dev/null"
                 return command
 
@@ -1355,7 +1388,9 @@ class Environment():
             else:
                 time_limit = int(self.args.warmup_time) + int(self.args.warmup_time)
         else:
-            time_limit = sys.maxsize
+            # cannot know how much time will fio cost to fully pre write the image,
+            # so set 1200s here temporarily.
+            time_limit = 1200
         detector = FailureDetect(self, time_limit)
         for thread in thread_list:
             thread.start()
@@ -1387,6 +1422,17 @@ class Environment():
         print(env_write_command)
         os.system(env_write_command + " >/dev/null")
         print('rados pre write OK.')
+
+    def set_task_done(self):
+        self.DONE_LOCK.acquire()
+        self.DONE += 1
+        self.DONE_LOCK.release()
+
+    def check_task_done(self):
+        return self.DONE
+
+    def reset_task_done(self):
+        self.DONE = 0
 
     def set_failure_signal(self):
         self.FAILURE_SIGNAL = True
@@ -1551,6 +1597,18 @@ if __name__ == "__main__":
                         type=float,
                         default=0,
                         help='ratio of fio seq read clients')
+    parser.add_argument('--fio-rbd-image-size',
+                        type=str,
+                        default='20G',
+                        help='fio rbd image size')
+    parser.add_argument('--fio-random-distribution',
+                        type=str,
+                        default='random',
+                        help='e.g. random/zipf:1.2/pareto, only for fio rbd rand write')
+    parser.add_argument('--fio-norandommap',
+                        action='store_true',
+                        help='do not cover exists block of the file when doing random I/O,'\
+                            'only for fio rbd rand write')
 
     # time point based thread param
     parser.add_argument('--ru',
