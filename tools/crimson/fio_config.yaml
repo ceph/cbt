@@ -1,3 +1,15 @@
+alias: eg.0.classic
+fio_rbd_rand_write: 1
+client: 1 1
+block_size: 4K
+smp: 1 2
+time: 5
+tolerance_time: 5
+retry_limit: 2
+store: bluestore
+iostat: True
+---
+alias: eg.1.crimson
 fio_rbd_rand_write: 1
 client: 1 1
 block_size: 4K
