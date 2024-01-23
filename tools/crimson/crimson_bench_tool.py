@@ -790,7 +790,7 @@ class TesterExecutor():
         tester_failure_log_path = f"{env.failure_osd_log}/"\
             f"{tester_id}_{retry_count}/"
         os.makedirs(tester_failure_log_path)
-        os.system(f"mv out/osd.* {tester_failure_log_path}")
+        os.system(f"mv out/* {tester_failure_log_path}")
         os.system(f"rm -rf {env.tester_log_path}")
 
         env.general_post_processing()
