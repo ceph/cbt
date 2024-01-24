@@ -40,7 +40,17 @@ class Task(threading.Thread):
 
     # don't need to rewite this method
     def run(self):
-        time.sleep(self.start_time)
+        wait_time = 0
+        fail = self.env.check_failure()
+        while not fail:
+            time.sleep(1)
+            wait_time += 1
+            if wait_time >= self.start_time:
+                break
+            fail = self.env.check_failure()
+        if fail:
+            return
+
         command = self.create_command()
         print(command)
 
