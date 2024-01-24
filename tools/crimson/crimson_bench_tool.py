@@ -71,7 +71,9 @@ class Task(threading.Thread):
                     f.write(ret.read())
                 f.close()
                 self.result = open(self.task_log_path, "r")
-            self.env.set_task_done()
+            if type(self) in self.env.testclient_threadclass_ratio_map \
+                or type(self) in self.env.prewrite_threadclass_list:
+                self.env.set_task_done()
         if fail:
             os.system(f"kill -9 {proc.pid}")
 
@@ -804,7 +806,6 @@ class TesterExecutor():
         os.system(f"rm -rf {env.tester_log_path}")
 
         env.general_post_processing()
-        env.reset_failure_signal()
 
     def output(self, output, horizontal, filters):
         print(f"writing results to {output}")
@@ -849,6 +850,7 @@ class Environment():
         self.testclient_threadclass_ratio_map = {}
         self.timepoint_threadclass_num_map = {}
         self.timecontinuous_threadclass_list = []
+        self.prewrite_threadclass_list = []
         self.smp_list = []
         self.base_result = dict()
         self.additional_result = dict()
@@ -1231,6 +1233,10 @@ class Environment():
         self.pid = list()
         self.tid = list()
 
+        # reset task control singal
+        self.reset_failure_signal()
+        self.reset_task_done()
+
         # group gap
         time.sleep(self.args.gap)
 
@@ -1277,7 +1283,6 @@ class Environment():
     def after_run_case(self, test_case_result):
         self.post_processing(test_case_result)
         self.general_post_processing()
-        self.reset_task_done()
         self.test_case_id += 1
 
     def get_disk_name(self):
@@ -1387,6 +1392,10 @@ class Environment():
                 command += " >/dev/null"
                 return command
 
+        if self.args.warmup_time and self.args.warmup_time == '0':
+            return
+
+        self.prewrite_threadclass_list.append(ImageWriteThread)
         print('fio pre write START.')
         thread_list = []
         for image in self.images:
@@ -1411,6 +1420,7 @@ class Environment():
         if self.check_failure():
             raise TestFailError("Warmup Failed", self)
         print('fio pre write OK.')
+        env.reset_task_done()
 
     def rados_pre_write(self):
         print('rados pre write START.')
