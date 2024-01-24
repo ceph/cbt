@@ -584,19 +584,19 @@ class FailureDetect(threading.Thread):
         self.track_client = "bin/rados fio"
         self.track_osd = "crimson-osd ceph-osd"
 
+        self.wait_for_client_start_time_limit = int(env.args.time)
         self.time_limit = time_limit
         print(f"retry time limit: {time_limit}s")
 
     def run(self):
-        time.sleep(1)
-        wait_count = 1
+        wait_count = 0
         p_pids = os.popen(f"taskset -c {self.task_set} "\
                           f"pidof {self.track_client}")
         res = p_pids.readline().split()
         while(len(res) != self.client_num):
             time.sleep(1)
             wait_count += 1
-            if wait_count > self.time_limit:
+            if wait_count > self.wait_for_client_start_time_limit:
                 raise TestFailError("Tester failed: clients startup failed.", self.env)
             p_pids = os.popen(f"taskset -c {self.task_set} "\
                               f"pidof {self.track_client}")
@@ -998,9 +998,9 @@ class Environment():
             self.timecontinuous_threadclass_list.append(IOStatThread)
 
     def general_pre_processing(self, tester_id):
-        os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
-                crimson-osd rados node")
-        os.system("sudo rm -rf ./dev/* ./out/*")
+        os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
+                "crimson-osd rados fio node ceph ceph-run")
+        os.system("rm -rf ./dev/* ./out/*")
 
         # prepare test group directory
         self.tester_log_path = self.log+"/"+str(tester_id)
@@ -1121,6 +1121,7 @@ class Environment():
         ceph_start_max_watting_time = 40
         start_proc = Popen(command, shell=True, \
                            stdout=PIPE, encoding="utf-8")
+        print(f'ceph start retry time limit: {ceph_start_max_watting_time}s')
         wait_count = 0
         done = start_proc.poll()
         while done is None:
@@ -1208,7 +1209,7 @@ class Environment():
         proc_path = f"{self.tester_log_path}/proc.txt"
         os.system(f"touch {proc_path}")
         for t in self.tid2name:
-            check_res = os.popen(f"sudo taskset -pc {t}")
+            check_res = os.popen(f"taskset -pc {t}")
             line = check_res.readline()
             print(f"thread name: {self.tid2name[t]}, {line}", end="")
             os.system(f"echo \"thread name: {self.tid2name[t]}, {line}\" >> {proc_path}")
@@ -1229,7 +1230,7 @@ class Environment():
         os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
                 "crimson-osd rados fio node ceph ceph-run")
         # delete dev
-        os.system("sudo rm -rf ./dev/* ./out/*")
+        os.system("rm -rf ./dev/* ./out/*")
         self.pid = list()
         self.tid = list()
 
@@ -1273,7 +1274,7 @@ class Environment():
                         test_case_result.pop(key)
 
         # move osd log to log path before remove them
-        os.system("sudo mv out/osd.* " + self.tester_log_path + "/")
+        os.system("mv out/osd.* " + self.tester_log_path + "/")
 
     def before_run_case(self, tester_id):
         print(f"Running the {self.test_case_id} th test case")
