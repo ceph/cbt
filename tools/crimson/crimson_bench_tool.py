@@ -40,7 +40,17 @@ class Task(threading.Thread):
 
     # don't need to rewite this method
     def run(self):
-        time.sleep(self.start_time)
+        wait_time = 0
+        fail = self.env.check_failure()
+        while not fail:
+            time.sleep(1)
+            wait_time += 1
+            if wait_time >= self.start_time:
+                break
+            fail = self.env.check_failure()
+        if fail:
+            return
+
         command = self.create_command()
         print(command)
 
@@ -61,7 +71,9 @@ class Task(threading.Thread):
                     f.write(ret.read())
                 f.close()
                 self.result = open(self.task_log_path, "r")
-            self.env.set_task_done()
+            if type(self) in self.env.testclient_threadclass_ratio_map \
+                or type(self) in self.env.prewrite_threadclass_list:
+                self.env.set_task_done()
         if fail:
             os.system(f"kill -9 {proc.pid}")
 
@@ -572,19 +584,19 @@ class FailureDetect(threading.Thread):
         self.track_client = "bin/rados fio"
         self.track_osd = "crimson-osd ceph-osd"
 
+        self.wait_for_client_start_time_limit = int(env.args.time)
         self.time_limit = time_limit
         print(f"retry time limit: {time_limit}s")
 
     def run(self):
-        time.sleep(1)
-        wait_count = 1
+        wait_count = 0
         p_pids = os.popen(f"taskset -c {self.task_set} "\
                           f"pidof {self.track_client}")
         res = p_pids.readline().split()
         while(len(res) != self.client_num):
             time.sleep(1)
             wait_count += 1
-            if wait_count > self.time_limit:
+            if wait_count > self.wait_for_client_start_time_limit:
                 raise TestFailError("Tester failed: clients startup failed.", self.env)
             p_pids = os.popen(f"taskset -c {self.task_set} "\
                               f"pidof {self.track_client}")
@@ -790,11 +802,10 @@ class TesterExecutor():
         tester_failure_log_path = f"{env.failure_osd_log}/"\
             f"{tester_id}_{retry_count}/"
         os.makedirs(tester_failure_log_path)
-        os.system(f"mv out/osd.* {tester_failure_log_path}")
+        os.system(f"mv out/* {tester_failure_log_path}")
         os.system(f"rm -rf {env.tester_log_path}")
 
         env.general_post_processing()
-        env.reset_failure_signal()
 
     def output(self, output, horizontal, filters):
         print(f"writing results to {output}")
@@ -839,6 +850,7 @@ class Environment():
         self.testclient_threadclass_ratio_map = {}
         self.timepoint_threadclass_num_map = {}
         self.timecontinuous_threadclass_list = []
+        self.prewrite_threadclass_list = []
         self.smp_list = []
         self.base_result = dict()
         self.additional_result = dict()
@@ -986,9 +998,9 @@ class Environment():
             self.timecontinuous_threadclass_list.append(IOStatThread)
 
     def general_pre_processing(self, tester_id):
-        os.system("sudo killall -9 -w ceph-mon ceph-mgr ceph-osd \
-                crimson-osd rados node")
-        os.system("sudo rm -rf ./dev/* ./out/*")
+        os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
+                "crimson-osd rados fio node ceph ceph-run")
+        os.system("rm -rf ./dev/* ./out/*")
 
         # prepare test group directory
         self.tester_log_path = self.log+"/"+str(tester_id)
@@ -1109,6 +1121,7 @@ class Environment():
         ceph_start_max_watting_time = 40
         start_proc = Popen(command, shell=True, \
                            stdout=PIPE, encoding="utf-8")
+        print(f'ceph start retry time limit: {ceph_start_max_watting_time}s')
         wait_count = 0
         done = start_proc.poll()
         while done is None:
@@ -1196,7 +1209,7 @@ class Environment():
         proc_path = f"{self.tester_log_path}/proc.txt"
         os.system(f"touch {proc_path}")
         for t in self.tid2name:
-            check_res = os.popen(f"sudo taskset -pc {t}")
+            check_res = os.popen(f"taskset -pc {t}")
             line = check_res.readline()
             print(f"thread name: {self.tid2name[t]}, {line}", end="")
             os.system(f"echo \"thread name: {self.tid2name[t]}, {line}\" >> {proc_path}")
@@ -1217,9 +1230,13 @@ class Environment():
         os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
                 "crimson-osd rados fio node ceph ceph-run")
         # delete dev
-        os.system("sudo rm -rf ./dev/* ./out/*")
+        os.system("rm -rf ./dev/* ./out/*")
         self.pid = list()
         self.tid = list()
+
+        # reset task control singal
+        self.reset_failure_signal()
+        self.reset_task_done()
 
         # group gap
         time.sleep(self.args.gap)
@@ -1257,7 +1274,7 @@ class Environment():
                         test_case_result.pop(key)
 
         # move osd log to log path before remove them
-        os.system("sudo mv out/osd.* " + self.tester_log_path + "/")
+        os.system("mv out/osd.* " + self.tester_log_path + "/")
 
     def before_run_case(self, tester_id):
         print(f"Running the {self.test_case_id} th test case")
@@ -1267,7 +1284,6 @@ class Environment():
     def after_run_case(self, test_case_result):
         self.post_processing(test_case_result)
         self.general_post_processing()
-        self.reset_task_done()
         self.test_case_id += 1
 
     def get_disk_name(self):
@@ -1377,6 +1393,10 @@ class Environment():
                 command += " >/dev/null"
                 return command
 
+        if self.args.warmup_time and self.args.warmup_time == '0':
+            return
+
+        self.prewrite_threadclass_list.append(ImageWriteThread)
         print('fio pre write START.')
         thread_list = []
         for image in self.images:
@@ -1401,6 +1421,7 @@ class Environment():
         if self.check_failure():
             raise TestFailError("Warmup Failed", self)
         print('fio pre write OK.')
+        env.reset_task_done()
 
     def rados_pre_write(self):
         print('rados pre write START.')
