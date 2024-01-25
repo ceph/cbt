@@ -762,8 +762,8 @@ class TesterExecutor():
             for thread_num in env.args.thread:
                 env.smp_num = env.smp_list[client_index]
                 env.thread_num = thread_num
-                tester_id = f"{tester_count}.client{{{env.client_num}}}_thread" \
-                    f"{{{env.thread_num}}}_smp{{{env.smp_num}}}"
+                tester_id = f"{tester_count}.client-{env.client_num}_thread" \
+                    f"-{env.thread_num}_smp-{env.smp_num}"
 
                 retry_count = 0
                 test_case_result = dict()
@@ -927,7 +927,7 @@ class Environment():
         else:
             self.log += "_classic"
         self.log += f"_{self.args.store}"
-        self.log += f"_osd:{self.args.osd}_ps:{self.pool_size}"
+        self.log += f"_osd-{self.args.osd}_ps-{self.pool_size}"
 
     def init_thread_list(self):
         # 1. add the test case based thread classes and the ratio to the dict.
@@ -1576,7 +1576,7 @@ if __name__ == "__main__":
                     This tool will add _crimson/classic_backend_osd_poolsize to be log \
                     dir name and store all tasks results and osd log and osd stdout.\
                     e.g. By default, log directory might be named log_20231222.165125\
-                    _crimson_bluestore_osd:1_ps:1')
+                    _crimson_bluestore_osd-1_ps-1')
     parser.add_argument('--full-result',
                         action='store_true',
                         help='output full results, including ceph config etc.')

@@ -201,17 +201,17 @@ the structure of it will be like:
   --config.yaml # config file will be copied automatically into this dir
   --failure_log.txt # record all failed tests (exceed retry limits of crimson_bench_tool)
   --sys_info.txt # commit, disk, cpu, mem, etc.
-  --rep:0 # repeat 0
+  --rep-0 # repeat 0
       # result log from crimson_bench_tool, using the first group of config
       # in config yaml
-  ----test:0_classic_bluestore_osd:1_ps:1
-  ------0.client{8}_thread{128}_smp{1} # first case in first test
+  ----test-0_classic_bluestore_osd-1_ps-1
+  ------0.client-8_thread-128_smp-1 # first case in first test
   --------0.RadosRandWriteThread.0.01
   --------osd.0.log
   --------proc.txt # all osd threads running during the bench
-  ----test:1_crimson_bluestore_osd:1_ps:1
+  ----test-1_crimson_bluestore_osd-1_ps-1
       ...
-  --rep:1
+  --rep-1
     ...
 
 --ana will organize data and draw graphics using these results from auto 

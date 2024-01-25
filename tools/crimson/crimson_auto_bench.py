@@ -6,8 +6,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 ''' directory structure:
-    autobench.{date}/rep:{repeat_id}/test:{test_id}
-    test:{test_id} is the output directory from crimson_bench_tool.
+    autobench.{date}/rep-{repeat_id}/test-{test_id}
+    test-{test_id} is the output directory from crimson_bench_tool.
 
     graphic directory:
     autobench.{date}.graphic
@@ -108,7 +108,7 @@ def record_system_info(root, configs):
     os.system(f"echo >> {path}")
 
 def read_config(config_file, x = None, comp = None):
-    config_file_pwd = f"{real_path}/{config_file}"
+    config_file_pwd = f"{config_file}"
     f = open(config_file_pwd, 'r')
     _config = yaml.safe_load_all(f.read())
     f.close()
@@ -141,32 +141,45 @@ def read_config(config_file, x = None, comp = None):
                                 f" 1-{len(configs)}")
     return configs
 
-def do_bench(config_file, configs, repeat):
-    # all files' root for this auto bench test
-    root = f"{real_path}"
-    with os.popen("date +%Y%m%d.%H%M%S") as date:
-        line = date.readline()
-        res = line.split()[0]
-        root = f"{root}/autobench.{res}"
-    os.makedirs(root)
+def do_bench(config_file, configs, repeat, build, output):
+    # all files' root for this auto bench test(bench result).
+    # will be stored at where this tool is.
+    root = f"{current_path}"
+    if output:
+        root = f"{root}/{output}"
+    else:
+        with os.popen("date +%Y%m%d.%H%M%S") as date:
+            line = date.readline()
+            res = line.split()[0]
+            root = f"{root}/autobench.{res}"
+    delete_and_create_at(root)
+    print('=======================')
+    print(f'Using config file path: {args.config}')
+    print(f'Using ceph build path: {build}')
+    print(f'Auto bench result path: {root}')
+    print('=======================')
     record_system_info(root, configs)
-    os.system(f"cp {real_path}/{config_file} {root}/config.yaml")
+    os.system(f"cp {current_path}/{config_file} {root}/config.yaml")
 
     # do bench
     for repeat_id in range(repeat):
-        repeat_path = f"{root}/rep:{repeat_id}"
+        repeat_path = f"{root}/rep-{repeat_id}"
         os.makedirs(repeat_path)
         for test_id, test_config in enumerate(configs):
-            command = f"{real_path}/crimson_bench_tool.py"
+            command = f"{tool_path}/crimson_bench_tool.py"
+            alias = None
             for key in test_config:
                 if key in no_value_attributes:
                     command += f" {trans(key)}"
                 elif key == 'alias':
-                    pass
+                    alias = test_config[key]
                 else:
                     command += f" {trans(key)} {test_config[key]}"
-            test_path_prefix = f"{repeat_path}/test:{test_id}"
+            test_path_prefix = f"{repeat_path}/test-{test_id}"
+            if alias:
+                test_path_prefix += f"_{alias}"
             command += f" --log {test_path_prefix}"
+            command += f" --build {build}"
             print(command)
             os.system(command)
     return root
@@ -185,7 +198,7 @@ def read_results(root):
     results = dict()
     # results - repeat_results - test_results - (tester_id, all results)
     for repeat_id in range(repeat):
-        repeat_path = f"{root}/rep:{repeat_id}"
+        repeat_path = f"{root}/rep-{repeat_id}"
         repeat_results = dict()
         tests = os.listdir(repeat_path)
         tests.sort()
@@ -202,8 +215,8 @@ def read_results(root):
             else:
                 repeat_results[test_id] = False
                 if first:
-                    os.system(f"echo \"test failed in rep:{repeat_id},"\
-                              f" test:{test_id}\" >> {failure_path}")
+                    os.system(f"echo \"test failed in rep-{repeat_id},"\
+                              f" test-{test_id}\" >> {failure_path}")
 
         results[repeat_id] = repeat_results
     return results
@@ -214,13 +227,10 @@ def print_results(results):
             print(f"repeat_id:{repeat_id}, test_id:{test_id}")
             print(results[repeat_id][test_id])
 
-def delete_and_create_at_local(path):
-    files = os.listdir('.')
-    if path not in files:
-        os.makedirs(path)
-    else:
+def delete_and_create_at(path):
+    if os.path.exists(path):
         os.system(f"sudo rm -rf {path}")
-        os.makedirs(path)
+    os.makedirs(path)
 
 def adjust_results(results, y):
     '''
@@ -272,6 +282,8 @@ def adjust_results(results, y):
     return all_test_res
 
 def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
+    res_path = f'{current_path}/{res_path}'
+    delete_and_create_at(res_path)
     for auto_bench_id, analysed_results in enumerate(m_analysed_results):
         configs = m_configs[auto_bench_id]
         output_auto_bench_name = None
@@ -316,22 +328,22 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
             # TODO: additional information to graphics
             if not comp:
                 plt.savefig(f"{res_path}/{output_auto_bench_name}_"\
-                            f"{test_alias}_x:{x}_y:{y}.png".lower(), dpi=500)
+                            f"{test_alias}_x-{x}_y-{y}.png".lower(), dpi=500)
                 plt.close()
 
             # raw data to csv
             df.to_csv(f"{res_path}/{output_auto_bench_name}_"\
-                      f"{test_alias}_x:{x}_y:{y}.csv".lower())
+                      f"{test_alias}_x-{x}_y-{y}.csv".lower())
             # average to csv
             df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
             for x_id, x_content in enumerate(x_data):
                 df_avg.loc[len(df_avg.index)] = \
                     {f"{x}": x_content, f'{y}_avg' : y_data_mean[x_id]}
             df_avg.to_csv(f"{res_path}/{output_auto_bench_name}_"\
-                          f"{test_alias}_x:{x}_y:{y}_avg.csv".lower())
+                          f"{test_alias}_x-{x}_y-{y}_avg.csv".lower())
 
     if m_comp:
-        plt.savefig(f'{res_path}/test_x:{x}_y:{y}.png'.lower(), dpi=500)
+        plt.savefig(f'{res_path}/x-{x}_y-{y}.png'.lower(), dpi=500)
         plt.close()
 
 if __name__ == "__main__":
@@ -366,15 +378,21 @@ if __name__ == "__main__":
                         default=None,
                         help= "alias for each auto bench results correspoding to --ana"\
                             "This alias will show in output graphics")
-    parser.add_argument('--clean',
-                        action='store_true',
-                        help= "remove all history graphic and bench results")
 
     parser.add_argument('--config',
                         type=str,
                         default="bench_config.yaml",
-                        help="bench config yaml file path, bench_config.yaml by default."\
+                        help="bench config yaml file path, ./bench_config.yaml by default."\
                             "You can add alias label for every test, which will show in graphic.")
+    parser.add_argument('--build',
+                        type=str,
+                        default='.',
+                        help='build directory of ceph. Default to be .')
+    parser.add_argument('--output',
+                        type=str,
+                        default=None,
+                        help='bench results directory when --bench/--run(default to be autobench.date) or '\
+                            'graphic results directory when --ana(default to be autobench dir name.graphic)')
 
     parser.add_argument('--repeat',
                         type=int,
@@ -394,18 +412,18 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     res_path_suffix = 'graphic'
-    files = os.listdir('.')
-    real_path = (os.path.dirname(os.path.realpath(__file__)))
+    tool_path = (os.path.dirname(os.path.realpath(__file__)))
+    current_path = os.getcwd()
 
     _ana = 0
     if args.ana:
         _ana = 1
-    if args.run + args.bench + _ana +args.clean != 1:
-        raise Exception("Error: should run in one of run/bench/ana/clean")
+    if args.run + args.bench + _ana != 1:
+        raise Exception("Error: should run in one of run/bench/ana")
     if args.run:
         if not args.x:
             raise Exception("Error: should input --x to run")
-        if len(args.comp) != 1:
+        if args.comp and len(args.comp) != 1:
             raise Exception("Error: should only do one auto bench when --run")
         comp = None
         if args.comp:
@@ -414,11 +432,12 @@ if __name__ == "__main__":
             for index in _comp:
                 comp.append(int(index))
         configs = read_config(args.config, x=args.x, comp=comp)
-        root = do_bench(args.config, configs, args.repeat)
+        root = do_bench(args.config, configs, args.repeat, args.build, args.output)
         results = read_results(root)
         print(root)
+        # the path of graphic result will be the same as the bench result
         res_path = f"{root}.{res_path_suffix}"
-        delete_and_create_at_local(res_path)
+        delete_and_create_at(res_path)
         for y in args.y:
             analysed_results = adjust_results(results, y)
             draw([analysed_results], [configs], args.x, y, res_path, \
@@ -426,7 +445,7 @@ if __name__ == "__main__":
 
     if args.bench:
         configs = read_config(args.config)
-        root = do_bench(args.config, configs, args.repeat)
+        root = do_bench(args.config, configs, args.repeat, args.build, args.output)
         print(root)
 
     if args.ana:
@@ -461,14 +480,17 @@ if __name__ == "__main__":
                     comp.append(int(index))
                 m_comp.append(comp)
 
-            configs = read_config(f"{real_path}/{root}/config.yaml", x=args.x, comp=comp)
-            results = read_results(f"{real_path}/{root}")
+            configs = read_config(f"{current_path}/{root}/config.yaml", x=args.x, comp=comp)
+            results = read_results(f"{current_path}/{root}")
 
             res_path += f"{root}."
             m_configs.append(configs)
             m_results.append(results)
+
+        # the path of graphic result will be the same as the bench result
         res_path += f"{res_path_suffix}"
-        delete_and_create_at_local(res_path)
+        if args.output:
+            res_path = args.output
 
         for y in args.y:
             m_analysed_results = list()
@@ -478,6 +500,3 @@ if __name__ == "__main__":
             draw(m_analysed_results, m_configs, args.x, y, res_path, \
                  m_comp, args.alias)
 
-    if args.clean:
-        os.system(f"sudo rm -rf {real_path}/autobench.*")
-        os.system(f"sudo rm -rf {real_path}/graphic.autobench.*")
