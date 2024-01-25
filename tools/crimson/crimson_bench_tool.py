@@ -318,7 +318,8 @@ class FioRBDSeqWriteThread(FioRBDRandWriteThread):
     @staticmethod
     def pre_process(env):
         env.create_images(env.args.fio_rbd_image_size)
-        env.rados_pre_write()
+        # will do warmup by default. set --warmup-time 0 to avoid warmup.
+        env.fio_pre_write()
 
     @staticmethod
     def post_process(env, test_case_result):
@@ -1424,7 +1425,16 @@ class Environment():
         env.reset_task_done()
 
     def rados_pre_write(self):
-        print('rados pre write START.')
+        class RadosPreWrite(RadosRandWriteThread):
+            def __init__(self, env, time, block_size):
+                super().__init__(env, id=('', ''))
+                self.time = time
+                self.block_size = block_size
+                self.disable_log = True
+
+        if self.args.warmup_time and self.args.warmup_time == '0':
+            return
+        # decide warmup time, retry limit time, block size
         block_size = ""
         time = ""
         if self.args.warmup_block_size:
@@ -1435,14 +1445,28 @@ class Environment():
             time = self.args.warmup_time
         else:
             time = 5 * int(self.args.time)
-        thread_num = self.thread_num
-        env_write_command = "bin/rados bench -p " + self.pool + " " \
-            + str(time) + " write -t " \
-            + str(thread_num) + " -b " + str(block_size) + " " \
-            + "--no-cleanup"
-        print(env_write_command)
-        os.system(env_write_command + " >/dev/null")
+        time_limit = 0
+        if self.args.tolerance_time:
+            time_limit = int(time) + int(self.args.tolerance_time)
+        else:
+            time_limit = int(time) + int(time)
+
+        self.prewrite_threadclass_list.append(RadosPreWrite)
+        thread_list = []
+        for _ in range(self.client_num):
+            thread_list.append(RadosPreWrite(self, str(time), block_size))
+        detector = FailureDetect(self, time_limit)
+        print('rados pre write START.')
+        for thread in thread_list:
+            thread.start()
+        detector.start()
+        for thread in thread_list:
+            thread.join()
+        detector.join()
+        if self.check_failure():
+            raise TestFailError("Warmup Failed", self)
         print('rados pre write OK.')
+        env.reset_task_done()
 
     def set_task_done(self):
         self.DONE_LOCK.acquire()
@@ -1545,7 +1569,8 @@ if __name__ == "__main__":
                         default="",
                         help='warmup time for every test case, default equal to \
                     5 * time in rados read case or or filling the entire rbd image \
-                    in fio read case')
+                    in fio read case. All read clients and seq write clients will do \
+                    warmup writting by default, set --warmup-time 0 to avoid warmup.')
     parser.add_argument('--dev',
                         type=str,
                         help='test device path, default is the vstart default \
