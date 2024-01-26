@@ -52,10 +52,8 @@ class Task(threading.Thread):
             return
 
         command = self.create_command()
-        print(command)
 
-        proc = Popen(command, shell=True, \
-                     stdout=PIPE, encoding="utf-8")
+        proc = self.env.popen(command)
         done = proc.poll()
         fail = self.env.check_failure()
         while done is None and not fail:
@@ -75,7 +73,7 @@ class Task(threading.Thread):
                 or type(self) in self.env.prewrite_threadclass_list:
                 self.env.set_task_done()
         if fail:
-            os.system(f"kill -9 {proc.pid}")
+            self.env.exec(f"kill -9 {proc.pid}")
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -922,6 +920,9 @@ class Environment():
         self.failure_osd_log = f"{self.log}/failure_osd_log"
         os.makedirs(self.failure_osd_log)
 
+        self.cmd_log = f"{self.log}/cmd_log.txt"
+        os.system(f"touch {self.cmd_log}")
+
     def add_log_suffix(self):
         if self.args.crimson:
             self.log += "_crimson"
@@ -1117,11 +1118,9 @@ class Environment():
                 line = f_configs.readline()
             f_configs.close()
 
-        print(command)
         # start ceph
-        ceph_start_max_watting_time = 40
-        start_proc = Popen(command, shell=True, \
-                           stdout=PIPE, encoding="utf-8")
+        ceph_start_max_watting_time = 100
+        start_proc = self.popen(command)
         print(f'ceph start retry time limit: {ceph_start_max_watting_time}s')
         wait_count = 0
         done = start_proc.poll()
@@ -1134,12 +1133,12 @@ class Environment():
                 raise TestFailError("Tester failed: osd startup failed.", self)
 
         # pool
-        os.system(f"bin/ceph osd pool create {self.pool} "
+        self.exec(f"bin/ceph osd pool create {self.pool} "
                     f"{self.args.pg} {self.args.pg}")
         if self.pool_size:
-            os.system(f"bin/ceph osd pool set {self.pool}" \
+            self.exec(f"bin/ceph osd pool set {self.pool}" \
                     f" size {self.pool_size} --yes-i-really-mean-it")
-            os.system(f"bin/ceph osd pool set {self.pool}" \
+            self.exec(f"bin/ceph osd pool set {self.pool}" \
                     f" min_size {self.pool_size} --yes-i-really-mean-it")
         else:
             # use ceph default setting when osd >= 3
@@ -1195,14 +1194,14 @@ class Environment():
         if not self.args.crimson:
             core = self.smp_num * self.args.osd
             for p in self.pid:
-                os.system("taskset -pc 0-" + str(core-1) + " " + str(p))
+                self.exec("taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
-                os.system("taskset -pc 0-" + str(core-1) + " " + str(t))
+                self.exec("taskset -pc 0-" + str(core-1) + " " + str(t))
 
         # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
         if self.args.crimson and backend == "bluestore":
             for t in self.tid_alien:
-                os.system(f"taskset -pc {crimson_alien_thread_cpu_cores} {t}")
+                self.exec(f"taskset -pc {crimson_alien_thread_cpu_cores} {t}")
 
         self.base_result['Core'] = self.smp_num * self.args.osd
 
@@ -1211,8 +1210,8 @@ class Environment():
         os.system(f"touch {proc_path}")
         for t in self.tid2name:
             check_res = os.popen(f"taskset -pc {t}")
-            line = check_res.readline()
-            print(f"thread name: {self.tid2name[t]}, {line}", end="")
+            line = check_res.readline().rstrip("\n")
+            print(f"thread name: {self.tid2name[t]}, {line}")
             os.system(f"echo \"thread name: {self.tid2name[t]}, {line}\" >> {proc_path}")
         print()
 
@@ -1351,8 +1350,7 @@ class Environment():
                         f" --size {image_size} --image-format=2" \
                         f" --rbd_default_features=3 --pool {self.pool}" \
                         f" 2>/dev/null"
-            print(command)
-            os.system(command)
+            self.exec(command)
             self.images.append(image_name)
         print('images create OK.')
 
@@ -1487,6 +1485,18 @@ class Environment():
 
     def check_failure(self):
         return self.FAILURE_SIGNAL
+
+    def exec(self, command):
+        print(command)
+        os.system(command)
+        os.system(f"echo \"{command}\" >> {self.cmd_log}")
+
+    def popen(self, command):
+        print(command)
+        proc = Popen(command, shell=True, \
+                    stdout=PIPE, encoding="utf-8")
+        os.system(f"echo \"{command}\" >> {self.cmd_log}")
+        return proc
 
 def software_dependency_check(args):
     def not_exist(tgt):
