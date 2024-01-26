@@ -200,6 +200,10 @@ the structure of it will be like:
   autobench.20240111.113706/ # one auto bench root directory
   --config.yaml # config file will be copied automatically into this dir
   --failure_log.txt # record all failed tests (exceed retry limits of crimson_bench_tool)
+  --failure_osd_log # store all osd logs when test failed
+  ---0.client-8_thread-128_smp-1_1 # 1 means the first tryment(but failed) of test 0
+  ----osd.0.log
+    ...
   --sys_info.txt # commit, disk, cpu, mem, etc.
   --rep-0 # repeat 0
       # result log from crimson_bench_tool, using the first group of config
@@ -229,8 +233,7 @@ from random test log directory in autobench results directory.
 
 If you want to merge multiple tests' results from one auto bench results, you can use
 --comp, set the index of test you want to merge. e.g. --comp 1,2 means merge the 
-first and second tests into one graphics for comparison. (But the --x target config in 
-config file must be the same when using --comp.)
+first and second tests into one graphics for comparison.
 
 If you want to merge multiple tests' results from multiple auto bench results, you can 
 use param like this: --ana autobench.root1 autobench.root2 --comp 2 1,2 which means 

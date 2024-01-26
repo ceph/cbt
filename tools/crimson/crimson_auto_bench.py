@@ -107,6 +107,7 @@ def record_system_info(root, configs):
     os.system(f"lspci -vv >> {path}")
     os.system(f"echo >> {path}")
 
+# e.g. config_file='./config.yaml', x='smp', comp=[1, 2, 3]
 def read_config(config_file, x = None, comp = None):
     config_file_pwd = f"{config_file}"
     f = open(config_file_pwd, 'r')
@@ -125,16 +126,9 @@ def read_config(config_file, x = None, comp = None):
         for config in configs:
             if args.x not in config:
                 raise Exception("Error: x param should exist in config yaml file")
-            if type(config[args.x]) != str or len(config[args.x].split()) <= 1:
-                raise Exception("Error: cannot use single param as x axis")
     if comp:
         if not x:
             raise Exception("Error: must input --x when using --comp")
-        same_x = configs[0][x]
-        for config in configs:
-            if config[x] != same_x:
-                raise Exception("Error: x must be the same "\
-                                "between different test in --comp mode")
         for index in comp:
             if index > len(configs) or index <= 0:
                 raise Exception(f"Error: comp index error. Shoud between" \
@@ -288,19 +282,28 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
         configs = m_configs[auto_bench_id]
         output_auto_bench_name = None
         if alias:
-            output_auto_bench_name = alias[auto_bench_id]
+            output_auto_bench_name = f'{alias[auto_bench_id]}_'
         else:
-            output_auto_bench_name = f"bench_{auto_bench_id}"
+            if len(m_analysed_results) > 1:
+                output_auto_bench_name = f"bench_{auto_bench_id}_"
+            else:
+                output_auto_bench_name = ''
         comp = None
         if m_comp:
             comp = m_comp[auto_bench_id]
+        color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+        color_set_p = 0
         for test_id, test in enumerate(analysed_results):
             if test == []:
                 print('failed happen')
                 continue
             if comp and test_id+1 not in comp:
                 continue
-            x_data = configs[test_id][x].split()
+            x_value = configs[test_id][x]
+            if type(x_value) == int:
+                x_data = [x_value]
+            else:
+                x_data = x_value.split()
             test_alias = None
             if 'alias' in configs[test_id]:
                 test_alias = configs[test_id]['alias']
@@ -319,27 +322,32 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
             plt.title(f"{x}-{y}".lower())
             plt.xlabel(f"{x}")
             plt.ylabel(f"{y}")
+            color = color_set[color_set_p]
+            color_set_p += 1
+            if color_set_p >= len(color_set):
+                color_set_p = 0
             plt.plot(f'{x}', f'{y}', data=df, linestyle='none',\
-                    marker='o', label=f'{output_auto_bench_name}_{test_alias}')
+                    marker='o', label=f'{output_auto_bench_name}{test_alias}', color=color)
             plt.plot(x_data, y_data_mean, linestyle='-', \
-                     label=f'{output_auto_bench_name}_{test_alias} mean')
+                     label=f'{output_auto_bench_name}{test_alias} mean', color=color)
             plt.grid(True, color='gray', linestyle='--')
-            plt.legend()
+            plt.legend(loc=2)
+            plt.rc('legend', fontsize='x-small')
             # TODO: additional information to graphics
             if not comp:
-                plt.savefig(f"{res_path}/{output_auto_bench_name}_"\
+                plt.savefig(f"{res_path}/{output_auto_bench_name}"\
                             f"{test_alias}_x-{x}_y-{y}.png".lower(), dpi=500)
                 plt.close()
 
             # raw data to csv
-            df.to_csv(f"{res_path}/{output_auto_bench_name}_"\
+            df.to_csv(f"{res_path}/{output_auto_bench_name}"\
                       f"{test_alias}_x-{x}_y-{y}.csv".lower())
             # average to csv
             df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
             for x_id, x_content in enumerate(x_data):
                 df_avg.loc[len(df_avg.index)] = \
                     {f"{x}": x_content, f'{y}_avg' : y_data_mean[x_id]}
-            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}_"\
+            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}"\
                           f"{test_alias}_x-{x}_y-{y}_avg.csv".lower())
 
     if m_comp:
@@ -403,7 +411,7 @@ if __name__ == "__main__":
                         help="x axis of result graphics, the main variable in the target"\
                             " graphics to draw x-y graphics. required when --ana or --run."\
                             " x can be smp, client, thread, osd_op_num_shards, etc. all the"\
-                            " parameters that can be multiple in the crimson bench tool can be x.")
+                            " parameters in the crimson bench tool can be x.")
     parser.add_argument('--y',
                         nargs='+',
                         type=str,
@@ -467,6 +475,8 @@ if __name__ == "__main__":
                             " bench results")
         m_configs = list()
         m_results = list()
+        # comp process example: ["1,2,3", "1,2,3"] -> [[1,2,3],[1,2,3]]
+        # structure like this is for the needs of cross bench results analyse.
         m_comp = None
         if args.comp:
             m_comp = list()
