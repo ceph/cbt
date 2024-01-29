@@ -53,6 +53,46 @@ def get_version_and_commitID():
         line = gitlog.readline()
     return version, commitID
 
+def root_protect(dev):
+    protect_dir = '/'
+    tgt_par = dev.split('/')[-1]
+    lsblk = os.popen("lsblk")
+    disk = None
+    line = lsblk.readline()
+    while line:
+        ll = line.split()
+        if ll[0][0:2] == '├─' or ll[0][0:2] == '└─':
+            par = ll[0][2:]
+        if ll[0][0:2] != '├─' and ll[0][0:2] != '└─':
+            disk = ll[0]
+        if ll[-1] == protect_dir:
+            if disk == tgt_par or par == tgt_par:
+                raise Exception("Be awake! You should not write "\
+                                "to the disk/partition that root exist!")
+        line = lsblk.readline()
+
+def test_device(sys_info_path, dev):
+    root_protect(dev)
+    configs = [{'mode':'randwrite', 'bs':'4K', 'time':'30'},
+               {'mode':'randread', 'bs':'4K', 'time':'30'},
+               {'mode':'write', 'bs':'1M', 'time':'30'},
+               {'mode':'read', 'bs':'1M', 'time':'30'}]
+    for config in configs:
+        bs = config['bs']
+        mode = config['mode']
+        time = config['time']
+        print(f'doing {time}s device {dev} {mode} test...')
+        cmd = f'fio --filename={dev} '\
+            f'--numjobs=8 --iodepth=6 --ioengine=libaio --direct=1 --verify=0 '\
+            f'--bs={bs}  --rw={mode} --group_reporting=1 '\
+            f'--runtime={time} --time_based --name=device_test'
+        ret = os.popen(cmd)
+        with open(sys_info_path, "a") as f:
+            f.write(f'disk {mode} test result:\n')
+            f.write(ret.read())
+            f.write('\n')
+        f.close()
+
 def record_system_info(root, configs):
     path = f"{root}/sys_info.txt"
     os.system(f"touch {path}")
@@ -86,12 +126,19 @@ def record_system_info(root, configs):
         if 'dev' in config:
             devs.add(config['dev'])
     for dev_id, dev in enumerate(devs):
-        os.system(f"echo \"4.{dev_id+1} Disk: {dev}\" >> {path}")
+        os.system(f"echo \"4.{dev_id+1}.1 Disk: {dev}\" >> {path}")
         if dev[5:8] == 'nvm':
             os.system(f"sudo nvme id-ctrl {dev} >> {path}")
         else:
             os.system(f"sudo hdparm -I {dev} >> {path}")
         os.system(f"echo >> {path}")
+        if not no_disk_test:
+            os.system(f"echo \"4.{dev_id+1}.2 Disk Test\" >> {path}")
+            print('start basic disk tests... you can add --no-disk-test to skip this.')
+            test_device(path, dev)
+            os.system(f"echo >> {path}")
+        else:
+            print('will not do basic disk test.')
 
     os.system(f"echo \"5.Memory\" >> {path}")
     os.system(f"lsmem >> {path}")
@@ -430,6 +477,10 @@ if __name__ == "__main__":
                         default=None,
                         help='bench results directory when --bench/--run(default to be autobench.date) or '\
                             'graphic results directory when --ana(default to be autobench dir name.graphic)')
+    parser.add_argument('--no-disk-test',
+                        action='store_true',
+                        help= "will not do basic device speed tests(which will cost you at"\
+                            " least 2 minutes).")
 
     parser.add_argument('--repeat',
                         type=int,
@@ -449,6 +500,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     res_path_suffix = 'graphic'
+    no_disk_test = False
+    if args.no_disk_test:
+        no_disk_test = True
     tool_path = (os.path.dirname(os.path.realpath(__file__)))
     current_path = os.getcwd()
 
