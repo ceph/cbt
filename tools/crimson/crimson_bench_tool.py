@@ -74,6 +74,7 @@ class Task(threading.Thread):
                 self.env.set_task_done()
         if fail:
             self.env.exec(f"kill -9 {proc.pid}")
+            os.system(f"wait {proc.pid}")
 
     # rewrite method analyse() to analyse the output from executing the
     # command and return a result dict as format {param : result}
@@ -1000,8 +1001,11 @@ class Environment():
             self.timecontinuous_threadclass_list.append(IOStatThread)
 
     def general_pre_processing(self, tester_id):
+        # killall
+        os.system("killall -9 -w rados fio ceph")
         os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
-                "crimson-osd rados fio node ceph ceph-run")
+                "crimson-osd")
+        os.system("killall -9 -w ceph-run")
         os.system("rm -rf ./dev/* ./out/*")
 
         # prepare test group directory
@@ -1222,8 +1226,14 @@ class Environment():
 
     def general_post_processing(self):
         # killall
+        os.system("killall -9 -w rados fio ceph")
+        stop_cmd = "../src/stop.sh"
+        if self.args.crimson:
+            stop_cmd += " --crimson"
+        os.system(stop_cmd)
         os.system("killall -9 -w ceph-mon ceph-mgr ceph-osd "\
-                "crimson-osd rados fio node ceph ceph-run")
+                "crimson-osd")
+        os.system("killall -9 -w ceph-run")
         # delete dev
         os.system("rm -rf ./dev/* ./out/*")
         self.pid = list()
