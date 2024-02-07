@@ -620,3 +620,13 @@ if __name__ == "__main__":
             draw(m_analysed_results, m_configs, args.x, y, res_path, \
                  m_comp, args.alias, m_repnums)
 
+        # copy sys_info.txt, config.yaml to graphic result directory
+        for root_index, root in enumerate(roots):
+            config_path = f"{current_path}/{root}/config.yaml"
+            sys_info_path = f"{current_path}/{root}/sys_info.txt"
+            tgt_config_path = f'{root_index}.config.yaml' if len(roots) != 1 else 'config.yaml'
+            tgt_sys_info_path = f'{root_index}.sys_info.txt' if len(roots) != 1 else 'sys_info.txt'
+            tgt_config_path = f'{current_path}/{res_path}/{tgt_config_path}'
+            tgt_sys_info_path = f'{current_path}/{res_path}/{tgt_sys_info_path}'
+            os.system(f'cp {config_path} {tgt_config_path}')
+            os.system(f'cp {sys_info_path} {tgt_sys_info_path}')
