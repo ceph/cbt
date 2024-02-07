@@ -756,7 +756,7 @@ class TesterExecutor():
     def run(self, env):
         print('running...')
         tester_count = 0
-        for client_index, client_num in enumerate(env.args.client):
+        for client_index, client_num in enumerate(env.client_list):
             env.client_num = client_num
             for thread_num in env.args.thread:
                 env.smp_num = env.smp_list[client_index]
@@ -780,7 +780,7 @@ class TesterExecutor():
                         temp_result = tester.run()
                         test_case_result = env.base_result.copy()
                         test_case_result.update(temp_result)
-                        if env.args.full_result:
+                        if not env.args.simple_result:
                             test_case_result.update(env.additional_result.copy())
                         test_case_result.update({'==========':'=============='})
                     except TestFailError:
@@ -849,6 +849,7 @@ class Environment():
         self.timepoint_threadclass_num_map = {}
         self.timecontinuous_threadclass_list = []
         self.prewrite_threadclass_list = []
+        self.client_list = []
         self.smp_list = []
         self.base_result = dict()
         self.additional_result = dict()
@@ -883,13 +884,13 @@ class Environment():
         if self.args.dev:
             self.root_protect(self.args.dev)
 
-        if len(self.args.smp) == 1:
-            for _ in self.args.client:
-                self.smp_list.append(self.args.smp[0])
-        else:
-            self.smp_list = self.args.smp
+        self.smp_list = self.args.smp
+        if self.args.client:
             if len(self.args.smp) != len(self.args.client):
                 raise Exception("smp list should match the client list")
+            self.client_list = self.args.client
+        else:
+            self.client_list = self.smp_list
 
         # decide pool size
         if self.args.pool_size:
@@ -1017,7 +1018,7 @@ class Environment():
 
         # vstart. change the command here if you want to set other start params
         command = "OSD=" + str(self.args.osd)
-        command += " MGR=1 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x " \
+        command += " MGR=0 MON=1 MDS=0 RGW=0 ../src/vstart.sh -n -x " \
                 "--without-dashboard --no-restart "
         if self.args.crimson:
             command += "--crimson "
@@ -1216,7 +1217,7 @@ class Environment():
         if self.args.warmup_time:
             self.additional_result['warmup_time'] = self.args.warmup_time
         if self.args.dev:
-            self.additional_result['device'] = self.args.dev
+            self.additional_result['device'] = self.args.dev.split('/')[-1]
         self.additional_result['bench_thread_taskset'] = self.args.bench_taskset
 
     def general_post_processing(self):
@@ -1521,12 +1522,12 @@ def software_dependency_check(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--client',
+    parser.add_argument('--client', '--c',
                         nargs='+',
                         type=int,
-                        required=True,
-                        help='clients list')
-    parser.add_argument('--thread',
+                        default=None,
+                        help='clients list, default to be the same as --smp')
+    parser.add_argument('--thread', '--th',
                         nargs='+',
                         type=int,
                         default=[128],
@@ -1536,60 +1537,58 @@ if __name__ == "__main__":
                         type=int,
                         default=[1],
                         help='core per osd list, default to be 1, should be one-to-one \
-                              correspondence with client list if not default. But if only input \
-                              one value, this tool will automatically extend it to match the \
-                              client list')
+                              correspondence with client list if not default.')
     parser.add_argument('--build',
                         type=str,
                         default='.',
                         help='build directory of ceph. Default to be .')
-    parser.add_argument('--bench-taskset',
+    parser.add_argument('--bench-taskset', '--bt',
                         type=str,
                         default="1-32",
                         help='which processors will bench thread execute on')
-    parser.add_argument('--block-size',
+    parser.add_argument('--block-size', '--bs',
                         type=str,
-                        required=True,
+                        default="4K",
                         help='data block size')
     parser.add_argument('--pg',
                         type=int,
                         default=128,
                         help='pg number for pool, default to be 128')
-    parser.add_argument('--pool-size',
+    parser.add_argument('--pool-size', '--ps',
                         type=int,
                         default=None,
                         help='pool size. By default, pool_size = osd if osd < 3 \
                         or use ceph default setting')
-    parser.add_argument('--time',
+    parser.add_argument('--time', '--t',
                         type=str,
                         default="10",
                         help='test time for every test case')
-    parser.add_argument('--warmup-block-size',
+    parser.add_argument('--warmup-block-size', '--wbs',
                         type=str,
                         default="",
                         help='warmup data block size, default equal to block size')
-    parser.add_argument('--warmup-time',
+    parser.add_argument('--warmup-time', '--wt',
                         type=str,
                         default="",
                         help='warmup time for every test case, default equal to \
                     5 * time in rados read case or or filling the entire rbd image \
                     in fio read case. All read clients and seq write clients will do \
                     warmup writting by default, set --warmup-time 0 to avoid warmup.')
-    parser.add_argument('--dev',
+    parser.add_argument('--dev', '--d',
                         type=str,
                         help='test device path, default is the vstart default \
                     settings, creating a virtual block device on current device')
-    parser.add_argument('--output',
+    parser.add_argument('--output', '--o',
                         type=str,
                         default="result",
                         help='path of all output result after integrating')
-    parser.add_argument('--output-horizontal',
+    parser.add_argument('--output-horizontal', '--oh',
                         action='store_true',
                         help='all results of one test case will be in one line')
     parser.add_argument('--crimson',
                         action='store_true',
                         help='use crimson-osd instead')
-    parser.add_argument('--store',
+    parser.add_argument('--store', '--s',
                         type=str,
                         default='bluestore',
                         help='choose from seastore, cyanstore,\
@@ -1606,48 +1605,49 @@ if __name__ == "__main__":
                     dir name and store all tasks results and osd log and osd stdout.\
                     e.g. By default, log directory might be named log_20231222.165125\
                     _crimson_bluestore_osd-1_ps-1')
-    parser.add_argument('--full-result',
+    parser.add_argument('--simple-result',
                         action='store_true',
-                        help='output full results, including ceph config etc.')
+                        help='will not output additional param such as \
+                    ceph config to result.')
     parser.add_argument('--gap',
                         type=int,
                         default = 1,
                         help='time gap between different test cases')
 
     # test case based thread param
-    parser.add_argument('--rand-write',
+    parser.add_argument('--rand-write', '--rw',
                         type=float,
                         default=0,
                         help='ratio of rados bench rand write clients')
-    parser.add_argument('--rand-read',
+    parser.add_argument('--rand-read', '--rr',
                         type=float,
                         default=0,
                         help='ratio of rados bench rand read clients')
-    parser.add_argument('--seq-write',
+    parser.add_argument('--seq-write', '--sw',
                         type=float,
                         default=0,
                         help='ratio of rados bench seq write clients')
-    parser.add_argument('--seq-read',
+    parser.add_argument('--seq-read', '--sr',
                         type=float,
                         default=0,
                         help='ratio of rados bench seq read clients')
-    parser.add_argument('--fio-rbd-rand-write',
+    parser.add_argument('--fio-rbd-rand-write', '--fr-rw',
                         type=float,
                         default=0,
                         help='ratio of fio rand write clients')
-    parser.add_argument('--fio-rbd-rand-read',
+    parser.add_argument('--fio-rbd-rand-read', '--fr-rr',
                         type=float,
                         default=0,
                         help='ratio of fio rand read clients')
-    parser.add_argument('--fio-rbd-seq-write',
+    parser.add_argument('--fio-rbd-seq-write', '--fr-sw',
                         type=float,
                         default=0,
                         help='ratio of fio seq write clients')
-    parser.add_argument('--fio-rbd-seq-read',
+    parser.add_argument('--fio-rbd-seq-read', '--fr-sr',
                         type=float,
                         default=0,
                         help='ratio of fio seq read clients')
-    parser.add_argument('--fio-rbd-image-size',
+    parser.add_argument('--fio-rbd-image-size', '--image',
                         type=str,
                         default='20G',
                         help='fio rbd image size')
@@ -1661,14 +1661,14 @@ if __name__ == "__main__":
                             'only for fio rbd rand write')
 
     # time point based thread param
-    parser.add_argument('--ru',
+    parser.add_argument('--ru', '--reactor-utilization',
                         type=int,
                         help='how many time point to collect the \
                             reactor utilization')
-    parser.add_argument('--freq',
+    parser.add_argument('--freq', '--f',
                         type=int,
                         help='how many time point to collect cpu frequency information')
-    parser.add_argument('--tusage',
+    parser.add_argument('--tusage', '--tu',
                         type=int,
                         help='how many time point to collect cpu usage for --tusage-name \
                             target threads. If there is no --tusage-name, all osd threads \
@@ -1676,7 +1676,7 @@ if __name__ == "__main__":
                             together. The output will be named as usage_{thread name}')
 
 
-    parser.add_argument('--tusage-target',
+    parser.add_argument('--tusage-target', '--tu-target',
                         nargs='+',
                         type=str,
                         default=None,
@@ -1685,18 +1685,18 @@ if __name__ == "__main__":
                             collected.')
 
     # time continuous based thread param
-    parser.add_argument('--perf',
+    parser.add_argument('--perf', '--p',
                         action='store_true',
                         help='collect perf information')
-    parser.add_argument('--perf-record',
+    parser.add_argument('--perf-record', '--pr',
                         action='store_true',
                         help='collect perf record information')
-    parser.add_argument('--iostat',
+    parser.add_argument('--iostat', '--i',
                         action='store_true',
                         help='collect iostat information')
 
     # ceph config param
-    parser.add_argument('--isolate-alien-cores',
+    parser.add_argument('--isolate-alien-cores', '--alien',
                         nargs='+',
                         type=int,
                         default=None,
@@ -1717,10 +1717,11 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help='set ms_async_op_threads.')
-    parser.add_argument('--ceph-config',
+    parser.add_argument('--ceph-config', '--config',
                         type=str,
                         default=None,
-                        help='customize ceph configs file path. The format should be \
+                        help='customize ceph configs file path (the current path \
+                            is build path). The format should be \
                             osd_type store_type config_name value1 value2 value3...\
                             e.g. crimson bluestore osd_op_num_shards 2 4 6. You can \
                             input multiple line for multiple customize configs. \
@@ -1729,11 +1730,11 @@ if __name__ == "__main__":
                             not match the osd, store param type of this tool, that \
                             config will not be effective.')
 
-    parser.add_argument('--retry-limit',
+    parser.add_argument('--retry-limit', '--rl',
                         type=int,
                         default=5,
                         help='max retry limit for every test client')
-    parser.add_argument('--tolerance-time',
+    parser.add_argument('--tolerance-time', '--tt',
                         type=int,
                         default=None,
                         help='tolerance time for every test client, if waiting for a task \

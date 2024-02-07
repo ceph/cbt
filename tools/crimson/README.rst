@@ -158,9 +158,9 @@ This is an automatical bench tool using crimson bench tool to run, anlyase
 Use --run to run the whole process, --bench to only run tests, --ana to 
 organize data and draw graphics for exist bench results.
 
-When --bench or --run, this tool will read --config target config yaml file
-(bench_config.yaml by default) to do bench tasks. In yaml file, each group of 
-config represents a test, corresponding to run crimson bench tool once.
+When --bench or --run, this tool will read target config yaml file
+to do bench tasks. In yaml file, each group of config represents a test, 
+corresponding to run crimson bench tool once.
 
 So if there are multiple groups of config in config file, that means to run 
 crimson bench tool for multiple times using the configuration in the config 
@@ -249,12 +249,12 @@ Example:
 .. code-block:: console
 
        # will generate dir autobench.20240111.113705 and autobench.20240111.113705.graphic
-     $ ./crimson_auto_bench.py --run --x smp --y iops --repeat 2 --config bench_config.yaml --alias ssd
-     $ ./crimson_auto_bench.py --run --x smp --y iops --repeat 2 --comp 1,2 --config bench_config.yaml --alias ssd
+     $ ./crimson_auto_bench.py --run bench_config.yaml --x smp --y iops --repeat 2 --alias ssd
+     $ ./crimson_auto_bench.py --run bench_config.yaml --x smp --y iops --repeat 2 --comp 1,2 --alias ssd
 
        # (1) this will generate dir autobench.20240111.113705 (--bench doesn't need --x, --y, --comp, --alias,
        # you can input them when using --ana to analyse the results of --bench)
-     $ ./crimson_auto_bench.py --bench --repeat 2 --config bench_config.yaml
+     $ ./crimson_auto_bench.py --bench bench_config.yaml --repeat 2
        # will generate dir autobench.20240111.113705.graphic
      $ ./crimson_auto_bench.py --ana autobench.20240111.113705 --x smp --y iops latency --alias ssd
        # (2) combine two tests into one graphic

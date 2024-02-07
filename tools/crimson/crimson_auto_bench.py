@@ -2,6 +2,7 @@
 import yaml
 import argparse
 import os
+import time
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -166,8 +167,13 @@ def read_config(config_file, x = None, comp = None):
         configs.append(config)
 
         for key in config:
+            # key check
             if key in no_value_attributes and config[key] != True:
                 raise Exception("Error: no value attributes should only be True")
+            if key == 'alias':
+                alias = config[key]
+                if len(alias.split()) != 1:
+                    raise Exception("Error: alias should not include space")
 
     if x:
         for config in configs:
@@ -195,7 +201,8 @@ def do_bench(config_file, configs, repeat, build, output):
             root = f"{root}/autobench.{res}"
     delete_and_create_at(root)
     print('=======================')
-    print(f'Using config file path: {args.config}')
+    config_path = args.run if args.run else args.bench
+    print(f'Using config file path: {config_path}')
     print(f'Using ceph build path: {build}')
     print(f'Auto bench result path: {root}')
     print('=======================')
@@ -222,7 +229,11 @@ def do_bench(config_file, configs, repeat, build, output):
             command += f" --log {test_path_prefix}"
             command += f" --build {build}"
             print(command)
+            print(f'testing... repeat: {repeat_id+1}, test: {test_id+1}')
             os.system(command)
+            if (test_id != len(configs) - 1) or (repeat_id != repeat - 1):
+                print(f'test gap time: {gap}s')
+                time.sleep(gap)
     read_results(root, len(configs))
     return root
 
@@ -435,12 +446,16 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--run',
-                        action='store_true',
-                        help= "do bench, analyse results and draw pictures,\
-                            require --x, --y")
+                        type=str,
+                        default=None,
+                        help= "do bench, analyse results and draw pictures, require --x, --y. "\
+                            "Input bench config yaml file path. "\
+                            "You can add alias label for every test, which will show in graphic.")
     parser.add_argument('--bench',
-                        action='store_true',
-                        help= "only do bench")
+                        type=str,
+                        default=None,
+                        help= "only do bench. Input bench config yaml file path. "\
+                            "You can add alias label for every test, which will show in graphic.")
     parser.add_argument('--ana',
                         nargs='+',
                         type=str,
@@ -465,11 +480,6 @@ if __name__ == "__main__":
                         help= "alias for each auto bench results correspoding to --ana"\
                             "This alias will show in output graphics")
 
-    parser.add_argument('--config',
-                        type=str,
-                        default="bench_config.yaml",
-                        help="bench config yaml file path, ./bench_config.yaml by default."\
-                            "You can add alias label for every test, which will show in graphic.")
     parser.add_argument('--build',
                         type=str,
                         default='.',
@@ -488,6 +498,10 @@ if __name__ == "__main__":
                         type=int,
                         default=1,
                         help="repeat time for every tests, default to be 1")
+    parser.add_argument('--gap',
+                        type=int,
+                        default=1,
+                        help="time gap between each test(run crimson_bench_tool once)")
     parser.add_argument('--x',
                         type=str,
                         help="x axis of result graphics, the main variable in the target"\
@@ -504,6 +518,7 @@ if __name__ == "__main__":
                         help="y axis will not start from zero")
 
     args = parser.parse_args()
+    gap = args.gap
     res_path_suffix = 'graphic'
     no_disk_test = False
     start_from_zero = True
@@ -514,10 +529,11 @@ if __name__ == "__main__":
     tool_path = (os.path.dirname(os.path.realpath(__file__)))
     current_path = os.getcwd()
 
-    _ana = 0
-    if args.ana:
-        _ana = 1
-    if args.run + args.bench + _ana != 1:
+    _run = 1 if args.run else 0
+    _bench = 1 if args.bench else 0
+    _ana = 1 if args.ana else 0
+
+    if _run + _bench + _ana != 1:
         raise Exception("Error: should run in one of run/bench/ana")
     if args.run:
         if not args.x:
@@ -530,8 +546,8 @@ if __name__ == "__main__":
             _comp = args.comp[0].split(',')
             for index in _comp:
                 comp.append(int(index))
-        configs = read_config(args.config, x=args.x, comp=comp)
-        root = do_bench(args.config, configs, args.repeat, args.build, args.output)
+        configs = read_config(args.run, x=args.x, comp=comp)
+        root = do_bench(args.run, configs, args.repeat, args.build, args.output)
         results = read_results(root, len(configs))
         print(root)
         # the path of graphic result will be the same as the bench result
@@ -543,8 +559,8 @@ if __name__ == "__main__":
                  [comp], args.alias)
 
     if args.bench:
-        configs = read_config(args.config)
-        root = do_bench(args.config, configs, args.repeat, args.build, args.output)
+        configs = read_config(args.bench)
+        root = do_bench(args.bench, configs, args.repeat, args.build, args.output)
         print(root)
 
     if args.ana:
@@ -591,7 +607,6 @@ if __name__ == "__main__":
             # skip config.yaml, failure_log.txt, sys_info.txt
             repeat_num = len(os.listdir(root)) - 3
             m_repnums.append(repeat_num)
-
         # the path of graphic result will be the same as the bench result
         res_path += f"{res_path_suffix}"
         if args.output:
