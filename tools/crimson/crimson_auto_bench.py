@@ -155,7 +155,7 @@ def record_system_info(root, configs):
     os.system(f"lspci -vv >> {path}")
     os.system(f"echo >> {path}")
 
-# e.g. config_file='./config.yaml', x='smp', comp=[1, 2, 3]
+# e.g. config_file='./config.yaml', x='osd_cores', comp=[1, 2, 3]
 def read_config(config_file, x = None, comp = None):
     config_file_pwd = f"{config_file}"
     f = open(config_file_pwd, 'r')
@@ -506,7 +506,7 @@ if __name__ == "__main__":
                         type=str,
                         help="x axis of result graphics, the main variable in the target"\
                             " graphics to draw x-y graphics. required when --ana or --run."\
-                            " x can be smp, client, thread, osd_op_num_shards, etc. all the"\
+                            " x can be osd_cores, client, thread, osd_op_num_shards, etc. all the"\
                             " parameters in the crimson bench tool can be x.")
     parser.add_argument('--y',
                         nargs='+',

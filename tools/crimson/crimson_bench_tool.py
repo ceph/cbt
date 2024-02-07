@@ -566,7 +566,7 @@ class TestFailError(Exception):
             line = date.readline()
             time = line.split()[0]
         error_msg = f"time:{time} test:{env.test_num} client:{env.client_num} "\
-            f"thread:{env.thread_num} smp:{env.smp_num} {message}"
+            f"thread:{env.thread_num} osd_cores:{env.osd_core_num} {message}"
         print(error_msg)
         os.system(f"echo \"{error_msg}\" >> {env.failure_log}")
 
@@ -760,10 +760,10 @@ class TesterExecutor():
         for client_index, client_num in enumerate(env.client_list):
             env.client_num = client_num
             for thread_num in env.args.thread:
-                env.smp_num = env.smp_list[client_index]
+                env.osd_core_num = env.osd_cores_list[client_index]
                 env.thread_num = thread_num
                 tester_id = f"{tester_count}.client-{env.client_num}_thread" \
-                    f"-{env.thread_num}_smp-{env.smp_num}"
+                    f"-{env.thread_num}_osd_cores-{env.osd_core_num}"
 
                 retry_count = 0
                 test_case_result = dict()
@@ -851,7 +851,7 @@ class Environment():
         self.timecontinuous_threadclass_list = []
         self.prewrite_threadclass_list = []
         self.client_list = []
-        self.smp_list = []
+        self.osd_cores_list = []
         self.base_result = dict()
         self.additional_result = dict()
         self.pid = list()
@@ -863,7 +863,7 @@ class Environment():
         self.images = []
         self.thread_num = -1
         self.client_num = -1
-        self.smp_num = -1
+        self.osd_core_num = -1
         self.test_num = -1
         self.base_result['Block_size'] = args.block_size
         self.base_result['Time'] = args.time
@@ -885,13 +885,13 @@ class Environment():
         if self.args.dev:
             self.root_protect(self.args.dev)
 
-        self.smp_list = self.args.smp
+        self.osd_cores_list = self.args.osd_cores
         if self.args.client:
-            if len(self.args.smp) != len(self.args.client):
-                raise Exception("smp list should match the client list")
+            if len(self.args.osd_cores) != len(self.args.client):
+                raise Exception("osd cores list should match the client list")
             self.client_list = self.args.client
         else:
-            self.client_list = self.smp_list
+            self.client_list = self.osd_cores_list
 
         # decide pool size
         if self.args.pool_size:
@@ -1029,7 +1029,7 @@ class Environment():
             self.base_result['OSD'] = "Crimson"
             # config multicore for crimson
             if not self.args.isolate_alien_cores:
-                command += f" --crimson-smp {self.smp_num}"
+                command += f" --crimson-smp {self.osd_core_num}"
         else:
             self.base_result['OSD'] = "Classic"
 
@@ -1057,15 +1057,15 @@ class Environment():
             if self.args.isolate_alien_cores:
                 crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id]
 
-                osd_core_num = self.smp_num - self.args.isolate_alien_cores[self.test_case_id]
+                osd_core_num = self.osd_core_num - self.args.isolate_alien_cores[self.test_case_id]
                 if osd_core_num <= 0:
-                    raise Exception("isolate alien cores should not >= smp (all osd cores)")
+                    raise Exception("isolate alien cores should not >= osd_cores (all osd cores)")
                 # config multicore for crimson when isolating alien cores
                 command += f" --crimson-smp {osd_core_num}"
-                crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.smp_num - 1}'
+                crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num - 1}'
             else:
-                crimson_alien_op_num_threads = self.smp_num
-                crimson_alien_thread_cpu_cores = f"0-{self.smp_num - 1}"
+                crimson_alien_op_num_threads = self.osd_core_num
+                crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}"
             command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
             self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
             command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
@@ -1079,8 +1079,8 @@ class Environment():
                     f"{self.args.osd_op_num_shards[self.test_case_id]}'"
                 self.additional_result['osd_op_num_shards'] = self.args.osd_op_num_shards
             else:
-                command += f" -o 'osd_op_num_shards = {self.smp_num}'"
-                self.additional_result['osd_op_num_shards'] = self.smp_num
+                command += f" -o 'osd_op_num_shards = {self.osd_core_num}'"
+                self.additional_result['osd_op_num_shards'] = self.osd_core_num
             if self.args.osd_op_num_threads_per_shard:
                 command += f" -o 'osd_op_num_threads_per_shard = "\
                     f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
@@ -1188,10 +1188,10 @@ class Environment():
                 print(f") for process {p}")
 
         # config multicore for classic
-        # all classic osds will use cpu range 0-(smp*osd-1)
-        # crimson multicore settings has already been set in vstart smp param.
+        # all classic osds will use cpu range 0-(osd_cores*osd-1)
+        # crimson multicore settings has already been set in vstart osd_cores param.
         if not self.args.crimson:
-            core = self.smp_num * self.args.osd
+            core = self.osd_core_num * self.args.osd
             for p in self.pid:
                 self.exec("taskset -pc 0-" + str(core-1) + " " + str(p))
             for t in self.tid:
@@ -1202,7 +1202,7 @@ class Environment():
             for t in self.tid_alien:
                 self.exec(f"taskset -pc {crimson_alien_thread_cpu_cores} {t}")
 
-        self.base_result['Core'] = self.smp_num * self.args.osd
+        self.base_result['Core'] = self.osd_core_num * self.args.osd
 
         print("osd core usage information:")
         proc_path = f"{self.tester_log_path}/proc.txt"
@@ -1536,13 +1536,13 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=None,
-                        help='clients list, default to be the same as --smp')
+                        help='clients list, default to be the same as --osd-cores')
     parser.add_argument('--thread', '--th',
                         nargs='+',
                         type=int,
                         default=[128],
                         help='threads list')
-    parser.add_argument('--smp',
+    parser.add_argument('--osd-cores', '--oc',
                         nargs='+',
                         type=int,
                         default=[1],
@@ -1710,13 +1710,13 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=None,
-                        help='set how many cores in --smp will only be used by alienstore, \
+                        help='set how many cores in --osd-cores will only be used by alienstore, \
                             zero by default, which means osd will share all cores with alienstore.')
     parser.add_argument('--osd-op-num-shards',
                         nargs='+',
                         type=int,
                         default=None,
-                        help='set osd_op_num_shards. Equal to smp number by default.')
+                        help='set osd_op_num_shards. Equal to osd_cores number by default.')
     parser.add_argument('--osd-op-num-threads-per-shard',
                         nargs='+',
                         type=int,
