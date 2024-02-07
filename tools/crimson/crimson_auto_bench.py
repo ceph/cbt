@@ -406,6 +406,8 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                     marker='o', label=f'{output_auto_bench_name}{test_alias}', color=color)
             plt.plot(x_data, y_data_mean, linestyle='-', \
                      label=f'{output_auto_bench_name}{test_alias} mean', color=color)
+            if start_from_zero:
+                plt.ylim(ymin=0)
             plt.grid(True, color='gray', linestyle='--')
             plt.legend(loc=2)
             plt.rc('legend', fontsize='x-small')
@@ -497,12 +499,18 @@ if __name__ == "__main__":
                         type=str,
                         default=["IOPS"],
                         help="the label name of y asix of the result graphics, IOPS by default")
+    parser.add_argument('--no-start-from-zero',
+                        action='store_true',
+                        help="y axis will not start from zero")
 
     args = parser.parse_args()
     res_path_suffix = 'graphic'
     no_disk_test = False
+    start_from_zero = True
     if args.no_disk_test:
         no_disk_test = True
+    if args.no_start_from_zero:
+        start_from_zero = False
     tool_path = (os.path.dirname(os.path.realpath(__file__)))
     current_path = os.getcwd()
 
