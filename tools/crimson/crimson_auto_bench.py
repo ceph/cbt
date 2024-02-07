@@ -301,7 +301,7 @@ def adjust_results(results, y):
         all_test_res.append(test_res)
     return all_test_res
 
-def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
+def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums):
     res_path = f'{current_path}/{res_path}'
     delete_and_create_at(res_path)
     for auto_bench_id, analysed_results in enumerate(m_analysed_results):
@@ -319,6 +319,9 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
             comp = m_comp[auto_bench_id]
         color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
         color_set_p = 0
+        repnum_title = f'repeat:{m_repnums[0]}'
+        for rep_id in range(1, len(m_repnums)):
+            repnum_title += f',{m_repnums[rep_id]}'
         for test_id, test in enumerate(analysed_results):
             if test == []:
                 print(f'test {test_id} failed')
@@ -345,7 +348,7 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
                 for y_content in y_data[x_id]:
                     df.loc[len(df.index)] = {f'{x}': x_content, f'{y}' : y_content}
 
-            plt.title(f"{x}-{y}".lower())
+            plt.title(f"{x}-{y} ({repnum_title})".lower())
             plt.xlabel(f"{x}")
             plt.ylabel(f"{y}")
             color = color_set[color_set_p]
@@ -501,6 +504,7 @@ if __name__ == "__main__":
                             " bench results")
         m_configs = list()
         m_results = list()
+        m_repnums = list()
         # comp process example: ["1,2,3", "1,2,3"] -> [[1,2,3],[1,2,3]]
         # structure like this is for the needs of cross bench results analyse.
         m_comp = None
@@ -522,6 +526,9 @@ if __name__ == "__main__":
             res_path += f"{root}."
             m_configs.append(configs)
             m_results.append(results)
+            # skip config.yaml, failure_log.txt, sys_info.txt
+            repeat_num = len(os.listdir(root)) - 3
+            m_repnums.append(repeat_num)
 
         # the path of graphic result will be the same as the bench result
         res_path += f"{res_path_suffix}"
@@ -534,5 +541,5 @@ if __name__ == "__main__":
                 analysed_results = adjust_results(results, y)
                 m_analysed_results.append(analysed_results)
             draw(m_analysed_results, m_configs, args.x, y, res_path, \
-                 m_comp, args.alias)
+                 m_comp, args.alias, m_repnums)
 
