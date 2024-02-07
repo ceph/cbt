@@ -1023,8 +1023,8 @@ class Environment():
             command += "--crimson "
             self.base_result['OSD'] = "Crimson"
             # config multicore for crimson
-            if self.args.crimson:
-                command += " --crimson-smp " + str(self.smp_num)
+            if not self.args.isolate_alien_cores:
+                command += f" --crimson-smp {self.smp_num}"
         else:
             self.base_result['OSD'] = "Classic"
 
@@ -1046,41 +1046,36 @@ class Environment():
         command += " --nodaemon --redirect-output --nolockdep"
 
         # add additional crimson bluestore ceph config
+        crimson_alien_op_num_threads = 0
         crimson_alien_thread_cpu_cores = ''
         if self.args.crimson and backend == "bluestore":
-            op_num_threads = self.smp_num
-            if self.args.crimson_alien_op_num_threads:
-                op_num_threads = \
-                    self.args.crimson_alien_op_num_threads[self.test_case_id]
-            command += f" -o 'crimson_alien_op_num_threads = {op_num_threads}'"
-            self.additional_result['alien_op_num_threads'] = op_num_threads
-            if self.args.crimson_alien_thread_cpu_cores:
-                crimson_alien_thread_cpu_cores = \
-                    self.args.crimson_alien_thread_cpu_cores[self.test_case_id]
-                alien_core_range = crimson_alien_thread_cpu_cores.split('-')
-                if 0 <= int(alien_core_range[0]) <= self.smp_num-1 or \
-                    0 <= int(alien_core_range[1]) <= self.smp_num-1:
-                    raise Exception("alien threads' cores should not collide "
-                                     "with non-alien threads' cores")
-                if int(alien_core_range[1]) < int(alien_core_range[0]):
-                    raise Exception("wrong value for crimson_alien_thread_cpu_cores")
+            if self.args.isolate_alien_cores:
+                crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id]
 
+                osd_core_num = self.smp_num - self.args.isolate_alien_cores[self.test_case_id]
+                if osd_core_num <= 0:
+                    raise Exception("isolate alien cores should not >= smp (all osd cores)")
+                # config multicore for crimson when isolating alien cores
+                command += f" --crimson-smp {osd_core_num}"
+                crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.smp_num - 1}'
             else:
+                crimson_alien_op_num_threads = self.smp_num
                 crimson_alien_thread_cpu_cores = f"0-{self.smp_num - 1}"
+            command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
+            self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
             command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
             self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
+        else:
+            if self.args.isolate_alien_cores:
+                raise Exception('--isolate-alien-cores is only for crimson bluestore.')
         if not self.args.crimson:
             if self.args.osd_op_num_shards:
                 command += f" -o 'osd_op_num_shards = "\
                     f"{self.args.osd_op_num_shards[self.test_case_id]}'"
                 self.additional_result['osd_op_num_shards'] = self.args.osd_op_num_shards
             else:
-                if self.smp_num <= 8:
-                    command += " -o 'osd_op_num_shards = 8'"
-                    self.additional_result['osd_op_num_shards'] = '8'
-                else:
-                    command += f" -o 'osd_op_num_shards = {self.smp_num}'"
-                    self.additional_result['osd_op_num_shards'] = self.smp_num
+                command += f" -o 'osd_op_num_shards = {self.smp_num}'"
+                self.additional_result['osd_op_num_shards'] = self.smp_num
             if self.args.osd_op_num_threads_per_shard:
                 command += f" -o 'osd_op_num_threads_per_shard = "\
                     f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
@@ -1701,26 +1696,17 @@ if __name__ == "__main__":
                         help='collect iostat information')
 
     # ceph config param
-    parser.add_argument('--crimson-alien-op-num-threads',
+    parser.add_argument('--isolate-alien-cores',
                         nargs='+',
                         type=int,
                         default=None,
-                        help='set crimson_alien_op_num_threads. \
-                            Equal to smp number by default.')
-    parser.add_argument('--crimson-alien-thread-cpu-cores',
-                        nargs='+',
-                        type=str,
-                        default=None,
-                        help='set crimson_alien_thread_cpu_cores. The input should be ranges. \
-                            Such as 0-3 2-6. 0-smp number-1 by default. For Crimson with \
-                            AlienStore, alien-store-tp, bstore_aio and rocksdb threads will \
-                            also be binded to this CPU range.')
+                        help='set how many cores in --smp will only be used by alienstore, \
+                            zero by default, which means osd will share all cores with alienstore.')
     parser.add_argument('--osd-op-num-shards',
                         nargs='+',
                         type=int,
                         default=None,
-                        help='set osd_op_num_shards. \
-                            Equal to smp number when > 8, else = 8 by default.')
+                        help='set osd_op_num_shards. Equal to smp number by default.')
     parser.add_argument('--osd-op-num-threads-per-shard',
                         nargs='+',
                         type=int,
