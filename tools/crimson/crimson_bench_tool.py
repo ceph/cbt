@@ -28,6 +28,7 @@ class Task(threading.Thread):
         self.start_time = start_time
         self.result = None
         self.log = env.log
+        self.bench_taskset = env.args.bench_taskset
         self.id = id #(tester_id, thread_id)
         self.task_log_path = f"{env.tester_log_path}/" \
             f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
@@ -53,7 +54,7 @@ class Task(threading.Thread):
 
         command = self.create_command()
 
-        proc = self.env.popen(command)
+        proc = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
         done = proc.poll()
         fail = self.env.check_failure()
         while done is None and not fail:
@@ -98,7 +99,6 @@ class Task(threading.Thread):
 class RadosRandWriteThread(Task):
     def __init__(self, env, id):
         super().__init__(env, id, start_time=0.01)
-        self.task_set = env.args.bench_taskset
         self.block_size = env.args.block_size
         self.time = env.args.time
         self.pool = env.pool
@@ -107,8 +107,7 @@ class RadosRandWriteThread(Task):
         self.bandwidth_key = "rw_Bandwidth"
 
     def create_command(self):
-        rados_bench_write = "taskset -c " + self.task_set \
-            + " bin/rados bench -p " + self.pool + " " \
+        rados_bench_write = "bin/rados bench -p " + self.pool + " " \
             + self.time + " write -t " \
             + str(self.thread_num) + " -b " + self.block_size + " " \
             + "--no-cleanup"
@@ -141,8 +140,7 @@ class RadosSeqWriteThread(RadosRandWriteThread):
         self.block_size = env.args.block_size
 
     def create_command(self):
-        rados_bench_write = "taskset -c " + self.task_set \
-            + " bin/rados bench -p " + self.pool + " " \
+        rados_bench_write = "bin/rados bench -p " + self.pool + " " \
             + self.time + " write -t " \
             + str(self.thread_num) \
             + " -b " + self.block_size \
@@ -162,8 +160,7 @@ class RadosRandReadThread(RadosRandWriteThread):
         self.bandwidth_key = "rr_Bandwidth"
 
     def create_command(self):
-        rados_bench_rand_read = "taskset -c " + self.task_set \
-            + " bin/rados bench -p " + self.pool + " " \
+        rados_bench_rand_read = "bin/rados bench -p " + self.pool + " " \
             + self.time + " rand -t " \
             + str(self.thread_num) \
             + " --no-cleanup"
@@ -182,8 +179,7 @@ class RadosSeqReadThread(RadosRandWriteThread):
         self.bandwidth_key = "sr_Bandwidth"
 
     def create_command(self):
-        rados_bench_seq_read = "taskset -c " + self.task_set \
-            + " bin/rados bench -p " + self.pool + " " \
+        rados_bench_seq_read = "bin/rados bench -p " + self.pool + " " \
             + self.time + " seq -t " \
             + str(self.thread_num) \
             + " --no-cleanup"
@@ -198,7 +194,6 @@ class FioRBDRandWriteThread(Task):
     def __init__(self, env, id):
         super().__init__(env, id)
         self.args = env.args
-        self.task_set = env.args.bench_taskset
         self.rw = "randwrite"
         self.io_depth = env.thread_num
         self.io_engine = "rbd"
@@ -215,8 +210,7 @@ class FioRBDRandWriteThread(Task):
         return self.images.pop(0)  # atomic
 
     def create_command(self):
-        command = "taskset -c " + self.task_set \
-            + " fio" \
+        command = "fio" \
             + " -ioengine=" + self.io_engine \
             + " -pool=" + str(self.pool) \
             + " -rbdname=" + self.get_a_image() \
@@ -330,13 +324,11 @@ class ReactorUtilizationCollectorThread(Task):
     def __init__(self, env, id, start_time):
         super().__init__(env, id, start_time)
         self.osd = "osd.0"
-        self.task_set = env.args.bench_taskset
         if env.args.osd != 1:
             raise Exception("ru only support single osd for now.")
 
     def create_command(self):
-        command = "taskset -c " + self.task_set \
-            + " bin/ceph tell " \
+        command = "bin/ceph tell " \
             + self.osd + " dump_metrics reactor_utilization"
         return command
 
@@ -361,11 +353,9 @@ class PerfThread(Task):
         self.start_time = int(env.args.time)/2
         self.last_time = 5000  # 5s
         self.pid_list = env.pid
-        self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "taskset -c " + self.task_set \
-            + " perf stat --timeout " + str(self.last_time)
+        command = "perf stat --timeout " + str(self.last_time)
         command += " -e cpu-clock,context-switches,cpu-migrations," \
             + "cpu-migrations,cycles,instructions" \
             + ",branches,branch-misses,cache-misses,cache-references"
@@ -424,11 +414,9 @@ class PerfRecordThread(Task):
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
         self.pid_list = env.pid
-        self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = "taskset -c " + self.task_set \
-            + " perf record -a -g"
+        command = "perf record -a -g"
         if self.pid_list:
             command += " -p "
             command += str(self.pid_list[0])
@@ -461,11 +449,9 @@ class IOStatThread(Task):
         self.dev = "sda"  # default if no args.dev
         if env.args.dev:
             self.dev = env.get_disk_name()
-        self.task_set = env.args.bench_taskset
 
     def create_command(self):
-        command = f"taskset -c {self.task_set} "\
-            f"iostat -p {self.dev} -xkdy interval {self.last_time} 1"
+        command = f"iostat -p {self.dev} -xkdy interval {self.last_time} 1"
         return command
 
     def analyse(self):
@@ -1193,9 +1179,7 @@ class Environment():
         if not self.args.crimson:
             core = self.osd_core_num * self.args.osd
             for p in self.pid:
-                self.exec("taskset -pc 0-" + str(core-1) + " " + str(p))
-            for t in self.tid:
-                self.exec("taskset -pc 0-" + str(core-1) + " " + str(t))
+                self.exec("taskset -apc 0-" + str(core-1) + " " + str(p))
 
         # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
         if self.args.crimson and backend == "bluestore":
