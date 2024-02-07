@@ -176,9 +176,10 @@ def do_bench(config_file, configs, repeat, build, output):
             command += f" --build {build}"
             print(command)
             os.system(command)
+    read_results(root, len(configs))
     return root
 
-def read_results(root):
+def read_results(root, test_num):
     root_files = os.listdir(root)
     failure_log = 'failure_log.txt'
     failure_path = f"{root}/{failure_log}"
@@ -187,30 +188,55 @@ def read_results(root):
         first = True
         os.system(f"touch {failure_path}")
 
-    repeat = len(os.listdir(root)) - 3 # skip config.yaml, failure_log.txt, sys_info.txt
     # read root directory to get results
     results = dict()
     # results - repeat_results - test_results - (tester_id, all results)
-    for repeat_id in range(repeat):
+    repeat_num = len(os.listdir(root)) - 3 # skip config.yaml, failure_log.txt, sys_info.txt
+    for repeat_id in range(repeat_num):
         repeat_path = f"{root}/rep-{repeat_id}"
         repeat_results = dict()
+
         tests = os.listdir(repeat_path)
-        tests.sort()
-        for test_id, test_name in enumerate(tests):
-            test_path = f"{repeat_path}/{test_name}"
-            test_results = dict()
-            files = os.listdir(test_path)
-            if '__failed__' not in files:
-                result_path = f"{test_path}/result.csv"
-                res = pd.read_csv(result_path)
-                for case in range(len(res)):
-                    test_results[case] = res.iloc[case]
-                repeat_results[test_id] = test_results
+        for test_id in range(test_num):
+            tgt_test_dir_prefix = f'test-{test_id}'
+            test_dir = None
+            # check if dir exits
+            for dir in tests:
+                if dir.split('_')[0] == tgt_test_dir_prefix:
+                    test_dir = dir
+                    break
+            if test_dir:
+                test_path = f"{repeat_path}/{test_dir}"
+                test_results = dict()
+                files = os.listdir(test_path)
+                if '__failed__' in files:
+                    repeat_results[test_id] = False
+                    if first:
+                        os.system(f"echo \"[TEST FAILED] in rep-{repeat_id},"\
+                                f" test-{test_id}\" >> {failure_path}")
+                else:
+                    result_path = f"{test_path}/result.csv"
+                    if os.path.exists(result_path):
+                        res = pd.read_csv(result_path)
+                        for case in range(len(res)):
+                            test_results[case] = res.iloc[case]
+                        repeat_results[test_id] = test_results
+                    else:
+                        repeat_results[test_id] = False
+                        if first:
+                            os.system(f"echo \"[INPUT CONFIG ERROR or UNKOWN ERROR] in "\
+                                    f"rep-{repeat_id}, test-{test_id}, please run the "\
+                                    f"{test_id}th test using the {test_id}th group of "\
+                                    f"param in your config file by crimson_bench_tool.py "\
+                                    f"to get the error information.\" >> {failure_path}")
             else:
                 repeat_results[test_id] = False
                 if first:
-                    os.system(f"echo \"test failed in rep-{repeat_id},"\
-                              f" test-{test_id}\" >> {failure_path}")
+                    os.system(f"echo \"[INPUT CONFIG ERROR or UNKOWN ERROR] in "\
+                            f"rep-{repeat_id}, test-{test_id}, please run the "\
+                            f"{test_id}th test using the {test_id}th group of "\
+                            f"param in your config file by crimson_bench_tool.py "\
+                            f"to get the error information.\" >> {failure_path}")
 
         results[repeat_id] = repeat_results
     return results
@@ -295,7 +321,7 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias):
         color_set_p = 0
         for test_id, test in enumerate(analysed_results):
             if test == []:
-                print('failed happen')
+                print(f'test {test_id} failed')
                 continue
             if comp and test_id+1 not in comp:
                 continue
@@ -441,7 +467,7 @@ if __name__ == "__main__":
                 comp.append(int(index))
         configs = read_config(args.config, x=args.x, comp=comp)
         root = do_bench(args.config, configs, args.repeat, args.build, args.output)
-        results = read_results(root)
+        results = read_results(root, len(configs))
         print(root)
         # the path of graphic result will be the same as the bench result
         res_path = f"{root}.{res_path_suffix}"
@@ -491,7 +517,7 @@ if __name__ == "__main__":
                 m_comp.append(comp)
 
             configs = read_config(f"{current_path}/{root}/config.yaml", x=args.x, comp=comp)
-            results = read_results(f"{current_path}/{root}")
+            results = read_results(f"{current_path}/{root}", len(configs))
 
             res_path += f"{root}."
             m_configs.append(configs)

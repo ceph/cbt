@@ -699,7 +699,7 @@ class Tester():
         self.detector.join()
 
         if self.env.check_failure():
-            raise TestFailError("Tester Failed", self.env)
+            raise TestFailError('(Test Failed)', self.env)
 
         test_case_result = dict()
 
@@ -772,6 +772,8 @@ class TesterExecutor():
                     if retry_count > env.args.retry_limit:
                         os.system(f"touch {env.log}/__failed__")
                         raise Exception(f"Test Failed: Maximum retry limit exceeded.")
+                    if retry_count != 0:
+                        print(f"will retry...start the {retry_count}th tryment.")
                     try:
                         env.before_run_case(tester_id)
                         tester = Tester(env, tester_id)
@@ -782,12 +784,9 @@ class TesterExecutor():
                             test_case_result.update(env.additional_result.copy())
                         test_case_result.update({'==========':'=============='})
                     except TestFailError:
-                        print("will retry...")
                         retry_count += 1
                         test_case_result = dict()
                         self.rollback(env, tester_id, retry_count)
-                        if tester:
-                            del tester
                     else:
                         succeed = True
                 env.after_run_case(test_case_result)
@@ -1418,7 +1417,7 @@ class Environment():
             thread.join()
         detector.join()
         if self.check_failure():
-            raise TestFailError("Warmup Failed", self)
+            raise TestFailError("(Warmup Failed)", self)
         print('fio pre write OK.')
         env.reset_task_done()
 
@@ -1462,7 +1461,7 @@ class Environment():
             thread.join()
         detector.join()
         if self.check_failure():
-            raise TestFailError("Warmup Failed", self)
+            raise TestFailError("(Warmup Failed)", self)
         print('rados pre write OK.')
         env.reset_task_done()
 
