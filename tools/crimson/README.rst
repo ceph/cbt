@@ -158,9 +158,9 @@ This is an automatical bench tool using crimson bench tool to run, anlyase
 Use --run to run the whole process, --bench to only run tests, --ana to 
 organize data and draw graphics for exist bench results.
 
-When --bench or --run, this tool will read --config target config yaml file
-(bench_config.yaml by default) to do bench tasks. In yaml file, each group of 
-config represents a test, corresponding to run crimson bench tool once.
+When --bench or --run, this tool will read target config yaml file
+to do bench tasks. In yaml file, each group of config represents a test, 
+corresponding to run crimson bench tool once.
 
 So if there are multiple groups of config in config file, that means to run 
 crimson bench tool for multiple times using the configuration in the config 
@@ -173,13 +173,13 @@ config yaml file be like:
   rand_write: 1
   client: 1 1
   block_size: 4K
-  smp: 1 2
+  osd_cores: 1 2
   ---
   alias: eg.test.2
   rand_write: 1
   client: 8 8
   block_size: 4K
-  smp: 1 2
+  osd_cores: 1 2
 
 All label in yaml file should be crimson_bench_tool's input param(- changed to be _,
 and delete --)
@@ -200,18 +200,22 @@ the structure of it will be like:
   autobench.20240111.113706/ # one auto bench root directory
   --config.yaml # config file will be copied automatically into this dir
   --failure_log.txt # record all failed tests (exceed retry limits of crimson_bench_tool)
+  --failure_osd_log # store all osd logs when test failed
+  ---0.client-8_thread-128_osd_cores-1_1 # 1 means the first tryment(but failed) of test 0
+  ----osd.0.log
+    ...
   --sys_info.txt # commit, disk, cpu, mem, etc.
-  --rep:0 # repeat 0
+  --rep-0 # repeat 0
       # result log from crimson_bench_tool, using the first group of config
       # in config yaml
-  ----test:0_classic_bluestore_osd:1_ps:1
-  ------0.client{8}_thread{128}_smp{1} # first case in first test
+  ----test-0_classic_bluestore_osd-1_ps-1
+  ------0.client-8_thread-128_osd_cores-1 # first case in first test
   --------0.RadosRandWriteThread.0.01
   --------osd.0.log
   --------proc.txt # all osd threads running during the bench
-  ----test:1_crimson_bluestore_osd:1_ps:1
+  ----test-1_crimson_bluestore_osd-1_ps-1
       ...
-  --rep:1
+  --rep-1
     ...
 
 --ana will organize data and draw graphics using these results from auto 
@@ -223,14 +227,13 @@ based on. By default, different tests(a test means one run of crimson bench tool
 corresponding to one group of config in yaml file) in autobench results will generate
 graphics dependently.
 
---x must be the label in config file, such as --x smp, and --y must be the output from
+--x must be the label in config file, such as --x osd_cores, and --y must be the output from
 crimson bench tool such as iops, latency. You can check it in result.csv 
 from random test log directory in autobench results directory.
 
 If you want to merge multiple tests' results from one auto bench results, you can use
 --comp, set the index of test you want to merge. e.g. --comp 1,2 means merge the 
-first and second tests into one graphics for comparison. (But the --x target config in 
-config file must be the same when using --comp.)
+first and second tests into one graphics for comparison.
 
 If you want to merge multiple tests' results from multiple auto bench results, you can 
 use param like this: --ana autobench.root1 autobench.root2 --comp 2 1,2 which means 
@@ -246,20 +249,20 @@ Example:
 .. code-block:: console
 
        # will generate dir autobench.20240111.113705 and autobench.20240111.113705.graphic
-     $ ./crimson_auto_bench.py --run --x smp --y iops --repeat 2 --config bench_config.yaml --alias ssd
-     $ ./crimson_auto_bench.py --run --x smp --y iops --repeat 2 --comp 1,2 --config bench_config.yaml --alias ssd
+     $ ./crimson_auto_bench.py --run bench_config.yaml --x osd_cores --y iops --repeat 2 --alias ssd
+     $ ./crimson_auto_bench.py --run bench_config.yaml --x osd_cores --y iops --repeat 2 --comp 1,2 --alias ssd
 
        # (1) this will generate dir autobench.20240111.113705 (--bench doesn't need --x, --y, --comp, --alias,
        # you can input them when using --ana to analyse the results of --bench)
-     $ ./crimson_auto_bench.py --bench --repeat 2 --config bench_config.yaml
+     $ ./crimson_auto_bench.py --bench bench_config.yaml --repeat 2
        # will generate dir autobench.20240111.113705.graphic
-     $ ./crimson_auto_bench.py --ana autobench.20240111.113705 --x smp --y iops latency --alias ssd
+     $ ./crimson_auto_bench.py --ana autobench.20240111.113705 --x osd_cores --y iops latency --alias ssd
        # (2) combine two tests into one graphic
-     $ ./crimson_auto_bench.py --ana autobench.20240111.113705 --x smp --y iops latency --comp 1,2 --alias ssd
+     $ ./crimson_auto_bench.py --ana autobench.20240111.113705 --x osd_cores --y iops latency --comp 1,2 --alias ssd
 
        # will generate dir autobench.20240111.113705.autobench.20240112.124205.graphic
      $ ./crimson_auto_bench.py --ana autobench.20240111.113705 autobench.20240112.124205 \
-                               --x smp --y iops --comp 1,2 1,2 --alias hdd ssd
+                               --x osd_cores --y iops --comp 1,2 1,2 --alias hdd ssd
 
 Example iops result graphic of command (1) and (2) above:
 
