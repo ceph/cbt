@@ -253,7 +253,7 @@ def parse_json(data):
     except ValueError as e:
         parse_text(data)
         return
-    for pg in json_data['pg_stats']:
+    for pg in json_data['pg_map']['pg_stats']:
         match = re.search(r"^(\d+)\.(\w{1,2})", pg['pgid'])
         pool = match.group(1)
         uplist = pg['up']
@@ -267,16 +267,16 @@ def parse_text(data):
     actingnum = 0
 
     for line in data.splitlines():
-        parts = line.rstrip().split('\t')
-        if parts[0] == "pg_stat":
-            upnum = parts.index("up")
-            actingnum = parts.index("acting")
+        parts = re.split(r'\s+', line.rstrip())
+        if parts[0] == "PG_STAT":
+            upnum = parts.index("UP")
+            actingnum = parts.index("ACTING")
             continue
         match = re.search(r"^(\d+)\.(\w{1,2})", parts[0])
         if match:
              pool = match.group(1)
-             uplist = parts[upnum].translate(None, '[]').split(',')
-             actinglist = parts[actingnum].translate(None, '[]').split(',')
+             uplist = parts[upnum].translate(str.maketrans('', '', '[]')).split(',')
+             actinglist = parts[actingnum].translate(str.maketrans('', '', '[]')).split(',')
              add_counts(pool, uplist, actinglist)
     if upnum == 0 or actingnum == 0:
         raise ValueError('could not parse the input as a plain ceph pg dump')
