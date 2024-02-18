@@ -347,6 +347,44 @@ class ReactorUtilizationCollectorThread(Task):
         return result_dic
 
 
+class EmonStartThread(Task):
+    def __init__(self, env, id):
+        super().__init__(env, id, disable_log=True)
+        self.start_time = round(int(env.args.time) * 0.25)
+
+    def create_command(self):
+        command = f"emon -collect-edp -f {self.env.tester_log_path}/emon.dat"
+        return command
+
+    def analyse(self):
+        return {}
+
+    @staticmethod
+    def pre_process(env):
+        os.system("emon -stop")
+
+
+class EmonStopAndAnalyseThread(Task):
+    def __init__(self, env, id):
+        super().__init__(env, id, disable_log=True)
+        self.start_time = int(env.args.time)
+
+    def create_command(self):
+        return "emon -stop"
+
+    def analyse(self):
+        return {}
+
+    @staticmethod
+    def post_process(env, test_case_result):
+        print('process emon edp...')
+        cpath = os.getcwd()
+        os.chdir(env.tester_log_path)
+        os.system(f'emon -process-pyedp /opt/intel/sep/config/edp/pyedp_config.txt')
+        os.chdir(cpath)
+        print('emon edp process finished.')
+
+
 class PerfThread(Task):
     def __init__(self, env, id):
         super().__init__(env, id)
@@ -985,6 +1023,9 @@ class Environment():
             self.timecontinuous_threadclass_list.append(PerfRecordThread)
         if self.args.iostat:
             self.timecontinuous_threadclass_list.append(IOStatThread)
+        if self.args.emon:
+            self.timecontinuous_threadclass_list.append(EmonStartThread)
+            self.timecontinuous_threadclass_list.append(EmonStopAndAnalyseThread)
 
     def general_pre_processing(self, tester_id):
         # killall
@@ -1510,6 +1551,8 @@ def software_dependency_check(args):
             no_pass += 1
     if args.iostat:
         no_pass += not_exist('iostat')
+    if args.emon:
+        no_pass += not_exist('emon')
     if no_pass:
         raise Exception("software dependency check not passed.")
 
@@ -1688,6 +1731,9 @@ if __name__ == "__main__":
     parser.add_argument('--iostat', '--i',
                         action='store_true',
                         help='collect iostat information')
+    parser.add_argument('--emon', '--e',
+                        action='store_true',
+                        help='collect emon information')
 
     # ceph config param
     parser.add_argument('--isolate-alien-cores', '--alien',
