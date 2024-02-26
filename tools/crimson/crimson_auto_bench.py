@@ -173,7 +173,7 @@ def read_config(config_file, x = None, comp = None):
             if key in no_value_attributes and config[key] != True:
                 raise Exception("Error: no value attributes should only be True")
             if key == 'alias':
-                alias = config[key]
+                alias = str(config[key])
                 if len(alias.split()) != 1:
                     raise Exception("Error: alias should not include space")
 
@@ -362,6 +362,8 @@ def adjust_results(results, y):
 def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums):
     res_path = f'{current_path}/{res_path}'
     delete_and_create_at(res_path)
+    color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+    color_set_p = 0
     for auto_bench_id, analysed_results in enumerate(m_analysed_results):
         configs = m_configs[auto_bench_id]
         output_auto_bench_name = None
@@ -375,8 +377,6 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
         comp = None
         if m_comp:
             comp = m_comp[auto_bench_id]
-        color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-        color_set_p = 0
         repnum_title = f'repeat:{m_repnums[0]}'
         for rep_id in range(1, len(m_repnums)):
             repnum_title += f',{m_repnums[rep_id]}'
@@ -417,13 +417,13 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                     marker='o', label=f'{output_auto_bench_name}{test_alias}', color=color)
             plt.plot(x_data, y_data_mean, linestyle='-', \
                      label=f'{output_auto_bench_name}{test_alias} mean', color=color)
-            if start_from_zero:
-                plt.ylim(ymin=0)
             plt.grid(True, color='gray', linestyle='--')
             plt.legend(loc=2)
             plt.rc('legend', fontsize='x-small')
             # TODO: additional information to graphics
             if not comp:
+                if start_from_zero:
+                    plt.ylim(ymin=0)
                 plt.savefig(f"{res_path}/{output_auto_bench_name}"\
                             f"{test_alias}_x-{x}_y-{y}.png".lower(), dpi=500)
                 plt.close()
@@ -440,6 +440,8 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                           f"{test_alias}_x-{x}_y-{y}_avg.csv".lower())
 
     if m_comp:
+        if start_from_zero:
+            plt.ylim(ymin=0)
         plt.savefig(f'{res_path}/x-{x}_y-{y}.png'.lower(), dpi=500)
         plt.close()
 
