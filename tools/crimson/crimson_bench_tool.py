@@ -5,6 +5,7 @@ import threading
 import time
 import re
 import sys
+import csv
 from subprocess import Popen, PIPE
 
 # Divid all test threads into three categories, Test Case Based Thread, Time
@@ -832,39 +833,55 @@ class TesterExecutor():
 
     def output(self, output, horizontal, filters):
         print(f"writing results to {output}")
-        f_result = open(output,"w")
+        field_names = list()
+        for result_dict in self.result_list:
+            keys = result_dict.keys()
+            for key in keys:
+                if key not in field_names and key not in filters:
+                    field_names.append(key)
+
+        # print to console
         if horizontal:
-            for key in self.result_list[0]:
-                if key not in filters:
-                    print('%25s '%(key), end ='')
+            for key in field_names:
+                print('%25s '%(key), end ='')
             print()
             for result in self.result_list:
-                for key in result:
-                    if key not in filters:
+                for key in field_names:
+                    if key in result.keys():
                         print('%25s '%(str(result[key])), end = '')
+                    else:
+                        print('%25s '%('not exist'), end = '')
                 print()
         else:
-            for key in self.result_list[0]:
-                if key not in filters:
-                    print('%25s '%(key), end ='')
-                    for result in self.result_list:
+            for key in field_names:
+                print('%25s '%(key), end ='')
+                for result in self.result_list:
+                    if key in result.keys():
                         print('%14.13s'%(str(result[key])), end ='')
-                    print()
-                    
-        keylist = list(self.result_list[0].keys())
-        keylen = len(keylist)
-        for i in range(keylen):
-            if i > 0:
-                f_result.write(",")
-            f_result.write(keylist[i])
-        for result in self.result_list:
-            f_result.write('\n')
-            for i in range(keylen):
-                if keylist[i] not in filters:
-                    if i > 0:
-                        f_result.write(",")
-                    f_result.write(str(result[keylist[i]])) 
-        f_result.close()
+                    else:
+                        print('%14.13s'%('not exist'), end ='')
+                print()
+
+        # save to file
+        for result_dict in self.result_list:
+            for key in field_names:
+                if key not in result_dict.keys():
+                    result_dict[key] = 'not exist'
+        with open(f'{output}.csv', 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=field_names)
+            writer.writeheader()
+            writer.writerows(self.result_list)
+        csvfile.close()
+
+        with open(f'{output}_v.csv', 'w') as csvfile:
+            writer = csv.writer(csvfile)
+            for key in field_names:
+                to_write = list()
+                to_write.append(key)
+                for result_dict in self.result_list:
+                    to_write.append(result_dict[key])
+                writer.writerow(to_write)
+        csvfile.close()
 
 
 class Environment():
@@ -1800,6 +1817,6 @@ if __name__ == "__main__":
     tester_executor = TesterExecutor()
     tester_executor.run(env)
 
-    output_dir = f"{env.log}/{args.output}.csv"
-    tester_executor.output(output_dir, args.output_horizontal, filters)
+    output_dir_prefix = f"{env.log}/{args.output}"
+    tester_executor.output(output_dir_prefix, args.output_horizontal, filters)
     print('done.')

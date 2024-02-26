@@ -328,8 +328,8 @@ def adjust_results(results, y):
             if results[repeat_id][test_id]:
                 _case_num = len(results[repeat_id][test_id])
                 if case_num != 0 and _case_num != case_num:
-                    raise Exception("Error: cases num changed\
-                                    between different repeat for one same test")
+                    raise Exception("Error: cases num changed "
+                                    "between different repeat for one same test")
                 case_num = _case_num
         if case_num == 0:
             # all repeat of this test failed
@@ -362,8 +362,13 @@ def adjust_results(results, y):
 def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums):
     res_path = f'{current_path}/{res_path}'
     delete_and_create_at(res_path)
+    detail_path = f"{res_path}/detail"
+    os.makedirs(detail_path)
+
     color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
     color_set_p = 0
+
+    all_df_avg = pd.DataFrame({f'{x}':[]})
     for auto_bench_id, analysed_results in enumerate(m_analysed_results):
         configs = m_configs[auto_bench_id]
         output_auto_bench_name = None
@@ -386,11 +391,12 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                 continue
             if comp and test_id+1 not in comp:
                 continue
-            x_value = configs[test_id][x]
+            x_value = m_configs[0][test_id][x]
             if type(x_value) == int:
                 x_data = [x_value]
             else:
                 x_data = x_value.split()
+
             test_alias = None
             if 'alias' in configs[test_id]:
                 test_alias = configs[test_id]['alias']
@@ -429,15 +435,19 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                 plt.close()
 
             # raw data to csv
-            df.to_csv(f"{res_path}/{output_auto_bench_name}"\
+            df.to_csv(f"{detail_path}/{output_auto_bench_name}"\
                       f"{test_alias}_x-{x}_y-{y}.csv".lower())
             # average to csv
-            df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
+            col_name = f'{output_auto_bench_name}{test_alias}'
+            df_avg = pd.DataFrame({f'{x}':[], f'{col_name}':[]})
             for x_id, x_content in enumerate(x_data):
                 df_avg.loc[len(df_avg.index)] = \
-                    {f"{x}": x_content, f'{y}_avg' : y_data_mean[x_id]}
-            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}"\
-                          f"{test_alias}_x-{x}_y-{y}_avg.csv".lower())
+                    {f"{x}": int(x_content), f'{col_name}' : y_data_mean[x_id]}
+            all_df_avg = all_df_avg.merge(df_avg, on=x, how='outer')
+
+    all_df_avg = all_df_avg.sort_values(by=x, ascending=True)
+    all_df_avg = all_df_avg.reset_index(drop=True)
+    all_df_avg.to_csv(f"{res_path}/x-{x}_y-{y}.csv".lower())
 
     if m_comp:
         if start_from_zero:
