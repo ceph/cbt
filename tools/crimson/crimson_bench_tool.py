@@ -1106,9 +1106,17 @@ class Environment():
                     raise Exception("isolate alien cores should not >= osd_cores (all osd cores)")
                 # config multicore for crimson when isolating alien cores
                 command += f" --crimson-smp {osd_core_num}"
+                if self.args.thread_per_alien_cores:
+                    crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id] \
+                        * self.args.thread_per_alien_cores[self.test_case_id]
+                else:
+                    crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id]
                 crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num - 1}'
             else:
-                crimson_alien_op_num_threads = self.osd_core_num
+                if self.args.thread_per_alien_cores:
+                    crimson_alien_op_num_threads = self.osd_core_num * self.args.thread_per_alien_cores[self.test_case_id]
+                else:
+                    crimson_alien_op_num_threads = self.osd_core_num
                 crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}"
             command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
             self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
@@ -1135,6 +1143,8 @@ class Environment():
                     f"{self.args.ms_async_op_threads[self.test_case_id]}'"
                 self.additional_result['ms_async_op_threads'] = \
                     self.args.ms_async_op_threads[self.test_case_id]
+        if self.args.crimson:
+            command += " -o 'crimson_osd_stat_interval = 2'"
         if backend == "seastore":
             command += " -o 'seastore_cache_lru_size = 512M'"
             command += " -o 'seastore_max_concurrent_transactions = 128'"
@@ -1759,6 +1769,10 @@ if __name__ == "__main__":
                         default=None,
                         help='set how many cores in --osd-cores will only be used by alienstore, \
                             zero by default, which means osd will share all cores with alienstore.')
+    parser.add_argument('--thread-per-alien-cores',
+                        nargs='+',
+                        type=int,
+                        default=None)
     parser.add_argument('--osd-op-num-shards',
                         nargs='+',
                         type=int,
