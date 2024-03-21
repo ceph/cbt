@@ -93,10 +93,17 @@ def host_info(host):
     if '@' in host:
         user, host = host.split('@')
         ret['user'] = user
+    if ':' in host:
+        host, port = host.split(':')
+        ret['port'] = port
     if user:
         ret['user'] = user
     ret['host'] = host
-    ret['addr'] = socket.gethostbyname(host)
+    # Follow-up: add support for socket.getaddrinfo
+    try:
+        ret['addr'] = socket.gethostbyname(host)
+    except socket.gaierror as e:
+        shutdown(f'Was not able to gethostbyname: {host}')
     return ret
 
 
@@ -116,7 +123,7 @@ def getnodes(*nodelists):
                              nodelist, cur)
 
     str_nodes = ','.join(uniquenodes(nodes))
-    logger.debug("Nodes : %s", str_nodes)
+    #logger.debug("Nodes : %s", str_nodes)
     return str_nodes
 
 
