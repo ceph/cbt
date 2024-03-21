@@ -11,6 +11,10 @@ from cluster.ceph import Ceph
 from log_support import setup_loggers
 
 logger = logging.getLogger("cbt")
+# Uncomment this if further debug detail (module, funcname) are needed
+#FORMAT = "%(asctime)s] [%(levelname)s] [%(name)s] [%(funcName)s():%(lineno)s] %(message)s"
+#logging.basicConfig(format=FORMAT, force=True)
+#logger.setLevel(logging.DEBUG)
 
 
 def parse_args(args):
@@ -55,6 +59,7 @@ def main(argv):
     if not rebuild_every_test:
         if not cluster.use_existing:
             cluster.initialize();
+        # Why does it need to iterate for the creation of benchmarks?
         for iteration in range(settings.cluster.get("iterations", 0)):
             benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             for b in benchmarks:
@@ -68,13 +73,14 @@ def main(argv):
                 # Only initialize once per class.
                 global_init[b.getclass()] = b
 
+    #logger.debug("Settings.cluster.is_teuthology:%s",settings.cluster.get('is_teuthology', False))
     # Run the benchmarks
     return_code = 0
     try:
         for iteration in range(settings.cluster.get("iterations", 0)):
             benchmarks = benchmarkfactory.get_all(archive_dir, cluster, iteration)
             for b in benchmarks:
-                if b.exists() and not settings.cluster.get('is_teuthology', False):
+                if not b.exists() and not settings.cluster.get('is_teuthology', False):
                     continue
 
                 if rebuild_every_test:
@@ -82,6 +88,7 @@ def main(argv):
                     b.initialize()
                 # Always try to initialize endpoints before running the test
                 b.initialize_endpoints()
+                logger.info(f"Running benchmark %s == iteration %d ==" % (b, iteration))
                 b.run()
     except:
         return_code = 1  # FAIL
