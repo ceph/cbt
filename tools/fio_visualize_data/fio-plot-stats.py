@@ -115,6 +115,8 @@ def parse_args():
     parser.error("Argument -p/--subplot requires -r/--timerange to be specified.")
   if args.timerange and args.timerange[0] > args.timerange[1]:
     parser.error("Argument -r/--timerange: Incorrect timerange provided.")
+  if args.metric == 'pct' and args.subplot:
+    parser.error("Subplot for 'pct' metric is not supported currently.")
 
   return args
 

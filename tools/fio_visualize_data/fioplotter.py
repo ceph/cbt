@@ -129,11 +129,24 @@ class Lineplot(Fioplotter):
   def set_plot_metadata(self, mean=None, stdev=None, settitle=True, setxlabel=True):
     if len(self.legend): self.legend.clear()
     self.title = ""
-    self.legend.append(self.metric)
     if setxlabel:
       self.xlabel = 'time (secs)'
-    mean = round(float(mean), 2)
-    stdev = round(float(stdev), 2)
+
+    # Treat percentile a little different
+    if self.metric == 'pct':
+      self.ylabel = 'latency (msec)'
+      self.title = " Avg, 50th, 95th, 99th and 99.5th Percentiles"
+      for col in self.pcsv.fiopctdataframe.columns:
+        if col == 'time' or col == 'samples':
+          continue
+        self.legend.append(col)
+      return
+
+    if mean is not None:
+      mean = round(float(mean), 2)
+    if stdev is not None:
+      stdev = round(float(stdev), 2)
+    self.legend.append(self.metric)
     legend = ""
     if self.metric == 'lat':
       self.ylabel = 'latency (msec)'
@@ -146,7 +159,12 @@ class Lineplot(Fioplotter):
     self.legend.append(legend)
 
   def generate_plot(self):
-    if self.createsubplot:
+    if self.metric == 'pct':
+      getrange = (self.timerange is not None and len(self.timerange))
+      fig, ax = plt.subplots()
+      self.set_plot_metadata()
+      self.plot_pct_chart(ax)
+    elif self.createsubplot:
       subplotrows = 2 # Two plots in one chart for now
       subplotcols = 1
       settitle = True
@@ -185,6 +203,21 @@ class Lineplot(Fioplotter):
     if mean is not None and (len(mean) == (endrow - startrow) + 1):
       ax.plot(self.pcsv.fiodataframe.loc[startrow:endrow, 'time'].to_numpy(), \
               mean.to_numpy(), color='r', linestyle='--', linewidth=0.8)
+    self.apply_subplot_labels(ax)
+
+  def plot_pct_chart(self, ax=None):
+    if not ax:
+      print("Error: Nothing to plot!")
+      sys.exit(1)
+
+    # Get columns from dataframe
+    for col in self.pcsv.fiopctdataframe.columns:
+      if col == 'time' or col == 'samples':
+        continue
+      # Plot the metric chart
+      ax.plot(self.pcsv.fiopctdataframe['time'].to_numpy(),\
+              self.pcsv.fiopctdataframe[col].to_numpy(),\
+              linewidth=1, alpha=0.8)
     self.apply_subplot_labels(ax)
 
   def apply_subplot_labels(self, ax=None):
