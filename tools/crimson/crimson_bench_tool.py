@@ -22,7 +22,8 @@ from subprocess import Popen, PIPE
 # in the class Environmen to extend this tool.
 # set the start_time to decide when will the test start after thread starts.
 class Task(threading.Thread):
-    def __init__(self, env, id, start_time=0, disable_log=False):
+    def __init__(self, env, id, start_time=0, \
+                 disable_log=False, disable_taskset=False):
         super().__init__()
         self.env = env
         self.thread_num = env.thread_num
@@ -34,6 +35,7 @@ class Task(threading.Thread):
         self.task_log_path = f"{env.tester_log_path}/" \
             f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
         self.disable_log = disable_log
+        self.disable_taskset = disable_taskset
 
     # rewrite method create_command() to define the command
     # this class will execute
@@ -55,7 +57,11 @@ class Task(threading.Thread):
 
         command = self.create_command()
 
-        proc = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
+        proc = None
+        if self.disable_taskset:
+            proc = self.env.popen(command)
+        else:
+            proc = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
         done = proc.poll()
         fail = self.env.check_failure()
         while done is None and not fail:
@@ -523,16 +529,24 @@ class IOStatThread(Task):
 
 class CPUFreqThread(Task):
     def __init__(self, env, id, start_time):
-        super().__init__(env, id, start_time)
+        super().__init__(env, id, start_time, disable_taskset = True)
+        self.core_num = env.base_result['Core']
 
     def create_command(self):
-        command = "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+        command = '( '
+        for core in range(self.core_num):
+            command += f"taskset -ac {self.bench_taskset}" \
+                f" cat /sys/devices/system/cpu/cpu{core}/cpufreq/scaling_cur_freq"
+            if core != self.core_num - 1:
+                command += '; '
+        command += ' ) | awk \'{ sum += $1 } END { print sum }\''
         return command
 
     def analyse(self):
         result_dic = {}
         line = self.result.readline()
-        result_dic['CPU_Freq(Ghz)'] = round(float(int(line)/1000000), 3)
+        avg = float(int(line))/self.core_num
+        result_dic['CPU_Freq(Ghz)'] = round(avg/1000000, 3)
         self.result.close()
         return result_dic
 
@@ -540,30 +554,32 @@ class CPUFreqThread(Task):
 class TUsageThread(Task):
     def __init__(self, env, id, start_time):
         super().__init__(env, id, start_time)
-        self.tu_target = env.args.tusage_target
+        self.tu_target = env.args.cpu_usage_target
         self.tid2name = env.tid2name
         self.pids = env.pid
+        self.prefix = 'tu'
 
     def create_command(self):
-        command = f"ps H -o tid,%cpu,%mem -p "
-        for p in self.pids:
-            command += f"{p}"
-            command += f" & ps -o tid,%cpu,%mem -p {p}"
+        command = f"top -b -d 1 -H -n 1 -p {self.pids[0]}"
+        for p_i in range(1, len(self.pids)):
+            command += f" & top -b -d 1 -H -n 1 -p {self.pids[p_i]}"
         return command
 
     def analyse(self):
-        result_dic = {}
+        _result_dic = {}
+        duplicate_dic = {} # record the amount of threads that have the same name.
         line = self.result.readline()
         mem_usage = None
+        # PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
         while line:
             temp_lis = line.split()
-            if temp_lis[0] == 'TID':
+            if len(temp_lis) == 0 or not temp_lis[0].isdigit():
                 line = self.result.readline()
                 continue
             t = temp_lis[0]
-            usage = float(temp_lis[1])
+            usage = float(temp_lis[8])
             if not mem_usage:
-                mem_usage = float(temp_lis[2])
+                mem_usage = float(temp_lis[9])
             if t not in self.tid2name:
                 print(f"Warning: tid {t} not found in startup tid lists")
                 line = self.result.readline()
@@ -572,15 +588,34 @@ class TUsageThread(Task):
             if self.tu_target and t_name not in self.tu_target:
                 line = self.result.readline()
                 continue
-            name = f"cpu_{t_name}(%)"
-            if name in result_dic:
-                result_dic[name] += usage
+            name = f"{self.prefix}_{t_name}(%)"
+            if name in _result_dic:
+                duplicate_dic[name] += 1
+                _result_dic[name] += usage
             else:
-                result_dic[name] = usage
+                duplicate_dic[name] = 1
+                _result_dic[name] = usage
             line = self.result.readline()
-        result_dic['memory_usage(%)'] = mem_usage
-        return result_dic
+        result_dict = dict()
+        # handle duplicate threads
+        for name in _result_dic:
+            if duplicate_dic[name] != 1:
+                result_dict[f'{name}_avg'] = _result_dic[name] / duplicate_dic[name]
+            else:
+                result_dict[name] = _result_dic[name]
+        result_dict['memory_usage(%)'] = mem_usage
+        return result_dict
 
+class PUsageThread(TUsageThread):
+    def __init__(self, env, id, start_time):
+        super().__init__(env, id, start_time)
+        self.prefix = 'pu'
+
+    def create_command(self):
+        command = f"top -b -d 1 -n 1 -p {self.pids[0]}"
+        for p_i in range(1, len(self.pids)):
+            command += f" & top -b -d 1 -n 1 -p {self.pids[p_i]}"
+        return command
 
 class TestFailError(Exception):
     def __init__(self, message, env):
@@ -1029,9 +1064,11 @@ class Environment():
         if self.args.freq:
             self.timepoint_threadclass_num_map[CPUFreqThread] = \
                 self.args.freq
-        if self.args.tusage:
+        if self.args.cpu_usage:
             self.timepoint_threadclass_num_map[TUsageThread] = \
-                self.args.tusage
+                self.args.cpu_usage
+            self.timepoint_threadclass_num_map[PUsageThread] = \
+                self.args.cpu_usage
 
         # 3. add the time continuous based case thread classes to the list.
         if self.args.perf:
@@ -1732,7 +1769,7 @@ if __name__ == "__main__":
     parser.add_argument('--freq', '--f',
                         type=int,
                         help='how many time point to collect cpu frequency information')
-    parser.add_argument('--tusage', '--tu',
+    parser.add_argument('--cpu-usage', '--tusage', '--cu',
                         type=int,
                         help='how many time point to collect cpu usage for --tusage-name \
                             target threads. If there is no --tusage-name, all osd threads \
@@ -1740,7 +1777,7 @@ if __name__ == "__main__":
                             together. The output will be named as usage_{thread name}')
 
 
-    parser.add_argument('--tusage-target', '--tu-target',
+    parser.add_argument('--cpu-usage-target', '--tusage-target', '--cu-target',
                         nargs='+',
                         type=str,
                         default=None,
