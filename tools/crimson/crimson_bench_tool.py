@@ -228,7 +228,9 @@ class FioRBDRandWriteThread(Task):
             + " -numjobs=" + str(self.num_job) \
             + " -runtime=" + self.run_time \
             + " -group_reporting" \
-            + " -name=fio"
+            + " -name=fio" \
+            + " -time_based=1" \
+            + " --eta-newline=500ms --eta=always"
         if self.rw == 'randwrite':
             command += f' -random_distribution {self.args.fio_random_distribution}'
             if self.args.fio_norandommap:
@@ -510,10 +512,12 @@ class IOStatThread(Task):
                 for index in range(len(temp_lis)):
                         result_dic_index.__setitem__(temp_lis[index], index)
             if temp_lis and temp_lis[0] == self.dev:
-                result_dic['Device_IPS'] = float(result_dic_index['wrqm/s'])
-                result_dic['Device_OPS'] = float(result_dic_index['rrqm/s'])
+                result_dic['Device_AReadsize'] = float(temp_lis[result_dic_index['rareq-sz']])
+                result_dic['Device_AWritesize'] = float(temp_lis[result_dic_index['wareq-sz']])
+                result_dic['Device_IPS'] = float(temp_lis[result_dic_index['rrqm/s']])
+                result_dic['Device_OPS'] = float(temp_lis[result_dic_index['wrqm/s']])
                 result_dic['Device_Read(MB/s)'] \
-                        = round(float(result_dic_index['rkB/s'])/1000, 3)  # MB per second
+                        = round(float(temp_lis[result_dic_index['rkB/s']])/1000, 3)  # MB per second
                 result_dic['Device_Write(MB/s)'] \
                         = round(float(temp_lis[result_dic_index['wkB/s']])/1000, 3)  # MB per second
                 result_dic['Device_aqu-sz'] = float(temp_lis[result_dic_index['aqu-sz']])
