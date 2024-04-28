@@ -4,9 +4,9 @@ import os
 import threading
 import time
 import re
-import sys
 import csv
-from subprocess import Popen, PIPE
+import numpy as np
+from subprocess import Popen, PIPE, TimeoutExpired
 
 # Divid all test threads into three categories, Test Case Based Thread, Time
 # Point Based Thread and Time Continuous thread.
@@ -493,12 +493,19 @@ class IOStatThread(Task):
         # iostat record from 1/4 time to 1/2 time
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
-        self.dev = "sda"  # default if no args.dev
+        self.devs = ["sda"]  # default if no args.dev
         if env.args.dev:
-            self.dev = env.get_disk_name()
+            self.devs = env.get_disk_name()
+        self.index = dict()
 
     def create_command(self):
-        command = f"iostat -p {self.dev} -xkdy interval {self.last_time} 1"
+        param_dev = ''
+        device_index = 0
+        for dev in self.devs:
+            param_dev += f'{dev} '
+            self.index[dev] = device_index
+            device_index += 1
+        command = f"iostat -p {param_dev}-xkdy interval {self.last_time} 1"
         return command
 
     def analyse(self):
@@ -511,20 +518,27 @@ class IOStatThread(Task):
             if temp_lis and temp_lis[0] == 'Device':
                 for index in range(len(temp_lis)):
                         result_dic_index.__setitem__(temp_lis[index], index)
-            if temp_lis and temp_lis[0] == self.dev:
-                result_dic['Device_AReadsize'] = float(temp_lis[result_dic_index['rareq-sz']])
-                result_dic['Device_AWritesize'] = float(temp_lis[result_dic_index['wareq-sz']])
-                result_dic['Device_IPS'] = float(temp_lis[result_dic_index['rrqm/s']])
-                result_dic['Device_OPS'] = float(temp_lis[result_dic_index['wrqm/s']])
-                result_dic['Device_Read(MB/s)'] \
-                        = round(float(temp_lis[result_dic_index['rkB/s']])/1000, 3)  # MB per second
-                result_dic['Device_Write(MB/s)'] \
-                        = round(float(temp_lis[result_dic_index['wkB/s']])/1000, 3)  # MB per second
-                result_dic['Device_aqu-sz'] = float(temp_lis[result_dic_index['aqu-sz']])
+            if temp_lis and temp_lis[0] in self.devs:
+                device_index = self.index[temp_lis[0]]
+                result_dic[f'Device{device_index}_AReadsize'] = \
+                    float(temp_lis[result_dic_index['rareq-sz']])
+                result_dic[f'Device{device_index}_AWritesize'] = \
+                    float(temp_lis[result_dic_index['wareq-sz']])
+                result_dic[f'Device{device_index}_IPS'] = \
+                    float(temp_lis[result_dic_index['rrqm/s']])
+                result_dic[f'Device{device_index}_OPS'] = \
+                    float(temp_lis[result_dic_index['wrqm/s']])
+                result_dic[f'Device{device_index}_Read(MB/s)'] = \
+                    round(float(temp_lis[result_dic_index['rkB/s']])/1000, 3)  # MB per second
+                result_dic[f'Device{device_index}_Write(MB/s)'] = \
+                    round(float(temp_lis[result_dic_index['wkB/s']])/1000, 3)  # MB per second
+                result_dic[f'Device{device_index}_aqu-sz'] = \
+                    float(temp_lis[result_dic_index['aqu-sz']])
                 # The average queue length of the requests
-                result_dic['Device_Rawait(ms)'] = float(temp_lis[result_dic_index['r_await']]) # ms
-                result_dic['Device_Wawait(ms)'] = float(temp_lis[result_dic_index['w_await']]) # ms
-                break
+                result_dic[f'Device{device_index}_Rawait(ms)'] = \
+                    float(temp_lis[result_dic_index['r_await']]) # ms
+                result_dic[f'Device{device_index}_Wawait(ms)'] = \
+                    float(temp_lis[result_dic_index['w_await']]) # ms
             line = self.result.readline()
         self.result.close()
         print(result_dic)
@@ -566,18 +580,17 @@ class TUsageThread(Task):
     def create_command(self):
         command = f"top -b -d 1 -H -n 1 -p {self.pids[0]}"
         for p_i in range(1, len(self.pids)):
-            command += f" & top -b -d 1 -H -n 1 -p {self.pids[p_i]}"
+            command += f" && top -b -d 1 -H -n 1 -p {self.pids[p_i]}"
         return command
 
     def analyse(self):
         _result_dic = {}
-        duplicate_dic = {} # record the amount of threads that have the same name.
         line = self.result.readline()
         mem_usage = None
         # PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
         while line:
             temp_lis = line.split()
-            if len(temp_lis) == 0 or not temp_lis[0].isdigit():
+            if len(temp_lis) < 12 or not temp_lis[0].isdigit():
                 line = self.result.readline()
                 continue
             t = temp_lis[0]
@@ -594,19 +607,31 @@ class TUsageThread(Task):
                 continue
             name = f"{self.prefix}_{t_name}(%)"
             if name in _result_dic:
-                duplicate_dic[name] += 1
-                _result_dic[name] += usage
+                _result_dic[name].append(usage)
             else:
-                duplicate_dic[name] = 1
-                _result_dic[name] = usage
+                _result_dic[name] = [usage]
             line = self.result.readline()
         result_dict = dict()
         # handle duplicate threads
+        # TODO: realize automatic zero threads remove logic
+        # For now, only do special processing for reactors.
         for name in _result_dic:
-            if duplicate_dic[name] != 1:
-                result_dict[f'{name}_avg'] = _result_dic[name] / duplicate_dic[name]
+            if len(_result_dic[name]) != 1:
+                filter_res = []
+                if np.sum(_result_dic[name]) != 0:
+                    for res in _result_dic[name]:
+                        if not (res == 0 and \
+                                ('reactor' in name or \
+                                 'crimson-osd' in name or \
+                                 'alien-store-tp' in name)):
+                            filter_res.append(res)
+                else:
+                    filter_res =_result_dic[name]
+                result_dict[f'{name}_avg'] = np.mean(filter_res)
+                result_dict[f'{name}_std'] = np.std(filter_res)
+                result_dict[f'{name}_num'] = len(filter_res)
             else:
-                result_dict[name] = _result_dic[name]
+                result_dict[name] = _result_dic[name][0]
         result_dict['memory_usage(%)'] = mem_usage
         return result_dict
 
@@ -620,6 +645,39 @@ class PUsageThread(TUsageThread):
         for p_i in range(1, len(self.pids)):
             command += f" & top -b -d 1 -n 1 -p {self.pids[p_i]}"
         return command
+
+class CUsageThread(Task):
+    def __init__(self, env, id):
+        super().__init__(env, id)
+        self.start_time = round(int(env.args.time) * 0.25)
+        self.last_time = round(int(env.args.time) * 0.5)
+        self.count = self.last_time - self.start_time + 1
+        self.osd_core_num = env.osd_core_num
+
+    def create_command(self):
+        cores = ''
+        for c in range(self.osd_core_num):
+            cores += f'{c},'
+        cores = cores[:-1]
+        # mpstat [ options ] [ <interval> [ <count> ] ]
+        command = f"mpstat -P {cores} 1 {self.count}"
+        return command
+
+    def analyse(self):
+        result_dic = {}
+        usage_list = []
+        line = self.result.readline()
+        while line:
+            temp_lis = line.split()
+            if len(temp_lis)==12 and temp_lis[0] == 'Average:':
+                if temp_lis[1].isdigit():
+                    idle = float(temp_lis[11])
+                    used = 100 - idle
+                    usage_list.append(used)
+            line = self.result.readline()
+        result_dic['cores_avg_usage'] = np.mean(usage_list)
+        self.result.close()
+        return result_dic
 
 class TestFailError(Exception):
     def __init__(self, message, env):
@@ -673,7 +731,7 @@ class FailureDetect(threading.Thread):
             p_osd_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_osd}")
             res = p_osd_pids_af.readline().split()
-            if (not len(res)):
+            if len(res) != self.env.args.osd:
                 raise TestFailError("Tester failed: osd crashed unexpectedly.", self.env)
 
             wait_time += 1
@@ -938,6 +996,7 @@ class Environment():
         self.tid = list() # without alien threads
         self.tid_alien = list()
         self.tid2name = dict()
+        self.devs = list()
         self.pool = "_benchtest_"
         self.pool_size = None
         self.images = []
@@ -963,7 +1022,11 @@ class Environment():
         self.FAILURE_SIGNAL = False
 
         if self.args.dev:
-            self.root_protect(self.args.dev)
+            self.devs = args.dev.split(',')
+            if self.args.osd != len(self.devs):
+                raise Exception("The number of OSD and devices are not equal")
+            for dev in self.devs:
+                self.root_protect(dev)
 
         self.osd_cores_list = self.args.osd_cores
         if self.args.client:
@@ -1084,6 +1147,8 @@ class Environment():
         if self.args.emon:
             self.timecontinuous_threadclass_list.append(EmonStartThread)
             self.timecontinuous_threadclass_list.append(EmonStopAndAnalyseThread)
+        if self.args.core_usage:
+            self.timecontinuous_threadclass_list.append(CUsageThread)
 
     def general_pre_processing(self, tester_id):
         # killall
@@ -1135,45 +1200,78 @@ class Environment():
 
         command += " --nodaemon --redirect-output --nolockdep"
 
-        # add additional crimson bluestore ceph config
+        # add additional ceph config
         crimson_alien_op_num_threads = 0
         crimson_alien_thread_cpu_cores = ''
-        if self.args.crimson and backend == "bluestore":
-            if self.args.isolate_alien_cores:
-                crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id]
-
-                osd_core_num = self.osd_core_num - self.args.isolate_alien_cores[self.test_case_id]
+        if self.args.crimson:
+            # self.osd_core_num: total cores for all crimson osd including alienstore
+            # osd_core_num: total cores for all crimson osd except alienstore
+            osd_core_num = 0
+            if backend == "bluestore":
+                if self.args.isolate_alien_cores:
+                    osd_core_num = self.osd_core_num - self.args.isolate_alien_cores[self.test_case_id]
+                    if self.args.thread_per_alien_cores:
+                        crimson_alien_op_num_threads = int(self.args.isolate_alien_cores[self.test_case_id] / \
+                            self.args.osd * self.args.thread_per_alien_cores[self.test_case_id])
+                    else:
+                        crimson_alien_op_num_threads = int(self.args.isolate_alien_cores[self.test_case_id] / \
+                            self.args.osd)
+                    if self.args.alien_ht:
+                        crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num-1}'\
+                            f',{self.args.alien_ht+osd_core_num}-{self.args.alien_ht+self.osd_core_num-1}'
+                    else:
+                        crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num - 1}'
+                else:
+                    osd_core_num = self.osd_core_num
+                    if self.args.thread_per_alien_cores:
+                        crimson_alien_op_num_threads = int(self.osd_core_num / self.args.osd \
+                            * self.args.thread_per_alien_cores[self.test_case_id])
+                    else:
+                        crimson_alien_op_num_threads = int(self.osd_core_num / self.args.osd)
+                    if self.args.alien_ht:
+                        crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}'\
+                            f',{self.args.alien_ht}-{self.args.alien_h+self.osd_core_num-1}"
+                    else:
+                        crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}"
+                # config multicore for alienstore cores
                 if osd_core_num <= 0:
                     raise Exception("isolate alien cores should not >= osd_cores (all osd cores)")
-                # config multicore for crimson when isolating alien cores
-                command += f" --crimson-smp {osd_core_num}"
-                if self.args.thread_per_alien_cores:
-                    crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id] \
-                        * self.args.thread_per_alien_cores[self.test_case_id]
-                else:
-                    crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id]
-                crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num - 1}'
+                command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
+                self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
+                command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
+                self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
+            elif backend == "memstore":
+                osd_core_num = self.osd_core_num
+                command += " -o 'memstore_device_bytes = 8G'"
+                self.additional_result['memstore_device_bytes'] = '8G'
+            elif backend == "seastore":
+                osd_core_num = self.osd_core_num
+                command += " -o 'seastore_cache_lru_size = 512M'"
+                command += " -o 'seastore_max_concurrent_transactions = 128'"
+                self.additional_result['cache_lru_size'] = '512M'
+                self.additional_result['max_concurrent_transactions'] = '128'
             else:
-                if self.args.thread_per_alien_cores:
-                    crimson_alien_op_num_threads = self.osd_core_num * self.args.thread_per_alien_cores[self.test_case_id]
-                else:
-                    crimson_alien_op_num_threads = self.osd_core_num
-                crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}"
-            command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
-            self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
-            command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
-            self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
+                raise Exception("Crimson supports seastore, bluestore and memstore.")
+
+            command += " -o 'crimson_osd_stat_interval = 2'"
+            # setting --crimson-smp
+            if osd_core_num == 0:
+                raise Exception("crimson cores should not be zero")
+            if osd_core_num % self.args.osd != 0:
+                raise Exception("crimson cores should be an integer multiple of osd")
+            command += f" --crimson-smp {int(osd_core_num / self.args.osd)}"
         else:
-            if self.args.isolate_alien_cores:
-                raise Exception('--isolate-alien-cores is only for crimson bluestore.')
-        if not self.args.crimson:
+            # classic
+            if self.osd_core_num % self.args.osd != 0:
+                raise Exception("osd cores should be an integer multiple of osd")
+            # classic osd cores bounding will be setting after ceph start
             if self.args.osd_op_num_shards:
-                command += f" -o 'osd_op_num_shards = "\
-                    f"{self.args.osd_op_num_shards[self.test_case_id]}'"
-                self.additional_result['osd_op_num_shards'] = self.args.osd_op_num_shards
+                osd_op_num_shards = self.args.osd_op_num_shards[self.test_case_id]
             else:
-                command += f" -o 'osd_op_num_shards = {self.osd_core_num}'"
-                self.additional_result['osd_op_num_shards'] = self.osd_core_num
+                osd_op_num_shards = self.osd_core_num
+            command += f" -o 'osd_op_num_shards = {osd_op_num_shards}'"
+            self.additional_result['osd_op_num_shards'] = osd_op_num_shards
+
             if self.args.osd_op_num_threads_per_shard:
                 command += f" -o 'osd_op_num_threads_per_shard = "\
                     f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
@@ -1184,16 +1282,6 @@ class Environment():
                     f"{self.args.ms_async_op_threads[self.test_case_id]}'"
                 self.additional_result['ms_async_op_threads'] = \
                     self.args.ms_async_op_threads[self.test_case_id]
-        if self.args.crimson:
-            command += " -o 'crimson_osd_stat_interval = 2'"
-        if backend == "seastore":
-            command += " -o 'seastore_cache_lru_size = 512M'"
-            command += " -o 'seastore_max_concurrent_transactions = 128'"
-            self.additional_result['cache_lru_size'] = '512M'
-            self.additional_result['max_concurrent_transactions'] = '128'
-        if backend == "memstore":
-            command += " -o 'memstore_device_bytes = 8G'"
-            self.additional_result['memstore_device_bytes'] = '8G'
 
         # customize ceph config
         if self.args.ceph_config:
@@ -1212,23 +1300,22 @@ class Environment():
                 line = f_configs.readline()
             f_configs.close()
 
-        # start ceph
+        ###### start ceph ######
         ceph_start_max_watting_time = 100
-        start_proc = self.popen(command)
+        os.system(f"echo \"{command}\" >> {self.cmd_log}")
         print(f'ceph start retry time limit: {ceph_start_max_watting_time}s')
-        wait_count = 0
-        done = start_proc.poll()
-        while done is None:
-            time.sleep(1)
-            done = start_proc.poll()
-            wait_count += 1
-            if wait_count > ceph_start_max_watting_time:
-                os.system(f"kill -9 {start_proc.pid}")
-                raise TestFailError("Tester failed: osd startup failed.", self)
+        start_proc = self.popen(command)
+        try:
+            start_proc.communicate(timeout=ceph_start_max_watting_time)
+        except TimeoutExpired:
+            start_proc.terminate()
+            start_proc.wait()
+            os.system(f"kill -9 {start_proc.pid}")
+            raise TestFailError("Tester failed: osd startup failed.", self)
 
         # pool
         self.exec(f"bin/ceph osd pool create {self.pool} "
-                    f"{self.args.pg} {self.args.pg}")
+                    f"{self.args.pg * self.args.osd} {self.args.pg * self.args.osd}")
         if self.pool_size:
             self.exec(f"bin/ceph osd pool set {self.pool}" \
                     f" size {self.pool_size} --yes-i-really-mean-it")
@@ -1286,16 +1373,21 @@ class Environment():
         # all classic osds will use cpu range 0-(osd_cores*osd-1)
         # crimson multicore settings has already been set in vstart osd_cores param.
         if not self.args.crimson:
-            core = self.osd_core_num * self.args.osd
-            for p in self.pid:
-                self.exec("taskset -apc 0-" + str(core-1) + " " + str(p))
+            core_per_osd = int(self.osd_core_num / self.args.osd)
+            core_range_begin = 0
+            core_range_end = core_per_osd
+            for id, p in enumerate(self.pid):
+                self.exec(f"taskset -apc {core_range_begin}-{core_range_end - 1} {p}")
+                print(f"set osd{id} (pid:{p}) to core range: {core_range_begin}~{core_range_end - 1}")
+                core_range_begin = core_range_end
+                core_range_end = core_range_end + core_per_osd
 
         # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
         if self.args.crimson and backend == "bluestore":
             for t in self.tid_alien:
                 self.exec(f"taskset -pc {crimson_alien_thread_cpu_cores} {t}")
 
-        self.base_result['Core'] = self.osd_core_num * self.args.osd
+        self.base_result['Core'] = self.osd_core_num
 
         print("osd core usage information:")
         proc_path = f"{self.tester_log_path}/proc.txt"
@@ -1308,13 +1400,14 @@ class Environment():
         print()
 
         # additional results
-        self.additional_result['PG'] = self.args.pg
+        self.additional_result['PG'] = self.args.pg * self.args.osd
         if self.args.warmup_block_size:
             self.additional_result['warmup_block_size'] = self.args.warmup_block_size
         if self.args.warmup_time:
             self.additional_result['warmup_time'] = self.args.warmup_time
         if self.args.dev:
-            self.additional_result['device'] = self.args.dev.split('/')[-1]
+            for id, dev in enumerate(self.devs):
+                self.additional_result[f'device{id}'] = dev.split('/')[-1]
         self.additional_result['bench_thread_taskset'] = self.args.bench_taskset
 
     def general_post_processing(self):
@@ -1385,19 +1478,27 @@ class Environment():
         self.test_case_id += 1
 
     def get_disk_name(self):
-        par = self.args.dev.split('/')[-1]
-        lsblk = os.popen("lsblk")
-        last = None
-        line = lsblk.readline()
-        while line:
-            ll = line.split()
-            if ll[0][0:2] == '├─' or ll[0][0:2] == '└─':
-                if ll[0][2:] == par:
-                    return last
-            else:
-                last = ll[0]
+        pars = list()
+        for dev in self.devs:
+            par = dev.split('/')[-1]
+            lsblk = os.popen("lsblk")
+            last = None
             line = lsblk.readline()
-        return par
+            found = False
+            while line:
+                if found:
+                    continue
+                ll = line.split()
+                if ll[0][0:2] == '├─' or ll[0][0:2] == '└─':
+                    if ll[0][2:] == par:
+                        pars.append(last)
+                        found = True
+                else:
+                    last = ll[0]
+                line = lsblk.readline()
+            if not found:
+                pars.append(par)
+        return pars
 
     def root_protect(self, dev):
         protect_dir = '/'
@@ -1631,7 +1732,8 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=None,
-                        help='clients list, default to be the same as --osd-cores')
+                        help='number of client for each osd list, default to be \
+                              the same as --osd-cores')
     parser.add_argument('--thread', '--th',
                         nargs='+',
                         type=int,
@@ -1641,8 +1743,8 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=[1],
-                        help='core per osd list, default to be 1, should be one-to-one \
-                              correspondence with client list if not default.')
+                        help='osd cores list(sum when multiple osds), default to be 1, should \
+                              be one-to-one correspondence with client list if not default.')
     parser.add_argument('--build',
                         type=str,
                         default='.',
@@ -1681,8 +1783,9 @@ if __name__ == "__main__":
                     warmup writting by default, set --warmup-time 0 to avoid warmup.')
     parser.add_argument('--dev', '--d',
                         type=str,
-                        help='test device path, default is the vstart default \
-                    settings, creating a virtual block device on current device')
+                        help='comma-separated list of test device path, default is \
+                    the vstart default settings, creating a virtual block device on \
+                    current device')
     parser.add_argument('--output', '--o',
                         type=str,
                         default="result",
@@ -1773,7 +1876,7 @@ if __name__ == "__main__":
     parser.add_argument('--freq', '--f',
                         type=int,
                         help='how many time point to collect cpu frequency information')
-    parser.add_argument('--cpu-usage', '--tusage', '--cu',
+    parser.add_argument('--cpu-usage', '--tusage', '--cpuu',
                         type=int,
                         help='how many time point to collect cpu usage for --tusage-name \
                             target threads. If there is no --tusage-name, all osd threads \
@@ -1802,6 +1905,9 @@ if __name__ == "__main__":
     parser.add_argument('--emon', '--e',
                         action='store_true',
                         help='collect emon information')
+    parser.add_argument('--core-usage', '--coreu',
+                        action='store_true',
+                        help='collect emon information')
 
     # ceph config param
     parser.add_argument('--isolate-alien-cores', '--alien',
@@ -1810,6 +1916,10 @@ if __name__ == "__main__":
                         default=None,
                         help='set how many cores in --osd-cores will only be used by alienstore, \
                             zero by default, which means osd will share all cores with alienstore.')
+    parser.add_argument('--alien-ht', '--ht',
+                        type=int,
+                        default=None,
+                        help='set ht cores offset for alien cores')
     parser.add_argument('--thread-per-alien-cores',
                         nargs='+',
                         type=int,

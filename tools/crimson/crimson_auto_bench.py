@@ -20,7 +20,7 @@ import sys
 '''
 
 no_value_attributes= ['crimson', 'output_horizontal', 'perf', \
-                      'perf_record', 'iostat', 'emon']
+                      'perf_record', 'iostat', 'emon', 'core_usage']
 
 # transfer to crimson_bench_tool param
 def trans(param):
@@ -127,7 +127,9 @@ def record_system_info(root, configs):
     devs = set()
     for config in configs:
         if 'dev' in config:
-            devs.add(config['dev'])
+            _dev = config['dev'].split(',')
+            for _d in _dev:
+                devs.add(_d)
     for dev_id, dev in enumerate(devs):
         os.system(f"echo \"4.{dev_id+1}.1 Disk: {dev}\" >> {path}")
         if dev[5:8] == 'nvm':
