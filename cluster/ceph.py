@@ -9,6 +9,7 @@ import logging
 import json
 
 from .cluster import Cluster
+from .scrub_tests import ScrubTestThreadBackground, ScrubRecoveryThreadBackground
 
 
 logger = logging.getLogger("cbt")
@@ -155,6 +156,14 @@ class Ceph(Cluster):
         self.prefill_recov_time = 0
         self.recov_pool_name = ''
 
+        #Scrub tests
+        self.scrub_enabled = config.get('enable_scrub', False)
+        self.scrub_type = config.get('scrub_type', '')
+        self.prefill_scrub_objects = 0
+        self.prefill_scrub_object_size = 0
+        self.prefill_scrub_time = 0
+        self.scrub_pool_name = ''
+
     def initialize(self):
         # Reset the rulesets
         self.ruleset_map = {}
@@ -200,8 +209,10 @@ class Ceph(Cluster):
         self.check_health()
         monitoring.stop()
 
-        # Disable scrub and wait for any scrubbing to complete
-        self.disable_scrub()
+        # Disable scrub and wait for any scrubs to complete
+        logger.info("Scrub enabled is %s", self.scrub_enabled)
+        if not self.scrub_enabled:
+            self.disable_scrub()
         if self.disable_bal:
             self.disable_balancer()
 
@@ -540,6 +551,12 @@ class Ceph(Cluster):
     def disable_scrub(self):
         common.pdsh(settings.getnodes('head'), "ceph osd set noscrub; ceph osd set nodeep-scrub").communicate()
 
+    def disable_recovery(self):
+        common.pdsh(settings.getnodes('head'), "ceph osd set norecover; ceph osd set nobackfill").communicate()
+
+    def enable_recovery(self):
+        common.pdsh(settings.getnodes('head'), "ceph osd unset norecover; ceph osd unset nobackfill").communicate()
+
     def disable_balancer(self):
         common.pdsh(settings.getnodes('head'), "ceph balancer off").communicate()
 
@@ -556,7 +573,6 @@ class Ceph(Cluster):
         if recstatsfile:
             header = "Time, Num Deg Objs, Total Deg Objs"
             stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo %s >> %s' % (header, recstatsfile)).communicate()
-
         while True:
             stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s health %s' % (self.ceph_cmd, self.tmp_conf, logline)).communicate()
             self.log_recovery_stats(recstatsfile)
@@ -570,6 +586,44 @@ class Ceph(Cluster):
             time.sleep(1)
 
         return ret
+
+    def log_scrub_stats(self, scrubstatsfile=None, pgid=None):
+        if not scrubstatsfile:
+            return
+        fmtjson = "--format=json"
+        PG_MAP = "pg_map"
+        PG_STATS = "pg_stats"
+        separator = " "
+        PG_ID = "pgid"
+        NUM_OBJECTS = "num_objects"
+        LAST_SCRUB_STAMP = "last_scrub_stamp"
+        STAT_SUM = "stat_sum"
+        SCRUB_DURATION = "last_scrub_duration"
+        OBJECTS_SCRUBBED = "objects_scrubbed"
+        stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s pg dump %s' % (self.ceph_cmd, self.tmp_conf, fmtjson)).communicate()
+        stdout = stdout.split(':', 1)[1]
+        stdout = stdout.strip()
+        try:
+            jsondata = json.loads(stdout)
+        except ValueError as e:
+            logger.error(str(e))
+            return
+        scrubstats = []
+        scrubstats.append(str(time.time()))
+        if PG_STATS in jsondata[PG_MAP]:
+            no_pgs = len(jsondata[PG_MAP][PG_STATS])
+            for i in range(0, no_pgs):
+                if str(jsondata[PG_MAP][PG_STATS][i][PG_ID]) == pgid:
+                    scrubstats.append(str(jsondata[PG_MAP][PG_STATS][i][PG_ID]))
+                    scrubstats.append(str(jsondata[PG_MAP][PG_STATS][i][STAT_SUM][NUM_OBJECTS]))
+                    scrubstats.append(str(jsondata[PG_MAP][PG_STATS][i][SCRUB_DURATION]))
+                    scrubstats.append(str(jsondata[PG_MAP][PG_STATS][i][OBJECTS_SCRUBBED]))
+
+        if len(scrubstats):
+            print(scrubstatsfile)
+            message = separator.join(scrubstats)
+            stdout, stderr = common.pdsh(settings.getnodes('head'), 'echo -e %s >> %s' % (message, scrubstatsfile)).communicate()
+
 
     def log_recovery_stats(self, recstatsfile=None):
         if not recstatsfile:
@@ -631,15 +685,39 @@ class Ceph(Cluster):
             time.sleep(1)
         return ret
 
-    def check_scrub(self):
-        logger.info('Waiting until Scrubbing completes...')
+    def check_scrub(self, scrubstatsfile=None):
+        logger.info('Waiting until Scrub completes...')
+        fmtjson = '--format=json'
+        SCRUB_DURATION = "last_scrub_duration"
+        PG_STATS = "pg_stats"
+        PG_ID = "pgid"
+        pgs_scrubbed = []
         while True:
-            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s -c %s pg dump | cut -f 16 | grep "0.000000" | wc -l' % (self.ceph_cmd, self.tmp_conf)).communicate()
-            if " 0\n" in stdout:
-                break
-            else:
-                logger.info(stdout)
-            time.sleep(1)
+            stdout, stderr = common.pdsh(settings.getnodes('head'), '%s pg ls-by-pool %s %s' %(self.ceph_cmd, self.scrub_pool_name, fmtjson)).communicate()
+            stdout = stdout.split(':', 1)[1]
+            stdout = stdout.strip()
+            scrubbed_pgs = 0
+            try:
+                jsondata = json.loads(stdout)
+            except ValueError as e:
+                logger.error(str(e))
+                return 0
+            logger.info('PG STATS present')
+            for i in range(0, len(jsondata[PG_STATS])):
+                if jsondata[PG_STATS][i][SCRUB_DURATION] == 0:
+                    time.sleep(1)
+                else:
+                    scrubbed_pgs += 1
+                    logger.info(scrubbed_pgs)
+                    logger.info(jsondata[PG_STATS][i][SCRUB_DURATION])
+                    logger.info('Scrub done for: ')
+                    logger.info(jsondata[PG_STATS][i][PG_ID])
+                    if jsondata[PG_STATS][i][PG_ID] not in pgs_scrubbed:
+                        pgs_scrubbed.append(jsondata[PG_STATS][i][PG_ID])
+                        self.log_scrub_stats(scrubstatsfile, str(jsondata[PG_STATS][i][PG_ID]))
+                    if scrubbed_pgs == len(jsondata[PG_STATS]):
+                        logger.info('Scrub is complete')
+                        return 1
 
     def dump_config(self, run_dir):
         common.pdsh(settings.getnodes('osds'), 'sudo %s -c %s daemon osd.0 config show > %s/ceph_settings.out' % (self.ceph_cmd, self.tmp_conf, run_dir)).communicate()
@@ -662,6 +740,21 @@ class Ceph(Cluster):
             self.rt = RecoveryTestThreadBackground(rt_config, self, callback, self.stoprequest, self.haltrequest, self.startiorequest)
         self.rt.start()
 
+    def create_scrub_test(self, run_dir, callback):
+        '''
+        Only background type currently
+        '''
+        st_config = self.config.get("scrub_test", {})
+        st_config['run_dir'] = run_dir
+        self.st =  ScrubTestThreadBackground(st_config, self, callback, self.stoprequest, self.haltrequest, self.startiorequest)
+        self.st.start()
+
+    def create_scrub_recovery_test(self, run_dir, callback):
+        config = self.config.get("scrub_recov_test", {})
+        config['run_dir'] = run_dir
+        self.srt = ScrubRecoveryThreadBackground(config, self, callback, self.stoprequest, self.haltrequest, self.startiorequest)
+        self.srt.start()
+
     def wait_start_io(self):
         logger.info("Waiting for signal to start client io...")
         self.startiorequest.wait()
@@ -679,6 +772,39 @@ class Ceph(Cluster):
             if len(threads) == 1:
                 break
             self.rt.join(1)
+
+    def maybe_populate_scrub_pool(self):
+        if self.prefill_scrub_objects > 0 or self.prefill_scrub_time > 0:
+            logger.info('prefilling %s %sbyte objects into scrub pool %s' % (self.prefill_scrub_objects, self.prefill_scrub_object_size, self.scrub_pool_name))
+            common.pdsh(settings.getnodes('head'), 'sudo %s -p %s bench %s write -b %s --max-objects %s --no-cleanup' % (self.rados_cmd, self.scrub_pool_name, self.prefill_scrub_time, self.prefill_scrub_object_size, self.prefill_scrub_objects)).communicate()
+            #self.check_health()
+
+    def initiate_scrub(self):
+        if self.scrub_type:
+            if self.scrub_type == 'shallow':
+                scrub_command = 'scrub'
+            elif self.scrub_type == 'deep':
+                scrub_command = 'deep-scrub'
+        else:
+            scrub_command = 'deep-scrub'
+        logger.info("Initiating %s on pool %s" % (scrub_command, self.scrub_pool_name))
+        common.pdsh(settings.getnodes('head'), '%s osd pool %s %s' % (self.ceph_cmd, scrub_command, self.scrub_pool_name)).communicate()
+
+    def wait_scrub_done(self):
+        self.stoprequest.set()
+        while True:
+            threads = threading.enumerate()
+            if len(threads) == 1:
+                break
+            self.st.join(1)
+
+    def wait_scrub_recovery_done(self):
+        self.stoprequest.set()
+        while True:
+            threads = threading.enumerate()
+            if len(threads) == 1:
+                break
+            self.srt.join(1)
 
     def check_pg_autoscaler(self, timeout=-1, logfile=None):
         ret = 0
@@ -779,6 +905,14 @@ class Ceph(Cluster):
             self.prefill_recov_time = profile.get('prefill_recov_time', 0)
             if self.prefill_recov_objects > 0:
                 self.recov_pool_name = name
+
+        scrub_pool = profile.get('scrub_pool', False)
+        if scrub_pool:
+            self.prefill_scrub_objects = profile.get('prefill_scrub_objects', 0)
+            self.prefill_scrub_object_size = profile.get('prefill_scrub_object_size', 0)
+            self.prefill_scrub_time = profile.get('prefill_scrub_time', 0)
+            if self.prefill_scrub_objects > 0:
+                self.scrub_pool_name = name
 
         if replication and replication == 'erasure':
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d erasure %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, erasure_profile),
