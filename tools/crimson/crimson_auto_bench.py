@@ -228,7 +228,7 @@ def do_bench(config_file, configs, repeat, build, output):
             test_path_prefix = f"{repeat_path}/test-{test_id}"
             if alias:
                 test_path_prefix += f"_{alias}"
-            command += f" --log {test_path_prefix}"
+            command += f" --output {test_path_prefix}"
             command += f" --build {build}"
             print(command)
             print(f'testing... repeat: {repeat_id+1}, test: {test_id+1}')

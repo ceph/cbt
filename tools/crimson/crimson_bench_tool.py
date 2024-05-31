@@ -933,8 +933,8 @@ class TesterExecutor():
 
         env.general_post_processing()
 
-    def output(self, output, horizontal, filters):
-        print(f"writing results to {output}")
+    def output(self, output_dir, horizontal, filters):
+        output_file_prefix = 'result'
         field_names = list()
         for result_dict in self.result_list:
             keys = result_dict.keys()
@@ -969,13 +969,13 @@ class TesterExecutor():
             for key in field_names:
                 if key not in result_dict.keys():
                     result_dict[key] = 'not exist'
-        with open(f'{output}.csv', 'w') as csvfile:
+        with open(f'{output_dir}/{output_file_prefix}.csv', 'w') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=field_names)
             writer.writeheader()
             writer.writerows(self.result_list)
         csvfile.close()
 
-        with open(f'{output}_v.csv', 'w') as csvfile:
+        with open(f'{output_dir}/{output_file_prefix}_v.csv', 'w') as csvfile:
             writer = csv.writer(csvfile)
             for key in field_names:
                 to_write = list()
@@ -984,6 +984,7 @@ class TesterExecutor():
                     to_write.append(result_dict[key])
                 writer.writerow(to_write)
         csvfile.close()
+        print(f"wrote results to {output_dir}/{output_file_prefix}_v.csv")
 
 
 class Environment():
@@ -1052,16 +1053,17 @@ class Environment():
         self.additional_result['Pool_size'] = self.pool_size
 
         # prepare log directory
-        if not self.args.log:
+        if not self.args.output:
             self.log = "log"
             with os.popen("date +%Y%m%d.%H%M%S") as date:
                 line = date.readline()
                 res = line.split()[0]
                 self.log = f"{self.log}.{res}"
         else:
-            self.log = self.args.log
+            self.log = self.args.output
         self.add_log_suffix()
-
+        if os.path.exists(self.log):
+            os.system(f"sudo rm -rf {self.log}")
         os.makedirs(self.log)
         self.failure_log = f"{self.log}/failure_log.txt"
         os.system(f"touch {self.failure_log}")
@@ -1795,8 +1797,12 @@ if __name__ == "__main__":
                     current device')
     parser.add_argument('--output', '--o',
                         type=str,
-                        default="result",
-                        help='path of all output result after integrating')
+                        default=None,
+                        help='directory prefix to store logs, ./log_date by default.\
+                    This tool will add _crimson/classic_backend_osd_poolsize to be log \
+                    dir name and store all tasks results and osd log and osd stdout.\
+                    e.g. By default, log directory might be named log_20231222.165125\
+                    _crimson_bluestore_osd-1_ps-1')
     parser.add_argument('--output-horizontal', '--oh',
                         action='store_true',
                         help='all results of one test case will be in one line')
@@ -1812,14 +1818,6 @@ if __name__ == "__main__":
                         type=int,
                         default = 1,
                         help='how many osds')
-    parser.add_argument('--log',
-                        type=str,
-                        default = None,
-                        help='directory prefix to store logs, ./log_date by default.\
-                    This tool will add _crimson/classic_backend_osd_poolsize to be log \
-                    dir name and store all tasks results and osd log and osd stdout.\
-                    e.g. By default, log directory might be named log_20231222.165125\
-                    _crimson_bluestore_osd-1_ps-1')
     parser.add_argument('--simple-result',
                         action='store_true',
                         help='will not output additional param such as \
@@ -1989,6 +1987,6 @@ if __name__ == "__main__":
     tester_executor = TesterExecutor()
     tester_executor.run(env)
 
-    output_dir_prefix = f"{env.log}/{args.output}"
-    tester_executor.output(output_dir_prefix, args.output_horizontal, filters)
+    output_dir = f"{env.log}"
+    tester_executor.output(output_dir, args.output_horizontal, filters)
     print('done.')
