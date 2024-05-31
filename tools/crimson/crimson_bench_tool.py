@@ -7,6 +7,8 @@ import re
 import csv
 import numpy as np
 from subprocess import Popen, PIPE, TimeoutExpired
+import traceback
+import tempfile
 
 # Divid all test threads into three categories, Test Case Based Thread, Time
 # Point Based Thread and Time Continuous thread.
@@ -59,22 +61,26 @@ class Task(threading.Thread):
 
         proc = None
         if self.disable_taskset:
-            proc = self.env.popen(command)
+            proc, stdout_temp = self.env.popen(command)
         else:
-            proc = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
+            proc, stdout_temp = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
         done = proc.poll()
         fail = self.env.check_failure()
         while done is None and not fail:
             time.sleep(1)
             done = proc.poll()
             fail = self.env.check_failure()
+        stdout_temp.seek(0)
         if done is not None:
-            ret = proc.stdout
+            ret = stdout_temp.read()
+            # FIXME: disable_log conflicts with PIPE fix.
+            self.disable_log = False
             if self.disable_log:
-                self.result = ret
+                self.result = str(ret, encoding='utf-8')
             else:
                 with open(self.task_log_path, "w") as f:
-                    f.write(ret.read())
+                    content = str(ret, encoding='utf-8')
+                    f.write(content)
                 f.close()
                 self.result = open(self.task_log_path, "r")
             if type(self) in self.env.testclient_threadclass_ratio_map \
@@ -659,7 +665,6 @@ class CUsageThread(Task):
         for c in range(self.osd_core_num):
             cores += f'{c},'
         cores = cores[:-1]
-        # mpstat [ options ] [ <interval> [ <count> ] ]
         command = f"mpstat -P {cores} 1 {self.count}"
         return command
 
@@ -1304,7 +1309,7 @@ class Environment():
         ceph_start_max_watting_time = 100
         os.system(f"echo \"{command}\" >> {self.cmd_log}")
         print(f'ceph start retry time limit: {ceph_start_max_watting_time}s')
-        start_proc = self.popen(command)
+        start_proc, _ = self.popen(command)
         try:
             start_proc.communicate(timeout=ceph_start_max_watting_time)
         except TimeoutExpired:
@@ -1692,10 +1697,12 @@ class Environment():
 
     def popen(self, command):
         print(command)
+        stdout_temp = tempfile.SpooledTemporaryFile(buffering=100*1000)
+        fileno = stdout_temp.fileno()
         proc = Popen(command, shell=True, \
-                    stdout=PIPE, encoding="utf-8")
+                    stdout=fileno, encoding="utf-8")
         os.system(f"echo \"{command}\" >> {self.cmd_log}")
-        return proc
+        return proc, stdout_temp
 
 def software_dependency_check(args):
     def not_exist(tgt):
