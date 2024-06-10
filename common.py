@@ -114,7 +114,7 @@ def get_localnode(nodes):
 
     # if more than one node is listed, fallback to pdsh
     nodes_list = expanded_node_list(nodes)
-    if len(nodes_list) > 1:
+    if len(nodes_list) < 1:
         return None
 
     local_fqdn = get_fqdn_local()
@@ -122,7 +122,9 @@ def get_localnode(nodes):
     local_short_hostname = local_hostname.split('.')[0]
 
     remote_host = settings.host_info(nodes_list[0])['host']
-    if remote_host in (local_fqdn, local_hostname, local_short_hostname):
+    #logger.debug('remote_host=%s, local_fqdn=%s local_hostname=%s local_short_hostname=%s'
+    #                 % (remote_host, str(local_fqdn), str(local_hostname), str(local_short_hostname) ))
+    if remote_host in ('localhost', local_fqdn, local_hostname, local_short_hostname):
         return remote_host
     return None
 
@@ -131,7 +133,7 @@ def sh(local_node, command, continue_if_error=True):
     return CheckedPopenLocal(local_node, join_nostr(command),
                              continue_if_error=continue_if_error, shell=True)
 
-
+# Follow-up: implement recognise port option
 def pdsh(nodes, command, continue_if_error=True):
     local_node = get_localnode(nodes)
     if local_node:
@@ -142,6 +144,7 @@ def pdsh(nodes, command, continue_if_error=True):
         env = {}
         if pdsh_ssh_args:
             env = {'PDSH_SSH_ARGS':pdsh_ssh_args}
+        # -f: fan out n nodes, -R rcmd name, -w target node list
         args = [pdsh_cmd, '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, join_nostr(command)]
         # -S means pdsh fails if any host fails
         if not continue_if_error:
@@ -219,7 +222,7 @@ def get_fqdn_list(nodes):
 
 def get_fqdn_local():
     local_fqdn = socket.getfqdn()
-    logger.debug('get_fqdn_local()=%s' % local_fqdn)
+    #logger.debug('get_fqdn_local()=%s' % local_fqdn)
     return local_fqdn
 
 

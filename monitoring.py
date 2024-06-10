@@ -27,6 +27,8 @@ class Monitoring(object):
             return PerfMonitoring(mconfig)
         if monitoring == 'blktrace':
             return BlktraceMonitoring(mconfig)
+        if monitoring == 'top':
+            return TopMonitoring(mconfig)
 
 
 class CollectlMonitoring(Monitoring):
@@ -143,6 +145,57 @@ class BlktraceMonitoring(Monitoring):
         for device in range(self.osds_per_node):
             common.pdsh(self.nodes, 'cd %s;%s -t device%s -o device%s.mpg --movie' %
                         (blktrace_dir, seekwatcher, device, device)).communicate()
+
+    @staticmethod
+    def _get_default_nodes():
+        return ['osds']
+
+
+class TopMonitoring(Monitoring):
+    def __init__(self, mconfig):
+        super(TopMonitoring, self).__init__(mconfig)
+        self.pid_dir = settings.cluster.get('pid_dir')
+        self.pid_glob = mconfig.get('pid_glob', 'osd.*.pid')
+        self.user = settings.cluster.get('user')
+        self.top_cmd = mconfig.get('top_cmd', 'top')
+        self.args = mconfig.get('args', '-b -H -1 -p {pid} -n 30 > {top_dir}/{pid}_osd_top.out')
+        self.top_runners = []
+
+    def start(self, directory):
+        top_dir = '%s/top' % directory
+        common.pdsh(self.nodes, 'mkdir -p -m0755 -- %s' % top_dir).communicate()
+
+        top_template = '{} {}'.format(self.top_cmd, self.args)
+        local_node = common.get_localnode(self.nodes)
+        if local_node:
+            logger.debug("TopMonitoring: in local_node");
+            logger.debug("pid_dir: %s" % self.pid_dir);
+            for pid_path in glob.glob(os.path.join(self.pid_dir, self.pid_glob)):
+                logger.debug("TopMonitoring pid_path: %s" % pid_path);
+                with open(pid_path) as pidfile:
+                    pid = pidfile.read().strip()
+                    top_cmd = top_template.format(top_dir=top_dir, pid=pid)
+                    runner = common.sh(local_node, top_cmd)
+                    self.top_runners.append(runner)
+        else:
+            logger.debug("TopMonitoring: remote_node");
+            # ${pid} will be handled by remote's sh
+            top_cmd = top_template.format(top_dir=top_dir, pid='${pid}')
+            common.pdsh(self.nodes, ['for pid in `cat %s/%s`;' % (self.pid_dir, self.pid_glob),
+                                     'do', top_cmd,
+                                     'done'])
+
+    def stop(self, directory):
+        #common.pdsh(self.nodes, 'pkill -SIGINT -f top').communicate()
+        if self.top_runners:
+            for runner in self.top_runners:
+                runner.kill()
+        else:
+            #ToDO: find the pid of the correct top instance process
+            common.pdsh(self.nodes, 'sudo pkill -SIGINT -f top\ ').communicate()
+        if directory:
+            common.pdsh(self.nodes, 'sudo chown {user}.{user} {dir}/top/*top.out'.format(
+                user=self.user, dir=directory))
 
     @staticmethod
     def _get_default_nodes():
