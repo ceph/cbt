@@ -1,10 +1,10 @@
 # fio-parse-jsons.py - a FIO post processing tool.
 
-## Description
+## Description:
 
 This is a standalone tool to assist the post processing of JSON outout files from CBT when running the FIO benchmark.
 
-The execution of the script produces as outp:
+The execution of the script produces as output:
 
 1. a gnuplot script,
 2. a .dat file with the data to plot,
@@ -13,6 +13,10 @@ The execution of the script produces as outp:
 This is especially useful to produce a response graph from a set of executions ranging the number of FIO jobs and the iodepth values.
 The script was written before knowledge of CBT was gained, so in a way is independent of the script driving the tests.
 A future PR would integrate the functionality of this standalone script with that of CBT.
+
+## Requirements:
+
+Besides the yaml and xml Python modules that CBT already depends upon, you need to install the package gnuplot according to your Linux distro.
 
 ## Usage:
 
@@ -29,6 +33,7 @@ the arguments are:
 - `-a cpu_avg.json:` a .json file containing the avg CPU utilisation, normally produced by the script parse-top.pl.
 
 The following are the .dat and gnuplot files produced:
+
 ```bash
  crimson200gb_1procs_randwrite.dat
  crimson200gb_1procs_randwrite.plot
@@ -41,3 +46,6 @@ gnuplot classic200gb_1procs_randwrite.plot
 ```
 
 the IOPs vs latency chart result is shown below:
+
+![crimson200gb_1procs_randwrite](https://github.com/ceph/cbt/assets/23522684/44aeeb17-b99f-48c7-bd0e-3a443c2e5d90)
+
