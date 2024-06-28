@@ -815,7 +815,7 @@ class Ceph(Cluster):
                 ruleset = crush_profile
             except ValueError:
                 ruleset = self.get_ruleset(crush_profile)
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_ruleset %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s crush_rule %s' % (self.ceph_cmd, self.tmp_conf, name, crush_profile),
                         continue_if_error=False).communicate()
 
         logger.info('Checking Health after pool creation.')
