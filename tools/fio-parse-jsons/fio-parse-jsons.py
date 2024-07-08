@@ -301,6 +301,7 @@ def gen_table(dict_files, config, title, avg_cpu, multicolumn=False):
     wiki = r"""{| class="wikitable"
 |-
 ! colspan="5"  | """ + config.replace("_list","") + """
+! colspan="2"  | OSD CPU%
 |-
 ! Iodepth !! """
     wiki += ' !! '.join(table.keys())
@@ -324,7 +325,7 @@ def gen_table(dict_files, config, title, avg_cpu, multicolumn=False):
                 gplot += gplot_hdr
                 iod_seen.append(io)
 
-            gplot += f"{io:.2d} "
+            gplot += f"{io:2d} "
             wiki += f'| {io:2d} '
             for k in table.keys():
                 item = next(table_iters[k])
