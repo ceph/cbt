@@ -1,12 +1,12 @@
 import logging
+from abc import ABC, abstractmethod
 
-import settings
-import common
 import hashlib
 import os
 import json
 import yaml
-from abc import ABC, abstractmethod
+import settings
+import common
 
 logger = logging.getLogger('cbt')
 
@@ -22,6 +22,8 @@ class Benchmark(object):
                                         'results',
                                         '{:0>8}'.format(config.get('iteration')),
                                         'id-{}'.format(digest))
+        # This would show several dirs if run continuously
+        logger.info("Results dir: %s", self.archive_dir )
         self.run_dir = os.path.join(settings.cluster.get('tmp_dir'),
                                     '{:0>8}'.format(config.get('iteration')),
                                     self.getclass())
@@ -68,7 +70,9 @@ class Benchmark(object):
                 with open(paranoid_path) as f:
                     paranoid_level = int(f.read())
                     if paranoid_level >= 1:
-                        msg = '''Perf must be run by user with CAP_SYS_ADMIN to extract CPU related metrics. Or you could set %s to 0, which is %d now'''
+                        msg = ('''Perf must be run by user with CAP_SYS_ADMIN to extract'''
+                        '''CPU related metrics. Or you could set %s to 0,'''
+                        '''which is %d now''')
                         logger.warning('%s. %s is %d', msg, paranoid_path, paranoid_level)
                 continue
             baseline_getter = getattr(baseline_analyzer, 'get_' + alias)
