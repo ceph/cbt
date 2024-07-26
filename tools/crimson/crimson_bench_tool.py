@@ -1247,10 +1247,10 @@ class Environment():
                 self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
                 command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
                 self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
-            elif backend == "memstore":
+            elif backend == "cyanstore":
                 osd_core_num = self.osd_core_num
-                command += " -o 'memstore_device_bytes = 8G'"
-                self.additional_result['memstore_device_bytes'] = '8G'
+                command += f" -o 'memstore_device_bytes = {self.args.memstore_device_bytes}'"
+                self.additional_result['memstore_device_bytes'] = self.args.memstore_device_bytes
             elif backend == "seastore":
                 osd_core_num = self.osd_core_num
                 command += " -o 'seastore_cache_lru_size = 512M'"
@@ -1258,7 +1258,7 @@ class Environment():
                 self.additional_result['cache_lru_size'] = '512M'
                 self.additional_result['max_concurrent_transactions'] = '128'
             else:
-                raise Exception("Crimson supports seastore, bluestore and memstore.")
+                raise Exception("Crimson supports seastore, bluestore and cyanstore.")
 
             command += " -o 'crimson_osd_stat_interval = 2'"
             # setting --crimson-smp
@@ -1269,6 +1269,10 @@ class Environment():
             command += f" --crimson-smp {int(osd_core_num / self.args.osd)}"
         else:
             # classic
+            if backend == "memstore":
+                osd_core_num = self.osd_core_num
+                command += f" -o 'memstore_device_bytes = {self.args.memstore_device_bytes}'"
+                self.additional_result['memstore_device_bytes'] = self.args.memstore_device_bytes
             if self.osd_core_num % self.args.osd != 0:
                 raise Exception("osd cores should be an integer multiple of osd")
             # classic osd cores bounding will be setting after ceph start
@@ -1379,7 +1383,7 @@ class Environment():
         # config multicore for classic
         # all classic osds will use cpu range 0-(osd_cores*osd-1)
         # crimson multicore settings has already been set in vstart osd_cores param.
-        if not self.args.crimson:
+        if not self.args.crimson or (self.args.crimson and backend == "cyanstore"):
             core_per_osd = int(self.osd_core_num / self.args.osd)
             core_range_begin = 0
             core_range_end = core_per_osd
@@ -1944,6 +1948,10 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help='set ms_async_op_threads.')
+    parser.add_argument('--memstore-device-bytes',
+                        type=str,
+                        default='8G',
+                        help='set memstore_device_bytes for memstore')
     parser.add_argument('--ceph-config', '--config',
                         type=str,
                         default=None,
