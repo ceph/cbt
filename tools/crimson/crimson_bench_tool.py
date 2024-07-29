@@ -4,8 +4,11 @@ import os
 import threading
 import time
 import re
-import sys
-from subprocess import Popen, PIPE
+import csv
+import numpy as np
+from subprocess import Popen, PIPE, TimeoutExpired
+import traceback
+import tempfile
 
 # Divid all test threads into three categories, Test Case Based Thread, Time
 # Point Based Thread and Time Continuous thread.
@@ -21,7 +24,8 @@ from subprocess import Popen, PIPE
 # in the class Environmen to extend this tool.
 # set the start_time to decide when will the test start after thread starts.
 class Task(threading.Thread):
-    def __init__(self, env, id, start_time=0, disable_log=False):
+    def __init__(self, env, id, start_time=0, \
+                 disable_log=False, disable_taskset=False):
         super().__init__()
         self.env = env
         self.thread_num = env.thread_num
@@ -33,6 +37,7 @@ class Task(threading.Thread):
         self.task_log_path = f"{env.tester_log_path}/" \
             f"{self.id[1]}.{type(self).__name__}.{self.start_time}"
         self.disable_log = disable_log
+        self.disable_taskset = disable_taskset
 
     # rewrite method create_command() to define the command
     # this class will execute
@@ -54,20 +59,28 @@ class Task(threading.Thread):
 
         command = self.create_command()
 
-        proc = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
+        proc = None
+        if self.disable_taskset:
+            proc, stdout_temp = self.env.popen(command)
+        else:
+            proc, stdout_temp = self.env.popen(f'taskset -ac {self.bench_taskset} {command}')
         done = proc.poll()
         fail = self.env.check_failure()
         while done is None and not fail:
             time.sleep(1)
             done = proc.poll()
             fail = self.env.check_failure()
+        stdout_temp.seek(0)
         if done is not None:
-            ret = proc.stdout
+            ret = stdout_temp.read()
+            # FIXME: disable_log conflicts with PIPE fix.
+            self.disable_log = False
             if self.disable_log:
-                self.result = ret
+                self.result = str(ret, encoding='utf-8')
             else:
                 with open(self.task_log_path, "w") as f:
-                    f.write(ret.read())
+                    content = str(ret, encoding='utf-8')
+                    f.write(content)
                 f.close()
                 self.result = open(self.task_log_path, "r")
             if type(self) in self.env.testclient_threadclass_ratio_map \
@@ -221,7 +234,9 @@ class FioRBDRandWriteThread(Task):
             + " -numjobs=" + str(self.num_job) \
             + " -runtime=" + self.run_time \
             + " -group_reporting" \
-            + " -name=fio"
+            + " -name=fio" \
+            + " -time_based=1" \
+            + " --eta-newline=500ms --eta=always"
         if self.rw == 'randwrite':
             command += f' -random_distribution {self.args.fio_random_distribution}'
             if self.args.fio_norandommap:
@@ -347,6 +362,44 @@ class ReactorUtilizationCollectorThread(Task):
         return result_dic
 
 
+class EmonStartThread(Task):
+    def __init__(self, env, id):
+        super().__init__(env, id, disable_log=True)
+        self.start_time = round(int(env.args.time) * 0.25)
+
+    def create_command(self):
+        command = f"emon -collect-edp -f {self.env.tester_log_path}/emon.dat"
+        return command
+
+    def analyse(self):
+        return {}
+
+    @staticmethod
+    def pre_process(env):
+        os.system("emon -stop")
+
+
+class EmonStopAndAnalyseThread(Task):
+    def __init__(self, env, id):
+        super().__init__(env, id, disable_log=True)
+        self.start_time = int(env.args.time)
+
+    def create_command(self):
+        return "emon -stop"
+
+    def analyse(self):
+        return {}
+
+    @staticmethod
+    def post_process(env, test_case_result):
+        print('process emon edp...')
+        cpath = os.getcwd()
+        os.chdir(env.tester_log_path)
+        os.system(f'emon -process-pyedp /opt/intel/sep/config/edp/pyedp_config.txt')
+        os.chdir(cpath)
+        print('emon edp process finished.')
+
+
 class PerfThread(Task):
     def __init__(self, env, id):
         super().__init__(env, id)
@@ -446,12 +499,19 @@ class IOStatThread(Task):
         # iostat record from 1/4 time to 1/2 time
         self.start_time = round(int(env.args.time) * 0.25)
         self.last_time = round(int(env.args.time) * 0.5)
-        self.dev = "sda"  # default if no args.dev
+        self.devs = ["sda"]  # default if no args.dev
         if env.args.dev:
-            self.dev = env.get_disk_name()
+            self.devs = env.get_disk_name()
+        self.index = dict()
 
     def create_command(self):
-        command = f"iostat -p {self.dev} -xkdy interval {self.last_time} 1"
+        param_dev = ''
+        device_index = 0
+        for dev in self.devs:
+            param_dev += f'{dev} '
+            self.index[dev] = device_index
+            device_index += 1
+        command = f"iostat -p {param_dev}-xkdy interval {self.last_time} 1"
         return command
 
     def analyse(self):
@@ -464,18 +524,27 @@ class IOStatThread(Task):
             if temp_lis and temp_lis[0] == 'Device':
                 for index in range(len(temp_lis)):
                         result_dic_index.__setitem__(temp_lis[index], index)
-            if temp_lis and temp_lis[0] == self.dev:
-                result_dic['Device_IPS'] = float(result_dic_index['wrqm/s'])
-                result_dic['Device_OPS'] = float(result_dic_index['rrqm/s'])
-                result_dic['Device_Read(MB/s)'] \
-                        = round(float(result_dic_index['rkB/s'])/1000, 3)  # MB per second
-                result_dic['Device_Write(MB/s)'] \
-                        = round(float(temp_lis[result_dic_index['wkB/s']])/1000, 3)  # MB per second
-                result_dic['Device_aqu-sz'] = float(temp_lis[result_dic_index['aqu-sz']])
+            if temp_lis and temp_lis[0] in self.devs:
+                device_index = self.index[temp_lis[0]]
+                result_dic[f'Device{device_index}_AReadsize'] = \
+                    float(temp_lis[result_dic_index['rareq-sz']])
+                result_dic[f'Device{device_index}_AWritesize'] = \
+                    float(temp_lis[result_dic_index['wareq-sz']])
+                result_dic[f'Device{device_index}_IPS'] = \
+                    float(temp_lis[result_dic_index['rrqm/s']])
+                result_dic[f'Device{device_index}_OPS'] = \
+                    float(temp_lis[result_dic_index['wrqm/s']])
+                result_dic[f'Device{device_index}_Read(MB/s)'] = \
+                    round(float(temp_lis[result_dic_index['rkB/s']])/1000, 3)  # MB per second
+                result_dic[f'Device{device_index}_Write(MB/s)'] = \
+                    round(float(temp_lis[result_dic_index['wkB/s']])/1000, 3)  # MB per second
+                result_dic[f'Device{device_index}_aqu-sz'] = \
+                    float(temp_lis[result_dic_index['aqu-sz']])
                 # The average queue length of the requests
-                result_dic['Device_Rawait(ms)'] = float(temp_lis[result_dic_index['r_await']]) # ms
-                result_dic['Device_Wawait(ms)'] = float(temp_lis[result_dic_index['w_await']]) # ms
-                break
+                result_dic[f'Device{device_index}_Rawait(ms)'] = \
+                    float(temp_lis[result_dic_index['r_await']]) # ms
+                result_dic[f'Device{device_index}_Wawait(ms)'] = \
+                    float(temp_lis[result_dic_index['w_await']]) # ms
             line = self.result.readline()
         self.result.close()
         print(result_dic)
@@ -484,16 +553,24 @@ class IOStatThread(Task):
 
 class CPUFreqThread(Task):
     def __init__(self, env, id, start_time):
-        super().__init__(env, id, start_time)
+        super().__init__(env, id, start_time, disable_taskset = True)
+        self.core_num = env.base_result['Core']
 
     def create_command(self):
-        command = "cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq"
+        command = '( '
+        for core in range(self.core_num):
+            command += f"taskset -ac {self.bench_taskset}" \
+                f" cat /sys/devices/system/cpu/cpu{core}/cpufreq/scaling_cur_freq"
+            if core != self.core_num - 1:
+                command += '; '
+        command += ' ) | awk \'{ sum += $1 } END { print sum }\''
         return command
 
     def analyse(self):
         result_dic = {}
         line = self.result.readline()
-        result_dic['CPU_Freq(Ghz)'] = round(float(int(line)/1000000), 3)
+        avg = float(int(line))/self.core_num
+        result_dic['CPU_Freq(Ghz)'] = round(avg/1000000, 3)
         self.result.close()
         return result_dic
 
@@ -501,30 +578,31 @@ class CPUFreqThread(Task):
 class TUsageThread(Task):
     def __init__(self, env, id, start_time):
         super().__init__(env, id, start_time)
-        self.tu_target = env.args.tusage_target
+        self.tu_target = env.args.cpu_usage_target
         self.tid2name = env.tid2name
         self.pids = env.pid
+        self.prefix = 'tu'
 
     def create_command(self):
-        command = f"ps H -o tid,%cpu,%mem -p "
-        for p in self.pids:
-            command += f"{p}"
-            command += f" & ps -o tid,%cpu,%mem -p {p}"
+        command = f"top -b -d 1 -H -n 1 -p {self.pids[0]}"
+        for p_i in range(1, len(self.pids)):
+            command += f" && top -b -d 1 -H -n 1 -p {self.pids[p_i]}"
         return command
 
     def analyse(self):
-        result_dic = {}
+        _result_dic = {}
         line = self.result.readline()
         mem_usage = None
+        # PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
         while line:
             temp_lis = line.split()
-            if temp_lis[0] == 'TID':
+            if len(temp_lis) < 12 or not temp_lis[0].isdigit():
                 line = self.result.readline()
                 continue
             t = temp_lis[0]
-            usage = float(temp_lis[1])
+            usage = float(temp_lis[8])
             if not mem_usage:
-                mem_usage = float(temp_lis[2])
+                mem_usage = float(temp_lis[9])
             if t not in self.tid2name:
                 print(f"Warning: tid {t} not found in startup tid lists")
                 line = self.result.readline()
@@ -533,15 +611,78 @@ class TUsageThread(Task):
             if self.tu_target and t_name not in self.tu_target:
                 line = self.result.readline()
                 continue
-            name = f"cpu_{t_name}(%)"
-            if name in result_dic:
-                result_dic[name] += usage
+            name = f"{self.prefix}_{t_name}(%)"
+            if name in _result_dic:
+                _result_dic[name].append(usage)
             else:
-                result_dic[name] = usage
+                _result_dic[name] = [usage]
             line = self.result.readline()
-        result_dic['memory_usage(%)'] = mem_usage
-        return result_dic
+        result_dict = dict()
+        # handle duplicate threads
+        # TODO: realize automatic zero threads remove logic
+        # For now, only do special processing for reactors.
+        for name in _result_dic:
+            if len(_result_dic[name]) != 1:
+                filter_res = []
+                if np.sum(_result_dic[name]) != 0:
+                    for res in _result_dic[name]:
+                        if not (res == 0 and \
+                                ('reactor' in name or \
+                                 'crimson-osd' in name or \
+                                 'alien-store-tp' in name)):
+                            filter_res.append(res)
+                else:
+                    filter_res =_result_dic[name]
+                result_dict[f'{name}_avg'] = np.mean(filter_res)
+                result_dict[f'{name}_std'] = np.std(filter_res)
+                result_dict[f'{name}_num'] = len(filter_res)
+            else:
+                result_dict[name] = _result_dic[name][0]
+        result_dict['memory_usage(%)'] = mem_usage
+        return result_dict
 
+class PUsageThread(TUsageThread):
+    def __init__(self, env, id, start_time):
+        super().__init__(env, id, start_time)
+        self.prefix = 'pu'
+
+    def create_command(self):
+        command = f"top -b -d 1 -n 1 -p {self.pids[0]}"
+        for p_i in range(1, len(self.pids)):
+            command += f" & top -b -d 1 -n 1 -p {self.pids[p_i]}"
+        return command
+
+class CUsageThread(Task):
+    def __init__(self, env, id):
+        super().__init__(env, id)
+        self.start_time = round(int(env.args.time) * 0.25)
+        self.last_time = round(int(env.args.time) * 0.5)
+        self.count = self.last_time - self.start_time + 1
+        self.osd_core_num = env.osd_core_num
+
+    def create_command(self):
+        cores = ''
+        for c in range(self.osd_core_num):
+            cores += f'{c},'
+        cores = cores[:-1]
+        command = f"mpstat -P {cores} 1 {self.count}"
+        return command
+
+    def analyse(self):
+        result_dic = {}
+        usage_list = []
+        line = self.result.readline()
+        while line:
+            temp_lis = line.split()
+            if len(temp_lis)==12 and temp_lis[0] == 'Average:':
+                if temp_lis[1].isdigit():
+                    idle = float(temp_lis[11])
+                    used = 100 - idle
+                    usage_list.append(used)
+            line = self.result.readline()
+        result_dic['cores_avg_usage'] = np.mean(usage_list)
+        self.result.close()
+        return result_dic
 
 class TestFailError(Exception):
     def __init__(self, message, env):
@@ -595,7 +736,7 @@ class FailureDetect(threading.Thread):
             p_osd_pids_af = os.popen(f"taskset -c {self.task_set} "\
                              f"pidof {self.track_osd}")
             res = p_osd_pids_af.readline().split()
-            if (not len(res)):
+            if len(res) != self.env.args.osd:
                 raise TestFailError("Tester failed: osd crashed unexpectedly.", self.env)
 
             wait_time += 1
@@ -792,41 +933,58 @@ class TesterExecutor():
 
         env.general_post_processing()
 
-    def output(self, output, horizontal, filters):
-        print(f"writing results to {output}")
-        f_result = open(output,"w")
+    def output(self, output_dir, horizontal, filters):
+        output_file_prefix = 'result'
+        field_names = list()
+        for result_dict in self.result_list:
+            keys = result_dict.keys()
+            for key in keys:
+                if key not in field_names and key not in filters:
+                    field_names.append(key)
+
+        # print to console
         if horizontal:
-            for key in self.result_list[0]:
-                if key not in filters:
-                    print('%25s '%(key), end ='')
+            for key in field_names:
+                print('%25s '%(key), end ='')
             print()
             for result in self.result_list:
-                for key in result:
-                    if key not in filters:
+                for key in field_names:
+                    if key in result.keys():
                         print('%25s '%(str(result[key])), end = '')
+                    else:
+                        print('%25s '%('not exist'), end = '')
                 print()
         else:
-            for key in self.result_list[0]:
-                if key not in filters:
-                    print('%25s '%(key), end ='')
-                    for result in self.result_list:
+            for key in field_names:
+                print('%25s '%(key), end ='')
+                for result in self.result_list:
+                    if key in result.keys():
                         print('%14.13s'%(str(result[key])), end ='')
-                    print()
-                    
-        keylist = list(self.result_list[0].keys())
-        keylen = len(keylist)
-        for i in range(keylen):
-            if i > 0:
-                f_result.write(",")
-            f_result.write(keylist[i])
-        for result in self.result_list:
-            f_result.write('\n')
-            for i in range(keylen):
-                if keylist[i] not in filters:
-                    if i > 0:
-                        f_result.write(",")
-                    f_result.write(str(result[keylist[i]])) 
-        f_result.close()
+                    else:
+                        print('%14.13s'%('not exist'), end ='')
+                print()
+
+        # save to file
+        for result_dict in self.result_list:
+            for key in field_names:
+                if key not in result_dict.keys():
+                    result_dict[key] = 'not exist'
+        with open(f'{output_dir}/{output_file_prefix}.csv', 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=field_names)
+            writer.writeheader()
+            writer.writerows(self.result_list)
+        csvfile.close()
+
+        with open(f'{output_dir}/{output_file_prefix}_v.csv', 'w') as csvfile:
+            writer = csv.writer(csvfile)
+            for key in field_names:
+                to_write = list()
+                to_write.append(key)
+                for result_dict in self.result_list:
+                    to_write.append(result_dict[key])
+                writer.writerow(to_write)
+        csvfile.close()
+        print(f"wrote results to {output_dir}/{output_file_prefix}_v.csv")
 
 
 class Environment():
@@ -844,6 +1002,7 @@ class Environment():
         self.tid = list() # without alien threads
         self.tid_alien = list()
         self.tid2name = dict()
+        self.devs = list()
         self.pool = "_benchtest_"
         self.pool_size = None
         self.images = []
@@ -869,7 +1028,11 @@ class Environment():
         self.FAILURE_SIGNAL = False
 
         if self.args.dev:
-            self.root_protect(self.args.dev)
+            self.devs = args.dev.split(',')
+            if self.args.osd != len(self.devs):
+                raise Exception("The number of OSD and devices are not equal")
+            for dev in self.devs:
+                self.root_protect(dev)
 
         self.osd_cores_list = self.args.osd_cores
         if self.args.client:
@@ -890,16 +1053,17 @@ class Environment():
         self.additional_result['Pool_size'] = self.pool_size
 
         # prepare log directory
-        if not self.args.log:
+        if not self.args.output:
             self.log = "log"
             with os.popen("date +%Y%m%d.%H%M%S") as date:
                 line = date.readline()
                 res = line.split()[0]
                 self.log = f"{self.log}.{res}"
         else:
-            self.log = self.args.log
+            self.log = self.args.output
         self.add_log_suffix()
-
+        if os.path.exists(self.log):
+            os.system(f"sudo rm -rf {self.log}")
         os.makedirs(self.log)
         self.failure_log = f"{self.log}/failure_log.txt"
         os.system(f"touch {self.failure_log}")
@@ -974,9 +1138,11 @@ class Environment():
         if self.args.freq:
             self.timepoint_threadclass_num_map[CPUFreqThread] = \
                 self.args.freq
-        if self.args.tusage:
+        if self.args.cpu_usage:
             self.timepoint_threadclass_num_map[TUsageThread] = \
-                self.args.tusage
+                self.args.cpu_usage
+            self.timepoint_threadclass_num_map[PUsageThread] = \
+                self.args.cpu_usage
 
         # 3. add the time continuous based case thread classes to the list.
         if self.args.perf:
@@ -985,6 +1151,11 @@ class Environment():
             self.timecontinuous_threadclass_list.append(PerfRecordThread)
         if self.args.iostat:
             self.timecontinuous_threadclass_list.append(IOStatThread)
+        if self.args.emon:
+            self.timecontinuous_threadclass_list.append(EmonStartThread)
+            self.timecontinuous_threadclass_list.append(EmonStopAndAnalyseThread)
+        if self.args.core_usage:
+            self.timecontinuous_threadclass_list.append(CUsageThread)
 
     def general_pre_processing(self, tester_id):
         # killall
@@ -1036,37 +1207,82 @@ class Environment():
 
         command += " --nodaemon --redirect-output --nolockdep"
 
-        # add additional crimson bluestore ceph config
+        # add additional ceph config
         crimson_alien_op_num_threads = 0
         crimson_alien_thread_cpu_cores = ''
-        if self.args.crimson and backend == "bluestore":
-            if self.args.isolate_alien_cores:
-                crimson_alien_op_num_threads = self.args.isolate_alien_cores[self.test_case_id]
-
-                osd_core_num = self.osd_core_num - self.args.isolate_alien_cores[self.test_case_id]
+        if self.args.crimson:
+            # self.osd_core_num: total cores for all crimson osd including alienstore
+            # osd_core_num: total cores for all crimson osd except alienstore
+            osd_core_num = 0
+            if backend == "bluestore":
+                if self.args.isolate_alien_cores:
+                    osd_core_num = self.osd_core_num - self.args.isolate_alien_cores[self.test_case_id]
+                    if self.args.thread_per_alien_cores:
+                        crimson_alien_op_num_threads = int(self.args.isolate_alien_cores[self.test_case_id] / \
+                            self.args.osd * self.args.thread_per_alien_cores[self.test_case_id])
+                    else:
+                        crimson_alien_op_num_threads = int(self.args.isolate_alien_cores[self.test_case_id] / \
+                            self.args.osd)
+                    if self.args.alien_ht:
+                        crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num-1}'\
+                            f',{self.args.alien_ht+osd_core_num}-{self.args.alien_ht+self.osd_core_num-1}'
+                    else:
+                        crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num - 1}'
+                else:
+                    osd_core_num = self.osd_core_num
+                    if self.args.thread_per_alien_cores:
+                        crimson_alien_op_num_threads = int(self.osd_core_num / self.args.osd \
+                            * self.args.thread_per_alien_cores[self.test_case_id])
+                    else:
+                        crimson_alien_op_num_threads = int(self.osd_core_num / self.args.osd)
+                    if self.args.alien_ht:
+                        crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}'\
+                            f',{self.args.alien_ht}-{self.args.alien_h+self.osd_core_num-1}"
+                    else:
+                        crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}"
+                # config multicore for alienstore cores
                 if osd_core_num <= 0:
                     raise Exception("isolate alien cores should not >= osd_cores (all osd cores)")
-                # config multicore for crimson when isolating alien cores
-                command += f" --crimson-smp {osd_core_num}"
-                crimson_alien_thread_cpu_cores = f'{osd_core_num}-{self.osd_core_num - 1}'
+                command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
+                self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
+                command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
+                self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
+            elif backend == "cyanstore":
+                osd_core_num = self.osd_core_num
+                command += f" -o 'memstore_device_bytes = {self.args.memstore_device_bytes}'"
+                self.additional_result['memstore_device_bytes'] = self.args.memstore_device_bytes
+            elif backend == "seastore":
+                osd_core_num = self.osd_core_num
+                command += " -o 'seastore_cache_lru_size = 512M'"
+                command += " -o 'seastore_max_concurrent_transactions = 128'"
+                self.additional_result['cache_lru_size'] = '512M'
+                self.additional_result['max_concurrent_transactions'] = '128'
             else:
-                crimson_alien_op_num_threads = self.osd_core_num
-                crimson_alien_thread_cpu_cores = f"0-{self.osd_core_num - 1}"
-            command += f" -o 'crimson_alien_op_num_threads = {crimson_alien_op_num_threads}'"
-            self.additional_result['alien_op_num_threads'] = crimson_alien_op_num_threads
-            command += f" -o 'crimson_alien_thread_cpu_cores = {crimson_alien_thread_cpu_cores}'"
-            self.additional_result['alien_thread_cpu_cores'] = crimson_alien_thread_cpu_cores
+                raise Exception("Crimson supports seastore, bluestore and cyanstore.")
+
+            command += " -o 'crimson_osd_stat_interval = 2'"
+            # setting --crimson-smp
+            if osd_core_num == 0:
+                raise Exception("crimson cores should not be zero")
+            if osd_core_num % self.args.osd != 0:
+                raise Exception("crimson cores should be an integer multiple of osd")
+            command += f" --crimson-smp {int(osd_core_num / self.args.osd)}"
         else:
-            if self.args.isolate_alien_cores:
-                raise Exception('--isolate-alien-cores is only for crimson bluestore.')
-        if not self.args.crimson:
+            # classic
+            if backend == "memstore":
+                osd_core_num = self.osd_core_num
+                command += f" -o 'memstore_device_bytes = {self.args.memstore_device_bytes}'"
+                self.additional_result['memstore_device_bytes'] = self.args.memstore_device_bytes
+            if self.osd_core_num % self.args.osd != 0:
+                raise Exception("osd cores should be an integer multiple of osd")
+            # classic osd cores bounding will be setting after ceph start
             if self.args.osd_op_num_shards:
-                command += f" -o 'osd_op_num_shards = "\
-                    f"{self.args.osd_op_num_shards[self.test_case_id]}'"
-                self.additional_result['osd_op_num_shards'] = self.args.osd_op_num_shards
+                osd_op_num_shards = self.args.osd_op_num_shards[self.test_case_id]
             else:
-                command += f" -o 'osd_op_num_shards = {self.osd_core_num}'"
-                self.additional_result['osd_op_num_shards'] = self.osd_core_num
+                osd_op_num_shards = self.osd_core_num
+            command += f" -o 'osd_op_num_shards = {osd_op_num_shards}'"
+            self.additional_result['osd_op_num_shards'] = osd_op_num_shards
+
             if self.args.osd_op_num_threads_per_shard:
                 command += f" -o 'osd_op_num_threads_per_shard = "\
                     f"{self.args.osd_op_num_threads_per_shard[self.test_case_id]}'"
@@ -1077,14 +1293,6 @@ class Environment():
                     f"{self.args.ms_async_op_threads[self.test_case_id]}'"
                 self.additional_result['ms_async_op_threads'] = \
                     self.args.ms_async_op_threads[self.test_case_id]
-        if backend == "seastore":
-            command += " -o 'seastore_cache_lru_size = 512M'"
-            command += " -o 'seastore_max_concurrent_transactions = 128'"
-            self.additional_result['cache_lru_size'] = '512M'
-            self.additional_result['max_concurrent_transactions'] = '128'
-        if backend == "memstore":
-            command += " -o 'memstore_device_bytes = 8G'"
-            self.additional_result['memstore_device_bytes'] = '8G'
 
         # customize ceph config
         if self.args.ceph_config:
@@ -1103,23 +1311,22 @@ class Environment():
                 line = f_configs.readline()
             f_configs.close()
 
-        # start ceph
+        ###### start ceph ######
         ceph_start_max_watting_time = 100
-        start_proc = self.popen(command)
+        os.system(f"echo \"{command}\" >> {self.cmd_log}")
         print(f'ceph start retry time limit: {ceph_start_max_watting_time}s')
-        wait_count = 0
-        done = start_proc.poll()
-        while done is None:
-            time.sleep(1)
-            done = start_proc.poll()
-            wait_count += 1
-            if wait_count > ceph_start_max_watting_time:
-                os.system(f"kill -9 {start_proc.pid}")
-                raise TestFailError("Tester failed: osd startup failed.", self)
+        start_proc, _ = self.popen(command)
+        try:
+            start_proc.communicate(timeout=ceph_start_max_watting_time)
+        except TimeoutExpired:
+            start_proc.terminate()
+            start_proc.wait()
+            os.system(f"kill -9 {start_proc.pid}")
+            raise TestFailError("Tester failed: osd startup failed.", self)
 
         # pool
         self.exec(f"bin/ceph osd pool create {self.pool} "
-                    f"{self.args.pg} {self.args.pg}")
+                    f"{self.args.pg * self.args.osd} {self.args.pg * self.args.osd}")
         if self.pool_size:
             self.exec(f"bin/ceph osd pool set {self.pool}" \
                     f" size {self.pool_size} --yes-i-really-mean-it")
@@ -1176,17 +1383,22 @@ class Environment():
         # config multicore for classic
         # all classic osds will use cpu range 0-(osd_cores*osd-1)
         # crimson multicore settings has already been set in vstart osd_cores param.
-        if not self.args.crimson:
-            core = self.osd_core_num * self.args.osd
-            for p in self.pid:
-                self.exec("taskset -apc 0-" + str(core-1) + " " + str(p))
+        if not self.args.crimson or (self.args.crimson and backend == "cyanstore"):
+            core_per_osd = int(self.osd_core_num / self.args.osd)
+            core_range_begin = 0
+            core_range_end = core_per_osd
+            for id, p in enumerate(self.pid):
+                self.exec(f"taskset -apc {core_range_begin}-{core_range_end - 1} {p}")
+                print(f"set osd{id} (pid:{p}) to core range: {core_range_begin}~{core_range_end - 1}")
+                core_range_begin = core_range_end
+                core_range_end = core_range_end + core_per_osd
 
         # bond all alienstore threads to crimson_alien_thread_cpu_cores limited cores
         if self.args.crimson and backend == "bluestore":
             for t in self.tid_alien:
                 self.exec(f"taskset -pc {crimson_alien_thread_cpu_cores} {t}")
 
-        self.base_result['Core'] = self.osd_core_num * self.args.osd
+        self.base_result['Core'] = self.osd_core_num
 
         print("osd core usage information:")
         proc_path = f"{self.tester_log_path}/proc.txt"
@@ -1199,13 +1411,14 @@ class Environment():
         print()
 
         # additional results
-        self.additional_result['PG'] = self.args.pg
+        self.additional_result['PG'] = self.args.pg * self.args.osd
         if self.args.warmup_block_size:
             self.additional_result['warmup_block_size'] = self.args.warmup_block_size
         if self.args.warmup_time:
             self.additional_result['warmup_time'] = self.args.warmup_time
         if self.args.dev:
-            self.additional_result['device'] = self.args.dev.split('/')[-1]
+            for id, dev in enumerate(self.devs):
+                self.additional_result[f'device{id}'] = dev.split('/')[-1]
         self.additional_result['bench_thread_taskset'] = self.args.bench_taskset
 
     def general_post_processing(self):
@@ -1276,19 +1489,27 @@ class Environment():
         self.test_case_id += 1
 
     def get_disk_name(self):
-        par = self.args.dev.split('/')[-1]
-        lsblk = os.popen("lsblk")
-        last = None
-        line = lsblk.readline()
-        while line:
-            ll = line.split()
-            if ll[0][0:2] == '├─' or ll[0][0:2] == '└─':
-                if ll[0][2:] == par:
-                    return last
-            else:
-                last = ll[0]
+        pars = list()
+        for dev in self.devs:
+            par = dev.split('/')[-1]
+            lsblk = os.popen("lsblk")
+            last = None
             line = lsblk.readline()
-        return par
+            found = False
+            while line:
+                if found:
+                    continue
+                ll = line.split()
+                if ll[0][0:2] == '├─' or ll[0][0:2] == '└─':
+                    if ll[0][2:] == par:
+                        pars.append(last)
+                        found = True
+                else:
+                    last = ll[0]
+                line = lsblk.readline()
+            if not found:
+                pars.append(par)
+        return pars
 
     def root_protect(self, dev):
         protect_dir = '/'
@@ -1482,10 +1703,12 @@ class Environment():
 
     def popen(self, command):
         print(command)
+        stdout_temp = tempfile.SpooledTemporaryFile(buffering=100*1000)
+        fileno = stdout_temp.fileno()
         proc = Popen(command, shell=True, \
-                    stdout=PIPE, encoding="utf-8")
+                    stdout=fileno, encoding="utf-8")
         os.system(f"echo \"{command}\" >> {self.cmd_log}")
-        return proc
+        return proc, stdout_temp
 
 def software_dependency_check(args):
     def not_exist(tgt):
@@ -1510,6 +1733,8 @@ def software_dependency_check(args):
             no_pass += 1
     if args.iostat:
         no_pass += not_exist('iostat')
+    if args.emon:
+        no_pass += not_exist('emon')
     if no_pass:
         raise Exception("software dependency check not passed.")
 
@@ -1520,7 +1745,8 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=None,
-                        help='clients list, default to be the same as --osd-cores')
+                        help='number of client for each osd list, default to be \
+                              the same as --osd-cores')
     parser.add_argument('--thread', '--th',
                         nargs='+',
                         type=int,
@@ -1530,8 +1756,8 @@ if __name__ == "__main__":
                         nargs='+',
                         type=int,
                         default=[1],
-                        help='core per osd list, default to be 1, should be one-to-one \
-                              correspondence with client list if not default.')
+                        help='osd cores list(sum when multiple osds), default to be 1, should \
+                              be one-to-one correspondence with client list if not default.')
     parser.add_argument('--build',
                         type=str,
                         default='.',
@@ -1570,12 +1796,17 @@ if __name__ == "__main__":
                     warmup writting by default, set --warmup-time 0 to avoid warmup.')
     parser.add_argument('--dev', '--d',
                         type=str,
-                        help='test device path, default is the vstart default \
-                    settings, creating a virtual block device on current device')
+                        help='comma-separated list of test device path, default is \
+                    the vstart default settings, creating a virtual block device on \
+                    current device')
     parser.add_argument('--output', '--o',
                         type=str,
-                        default="result",
-                        help='path of all output result after integrating')
+                        default=None,
+                        help='directory prefix to store logs, ./log_date by default.\
+                    This tool will add _crimson/classic_backend_osd_poolsize to be log \
+                    dir name and store all tasks results and osd log and osd stdout.\
+                    e.g. By default, log directory might be named log_20231222.165125\
+                    _crimson_bluestore_osd-1_ps-1')
     parser.add_argument('--output-horizontal', '--oh',
                         action='store_true',
                         help='all results of one test case will be in one line')
@@ -1591,14 +1822,6 @@ if __name__ == "__main__":
                         type=int,
                         default = 1,
                         help='how many osds')
-    parser.add_argument('--log',
-                        type=str,
-                        default = None,
-                        help='directory prefix to store logs, ./log_date by default.\
-                    This tool will add _crimson/classic_backend_osd_poolsize to be log \
-                    dir name and store all tasks results and osd log and osd stdout.\
-                    e.g. By default, log directory might be named log_20231222.165125\
-                    _crimson_bluestore_osd-1_ps-1')
     parser.add_argument('--simple-result',
                         action='store_true',
                         help='will not output additional param such as \
@@ -1662,7 +1885,7 @@ if __name__ == "__main__":
     parser.add_argument('--freq', '--f',
                         type=int,
                         help='how many time point to collect cpu frequency information')
-    parser.add_argument('--tusage', '--tu',
+    parser.add_argument('--cpu-usage', '--tusage', '--cpuu',
                         type=int,
                         help='how many time point to collect cpu usage for --tusage-name \
                             target threads. If there is no --tusage-name, all osd threads \
@@ -1670,7 +1893,7 @@ if __name__ == "__main__":
                             together. The output will be named as usage_{thread name}')
 
 
-    parser.add_argument('--tusage-target', '--tu-target',
+    parser.add_argument('--cpu-usage-target', '--tusage-target', '--cu-target',
                         nargs='+',
                         type=str,
                         default=None,
@@ -1688,6 +1911,12 @@ if __name__ == "__main__":
     parser.add_argument('--iostat', '--i',
                         action='store_true',
                         help='collect iostat information')
+    parser.add_argument('--emon', '--e',
+                        action='store_true',
+                        help='collect emon information')
+    parser.add_argument('--core-usage', '--coreu',
+                        action='store_true',
+                        help='collect emon information')
 
     # ceph config param
     parser.add_argument('--isolate-alien-cores', '--alien',
@@ -1696,6 +1925,14 @@ if __name__ == "__main__":
                         default=None,
                         help='set how many cores in --osd-cores will only be used by alienstore, \
                             zero by default, which means osd will share all cores with alienstore.')
+    parser.add_argument('--alien-ht', '--ht',
+                        type=int,
+                        default=None,
+                        help='set ht cores offset for alien cores')
+    parser.add_argument('--thread-per-alien-cores',
+                        nargs='+',
+                        type=int,
+                        default=None)
     parser.add_argument('--osd-op-num-shards',
                         nargs='+',
                         type=int,
@@ -1711,6 +1948,10 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help='set ms_async_op_threads.')
+    parser.add_argument('--memstore-device-bytes',
+                        type=str,
+                        default='8G',
+                        help='set memstore_device_bytes for memstore')
     parser.add_argument('--ceph-config', '--config',
                         type=str,
                         default=None,
@@ -1754,6 +1995,6 @@ if __name__ == "__main__":
     tester_executor = TesterExecutor()
     tester_executor.run(env)
 
-    output_dir = f"{env.log}/{args.output}.csv"
+    output_dir = f"{env.log}"
     tester_executor.output(output_dir, args.output_horizontal, filters)
     print('done.')

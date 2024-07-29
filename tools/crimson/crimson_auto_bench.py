@@ -5,6 +5,8 @@ import os
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
+import openpyxl
+import sys
 
 ''' directory structure:
     autobench.{date}/rep-{repeat_id}/test-{test_id}
@@ -18,7 +20,7 @@ import matplotlib.pyplot as plt
 '''
 
 no_value_attributes= ['crimson', 'output_horizontal', 'perf', \
-                      'perf_record', 'iostat']
+                      'perf_record', 'iostat', 'emon', 'core_usage']
 
 # transfer to crimson_bench_tool param
 def trans(param):
@@ -125,7 +127,9 @@ def record_system_info(root, configs):
     devs = set()
     for config in configs:
         if 'dev' in config:
-            devs.add(config['dev'])
+            _dev = config['dev'].split(',')
+            for _d in _dev:
+                devs.add(_d)
     for dev_id, dev in enumerate(devs):
         os.system(f"echo \"4.{dev_id+1}.1 Disk: {dev}\" >> {path}")
         if dev[5:8] == 'nvm':
@@ -171,7 +175,7 @@ def read_config(config_file, x = None, comp = None):
             if key in no_value_attributes and config[key] != True:
                 raise Exception("Error: no value attributes should only be True")
             if key == 'alias':
-                alias = config[key]
+                alias = str(config[key])
                 if len(alias.split()) != 1:
                     raise Exception("Error: alias should not include space")
 
@@ -180,8 +184,6 @@ def read_config(config_file, x = None, comp = None):
             if args.x not in config:
                 raise Exception("Error: x param should exist in config yaml file")
     if comp:
-        if not x:
-            raise Exception("Error: must input --x when using --comp")
         for index in comp:
             if index > len(configs) or index <= 0:
                 raise Exception(f"Error: comp index error. Shoud between" \
@@ -226,7 +228,7 @@ def do_bench(config_file, configs, repeat, build, output):
             test_path_prefix = f"{repeat_path}/test-{test_id}"
             if alias:
                 test_path_prefix += f"_{alias}"
-            command += f" --log {test_path_prefix}"
+            command += f" --output {test_path_prefix}"
             command += f" --build {build}"
             print(command)
             print(f'testing... repeat: {repeat_id+1}, test: {test_id+1}')
@@ -328,8 +330,8 @@ def adjust_results(results, y):
             if results[repeat_id][test_id]:
                 _case_num = len(results[repeat_id][test_id])
                 if case_num != 0 and _case_num != case_num:
-                    raise Exception("Error: cases num changed\
-                                    between different repeat for one same test")
+                    raise Exception("Error: cases num changed "
+                                    "between different repeat for one same test")
                 case_num = _case_num
         if case_num == 0:
             # all repeat of this test failed
@@ -362,6 +364,13 @@ def adjust_results(results, y):
 def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums):
     res_path = f'{current_path}/{res_path}'
     delete_and_create_at(res_path)
+    detail_path = f"{res_path}/detail"
+    os.makedirs(detail_path)
+
+    color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
+    color_set_p = 0
+
+    all_df_avg = pd.DataFrame({f'{x}':[]})
     for auto_bench_id, analysed_results in enumerate(m_analysed_results):
         configs = m_configs[auto_bench_id]
         output_auto_bench_name = None
@@ -375,8 +384,6 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
         comp = None
         if m_comp:
             comp = m_comp[auto_bench_id]
-        color_set = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-        color_set_p = 0
         repnum_title = f'repeat:{m_repnums[0]}'
         for rep_id in range(1, len(m_repnums)):
             repnum_title += f',{m_repnums[rep_id]}'
@@ -386,11 +393,12 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                 continue
             if comp and test_id+1 not in comp:
                 continue
-            x_value = configs[test_id][x]
+            x_value = m_configs[0][test_id][x]
             if type(x_value) == int:
                 x_data = [x_value]
             else:
                 x_data = x_value.split()
+
             test_alias = None
             if 'alias' in configs[test_id]:
                 test_alias = configs[test_id]['alias']
@@ -417,31 +425,135 @@ def draw(m_analysed_results, m_configs, x, y, res_path, m_comp, alias, m_repnums
                     marker='o', label=f'{output_auto_bench_name}{test_alias}', color=color)
             plt.plot(x_data, y_data_mean, linestyle='-', \
                      label=f'{output_auto_bench_name}{test_alias} mean', color=color)
-            if start_from_zero:
-                plt.ylim(ymin=0)
             plt.grid(True, color='gray', linestyle='--')
             plt.legend(loc=2)
             plt.rc('legend', fontsize='x-small')
             # TODO: additional information to graphics
             if not comp:
+                if start_from_zero:
+                    plt.ylim(ymin=0)
                 plt.savefig(f"{res_path}/{output_auto_bench_name}"\
                             f"{test_alias}_x-{x}_y-{y}.png".lower(), dpi=500)
                 plt.close()
 
             # raw data to csv
-            df.to_csv(f"{res_path}/{output_auto_bench_name}"\
+            df.to_csv(f"{detail_path}/{output_auto_bench_name}"\
                       f"{test_alias}_x-{x}_y-{y}.csv".lower())
             # average to csv
-            df_avg = pd.DataFrame({f'{x}':[], f'{y}_avg':[]})
+            col_name = f'{output_auto_bench_name}{test_alias}'
+            df_avg = pd.DataFrame({f'{x}':[], f'{col_name}':[]})
             for x_id, x_content in enumerate(x_data):
                 df_avg.loc[len(df_avg.index)] = \
-                    {f"{x}": x_content, f'{y}_avg' : y_data_mean[x_id]}
-            df_avg.to_csv(f"{res_path}/{output_auto_bench_name}"\
-                          f"{test_alias}_x-{x}_y-{y}_avg.csv".lower())
+                    {f"{x}": int(x_content), f'{col_name}' : y_data_mean[x_id]}
+            all_df_avg = all_df_avg.merge(df_avg, on=x, how='outer')
+
+    all_df_avg = all_df_avg.sort_values(by=x, ascending=True)
+    all_df_avg = all_df_avg.reset_index(drop=True)
+    all_df_avg.to_csv(f"{res_path}/x-{x}_y-{y}.csv".lower())
 
     if m_comp:
+        if start_from_zero:
+            plt.ylim(ymin=0)
         plt.savefig(f'{res_path}/x-{x}_y-{y}.png'.lower(), dpi=500)
         plt.close()
+
+def process_emon(roots, m_configs, res_path, m_comp, alias, m_repnums):
+    wb = openpyxl.Workbook()
+    # find the common repeats in all roots
+    repeat_num = sys.maxsize
+    for rep in m_repnums:
+        if rep < repeat_num:
+            repeat_num = rep
+    # generate sheet for each repeat with the results of
+    # all cases in all tests in all auto bench roots.
+    for rep_id in range(repeat_num):
+        wbs = wb.create_sheet(f'rep-{rep_id}')
+        test_dic = dict()
+        for auto_bench_id, root in enumerate(roots):
+            comp = m_comp[auto_bench_id] if m_comp else None
+            configs = m_configs[auto_bench_id]
+            col_auto_bench_name = None
+            if alias:
+                col_auto_bench_name = f'{alias[auto_bench_id]}-'
+            else:
+                if len(roots) > 1:
+                    col_auto_bench_name = f"bench:{auto_bench_id}-"
+                else:
+                    col_auto_bench_name = ''
+
+            rep_path = f"{root}/rep-{rep_id}"
+            for test_dir in os.listdir(rep_path):
+                test_prefix = test_dir.split('_')[0].split('-')
+                if test_prefix[0] != 'test':
+                    continue
+                test_path = f'{rep_path}/{test_dir}'
+                test_id = int(test_prefix[1])
+                if comp and test_id+1 not in comp:
+                    continue
+                # a tester also means a case
+                tester_dirs = sorted(os.listdir(test_path))
+                for tester_dir in tester_dirs:
+                    tester_prefix = tester_dir.split('.')[0]
+                    # check if the length of first section is 1
+                    if len(tester_prefix) != 1:
+                        continue
+                    tester_id = int(tester_prefix)
+                    test_alias = None
+                    if 'alias' in configs[test_id]:
+                        test_alias = configs[test_id]['alias']
+                    else:
+                        test_alias = f"test:{test_id}"
+                    col_name = f'{col_auto_bench_name}{test_alias}-case:{tester_id}'
+                    tgt_emon_file = f'{test_path}/{tester_dir}/summary.xlsx'
+                    if os.path.exists(tgt_emon_file):
+                        # extract information from target emon file
+                        emon_file = openpyxl.load_workbook(tgt_emon_file)
+                        sheet = emon_file['socket view']
+                        tester_dic = dict()
+                        for row in range(1, sheet.max_row + 1):
+                            name = sheet.cell(row=row, column=1).value
+                            value = sheet.cell(row=row, column=2).value # use socket 0 value
+                            tester_dic[name] = value
+                        test_dic[col_name] = tester_dic
+                        emon_file.close()
+
+        # generate chossen name
+        chossen_name = list()
+        if emon_target:
+            f_emon_target = open(emon_target, "r")
+            line = f_emon_target.readline()
+            while line:
+                chossen_name.append(line.rstrip('\n'))
+                line = f_emon_target.readline()
+            f_emon_target.close()
+        else:
+            for col_name in test_dic:
+                tester_dict = test_dic[col_name]
+                for name in tester_dict:
+                    if name not in chossen_name:
+                        chossen_name.append(name)
+        # fisrt row
+        col_index = 'A'
+        wbs['A1'] = 'Name'
+        for col_name in test_dic:
+            col_index = chr(ord(col_index)+1)
+            wbs[f'{col_index}1'] = col_name
+        # next rows
+        for id, name in enumerate(chossen_name):
+            row_index = id + 2
+            col_index = 'A'
+            wbs[f'A{row_index}'] = name
+            for col_name in test_dic:
+                col_index = chr(ord(col_index)+1)
+                tester_dic = test_dic[col_name]
+                value = None
+                if name in tester_dic:
+                    value = tester_dic[name]
+                else:
+                    value = 'not exist'
+                wbs[f'{col_index}{row_index}'] = value
+    del wb['Sheet']
+    wb.save(res_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='')
@@ -477,8 +589,8 @@ if __name__ == "__main__":
                         nargs='+',
                         type=str,
                         default=None,
-                        help= "alias for each auto bench results correspoding to --ana"\
-                            "This alias will show in output graphics")
+                        help= "alias for each auto bench results correspoding to --ana or --emon"\
+                            "This alias will show in output graphics/excel")
 
     parser.add_argument('--build',
                         type=str,
@@ -488,7 +600,8 @@ if __name__ == "__main__":
                         type=str,
                         default=None,
                         help='bench results directory when --bench/--run(default to be autobench.date) or '\
-                            'graphic results directory when --ana(default to be autobench dir name.graphic)')
+                            'graphic results directory when --ana(default to be autobench dir name.graphic) or '\
+                            'emon result file when --emon(default to be autobench dir name.emon)')
     parser.add_argument('--no-disk-test',
                         action='store_true',
                         help= "will not do basic device speed tests(which will cost you at"\
@@ -517,11 +630,27 @@ if __name__ == "__main__":
                         action='store_true',
                         help="y axis will not start from zero")
 
+    parser.add_argument('--emon',
+                        nargs='+',
+                        type=str,
+                        default=None,
+                        help= "input the root directory storing the auto bench results, to"\
+                            " intergrate and adjust all emon edp results into one document."\
+                            " and input --comp to deicde using which groups of test results."\
+                            " --emon also support cross auto bench analyse like --ana")
+    parser.add_argument('--emon-target',
+                        type=str,
+                        default=None,
+                        help= "input the path of file that record the emon results name you"\
+                            " want. Each line of that file should be one name. None by default,"\
+                            " which means all names will be used.")
+
     args = parser.parse_args()
     gap = args.gap
     res_path_suffix = 'graphic'
     no_disk_test = False
     start_from_zero = True
+    emon_target = args.emon_target
     if args.no_disk_test:
         no_disk_test = True
     if args.no_start_from_zero:
@@ -532,9 +661,10 @@ if __name__ == "__main__":
     _run = 1 if args.run else 0
     _bench = 1 if args.bench else 0
     _ana = 1 if args.ana else 0
+    _emon = 1 if args.emon else 0
 
-    if _run + _bench + _ana != 1:
-        raise Exception("Error: should run in one of run/bench/ana")
+    if _run + _bench + _ana + _emon != 1:
+        raise Exception("Error: should run in one of run/bench/ana/emon")
     if args.run:
         if not args.x:
             raise Exception("Error: should input --x to run")
@@ -630,3 +760,45 @@ if __name__ == "__main__":
             tgt_sys_info_path = f'{current_path}/{res_path}/{tgt_sys_info_path}'
             os.system(f'cp {config_path} {tgt_config_path}')
             os.system(f'cp {sys_info_path} {tgt_sys_info_path}')
+
+    if args.emon:
+        roots = list()
+        for root in args.emon:
+            if root[-1] == '/':
+                roots.append(root[:-1])
+            else:
+                roots.append(root)
+        if args.comp and len(args.emon) != len(args.comp):
+            raise Exception("Error: len of --comp shuold match the len of --emon")
+        if args.alias and len(args.emon) != len(args.alias):
+            raise Exception("Error: len of --alias shuold match the len of --emon")
+        if len(args.emon) > 1 and not args.comp:
+            raise Exception("Error: must use --comp when len of --emon > 1, which means"\
+                            " you must use comp mode if you want to anaylse multiple auto"\
+                            " bench results")
+
+        m_configs = list()
+        m_repnums = list()
+        m_comp = list() if args.comp else None
+        res_path = ''
+        for root_index, root in enumerate(roots):
+            comp = None
+            if args.comp:
+                comp = list()
+                _comp = args.comp[root_index].split(',')
+                for index in _comp:
+                    comp.append(int(index))
+                m_comp.append(comp)
+
+            configs = read_config(f"{current_path}/{root}/config.yaml", x=None, comp=comp)
+            res_path += f"{root}."
+            m_configs.append(configs)
+            # skip config.yaml, failure_log.txt, sys_info.txts
+            repeat_num = len(os.listdir(root)) - 3
+            m_repnums.append(repeat_num)
+        res_path += 'emon'
+        if args.output:
+            res_path = args.output
+        res_path += '.xlsx'
+
+        process_emon(roots, m_configs, res_path, m_comp, args.alias, m_repnums)
