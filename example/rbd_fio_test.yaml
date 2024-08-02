@@ -1,0 +1,116 @@
+cluster:
+  use_existing: True
+  osds_per_node: 1
+  user: 'root'
+  head: "mysystem.mycompany.com"
+    #head: "mysystem"
+    #clients: [localhost]
+  clients: ["mysystem.mycompany.com"]
+    #osds: ["localhost"]
+  osds: ["mysystem.mycompany.com"]
+    #mons: ["localhost"]
+  iterations: 1
+  conf_file: '/ceph/build/ceph.conf'
+  ceph-osd_cmd: '/ceph/build/bin/ceph-osd'
+  ceph-mon_cmd: '/ceph/build/bin/ceph-mon'
+  ceph-run_cmd: '/ceph/build/bin/ceph-run'
+  ceph-rgw_cmd: '/ceph/build/bin/radosgw'
+  ceph-mgr_cmd: '/ceph/build/bin/ceph-mgr'
+  ceph-mds_cmd: '/ceph/build/bin/ceph-mds'
+  ceph-authtool_cmd: '/ceph/build/bin/ceph-authtool'
+  radosgw-admin_cmd: '/ceph/build/bin/radosgw-admin'
+  ceph_cmd: '/ceph/build/bin/ceph'
+  ceph-fuse_cmd: '/ceph/build/bin/ceph-fuse'
+  rados_cmd: '/ceph/build/bin/rados'
+  rbd_cmd: '/ceph/build/bin/rbd'
+  rbd-nbd_cmd: '/ceph/build/bin/rbd-nbd_cmd'
+  rbd-fuse_cmd: '/ceph/build/bin/rbd-fuse_cmd'
+  tmp_dir: "/tmp/cbt"
+  pid_dir: "/ceph/build/out/"
+  pdsh_ssh_args: "-a -p 8023 -x -l%u %h"
+  pool_profiles:
+    rbd:
+      pg_size: 256
+      pgp_size: 256
+        #replication: 1
+monitoring_profiles:
+# These monitor only the OSD node/process
+  collectl:
+    # These options indicate:
+    # collect 30 samples, summary mem and CPU util, each 5 secs for CPU samples, 10 sec for all other,
+    # process options: threads utilisation
+    # filter samples for CPUs 0 to 3 (e.g. Crimson IO reactor cores),
+    # filter samples for process osd (redundant),
+    # produce gnuplot file data format (aka csv) in output file (gziped)
+    #
+    args: '-c 30 -sZC -i 5:10 --procopts t --cpufilt 0-3 --procfilt cosd -P -f {collectl_dir}'
+  perf:
+    perf_cmd: 'perf'
+    # This collects 10 secs of data to produce flame graphs
+    args: 'record -e cycles:u --call-graph dwarf -i -p {pid} -o {perf_dir}/{pid}_osd_perf.out sleep 10'
+  top:
+    top_cmd: 'top'
+      # This collects 30 samples, Core and thread CPU utilisation
+    args: '-b -H -1 -p {pid} -n 30 > {top_dir}/{pid}_osd_top.out'
+benchmarks:
+  librbdfio:
+    cmd_path: '/usr/local/bin/fio'
+    # ToDo: consider a subdict that defines the global FIO options
+    # but we need to ensure backwards compatibility with existing .yaml
+    wait_pgautoscaler_timeout: 2 # in secs
+    use_existing_volumes: False
+    no_sudo: True
+    ## Global FIO options
+    pool_profile: 'rbd'
+    vol_size: 1024  # Volume size in Megabytes
+      #vol_name: 'fio_test_%d' # TBC. valid python format string
+      #rbdname: 'fio_test_%d'
+    idle_monitor_sleep: 5 # in seconds
+    fio_out_format: 'json'
+    iterations: 3
+    time: 300 # length of run
+    ramp: 30 # ramp up time
+    log_avg_msec: 100
+    log_iops: True
+    log_bw:  True
+    log_lat: True
+    poolname: 'rbd'
+    mode: 'randwrite'
+    iodepth: [1, 4 ,16]
+    numjobs: [1, 4, 8]
+    op_size: [4096] # block IO size in bytes
+    procs_per_client: [1]
+    # Change this if you want more volumes
+    volumes_per_client: [1] # volumes per ceph node
+      # for tests involving specific CPU cores:
+    fio_cpu_set: '15-15'
+    # Optional FIO options for the /prefill stage
+    prefill:
+      blocksize: '4M'
+      numjobs: 1
+    # Each block below uses its own local options during its execution (jobs and queue depth can be nested
+    # Example below preconditions the image with 64k random writes, then executes two 10 point response curves with a job of 1 with:
+    # randread queue depths: 1,2,3,4,5,8,16,32,64,128
+    # randwrite queue depths: 1,2,3,4,5,8,16,32,64,128 
+    workloads:
+      precondition:
+        jobname: 'precond1rw'
+        mode: 'randwrite'
+        numjobs: [ 1 ]
+        iodepth: [ 64 ]
+        monitor: False # whether to run the monitors along the test
+      test1:
+        jobname: 'rr'
+        mode: 'randread'
+        numjobs: [ 1 ]
+        iodepth: [ 1,2,3,4,5,8,16,32,64,128 ]
+          #numjobs: [ 1, 4, 8 ]
+          #iodepth: [ 1, 4, 8 ]
+        # ToDo: can we add a list of the monitoring subset we are interested for this workload?
+      test2:
+        jobname: 'rw'
+        mode: 'randwrite'
+        numjobs: [ 1 ]
+        iodepth: [ 1,2,3,4,5,8,16,32,64,128 ]
+          #numjobs: [ 1, 4, 8 ]
+          #iodepth: [ 1, 4, 8 ]
