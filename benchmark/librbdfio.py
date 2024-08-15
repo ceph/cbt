@@ -161,6 +161,7 @@ class LibrbdFio(Benchmark):
             logger.info('Running rbd fio %s test, mode %s', wk, test['mode'])
             if 'monitor' in test:
                 enable_monitor = bool(test['monitor'])
+            # TODO: simplify this loop to have a single iterator for general queu depth
             for job in test['numjobs']:
                 for iod in test['iodepth']:
                     self.mode = test['mode']
