@@ -40,6 +40,8 @@ from operator import add
 # For MultiFIO JSON files, the jobname no neccessarily matches any of the predef_dict keys,
 # so we need instead to use a separate query:
 job_type='jobs/jobname=*/job options/rw'
+# Better still, use the global options
+#job_type='global options/rw'
 # All the following should be within the path
 #  'jobs/jobname=*/read/iops'
 predef_dict = {
@@ -236,6 +238,7 @@ def process_fio_json_file(json_file, json_tree_path):
         # different FIO processes
         result_dict['timestamp'] = str(node['timestamp'])
         result_dict['iodepth'] = node['global options']['iodepth']
+        #result_dict['iodepth'] = node['global options']['rw']
         # Use the jobname to index the predef_dict for the json query
         jobs_list = node['jobs']
         print(f"Num jobs: {len(jobs_list)}")

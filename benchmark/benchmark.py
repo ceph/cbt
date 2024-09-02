@@ -27,7 +27,7 @@ class Benchmark(object):
         self.run_dir = os.path.join(settings.cluster.get('tmp_dir'),
                                     '{:0>8}'.format(config.get('iteration')),
                                     self.getclass())
-        self.osd_ra = config.get('osd_ra', None)
+        self.osd_ra = config.get('osd_ra', '0')
         self.cmd_path = ''
         self.valgrind = config.get('valgrind', None)
         self.cmd_path_full = ''

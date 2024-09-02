@@ -91,8 +91,8 @@ class OsdThread(threading.Thread):
 
 
 class Ceph(Cluster):
-    def __init__(self, config):
-        super(Ceph, self).__init__(config)
+    def _set_default_attributes(self, config):
+        """ Factorised method to reuse for mock init and unit tests"""
         self.health_wait = config.get('health_wait', 5)
         self.ceph_osd_cmd = config.get('ceph-osd_cmd', '/usr/bin/ceph-osd')
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
@@ -141,9 +141,6 @@ class Ceph(Cluster):
         self.cur_ruleset = 1
         self.idle_duration = config.get('idle_duration', 0)
         self.use_existing = config.get('use_existing', True)
-        self.stoprequest = threading.Event()
-        self.haltrequest = threading.Event()
-        self.startiorequest = threading.Event()
 
         self.urls = []
         self.auth_urls = []
@@ -154,6 +151,19 @@ class Ceph(Cluster):
         self.prefill_recov_object_size = 0
         self.prefill_recov_time = 0
         self.recov_pool_name = ''
+
+    def __init__(self, config, _init_threads=True):
+        super(Ceph, self).__init__(config)
+        self._set_default_attributes(config)
+        if _init_threads:
+            self.stoprequest = threading.Event()
+            self.haltrequest = threading.Event()
+            self.startiorequest = threading.Event()
+
+    @classmethod
+    def mockinit(cls, config):
+        """Only used by serialise_benchmark.py -- do not call in production code"""
+        return cls(config, _init_threads=False )
 
     def initialize(self):
         # Reset the rulesets
@@ -931,6 +941,7 @@ class Ceph(Cluster):
         self.mkpool('default.rgw.buckets', rgw_pools.get('buckets', 'default'), 'rgw')
         self.mkpool('default.rgw.buckets.index', rgw_pools.get('buckets_index', 'default'), 'rgw')
         self.mkpool('default.rgw.buckets.data', rgw_pools.get('buckets_data', 'default'), 'rgw')
+
 
 class RecoveryTestThreadBlocking(threading.Thread):
     def __init__(self, config, cluster, callback, stoprequest, haltrequest):

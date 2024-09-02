@@ -36,8 +36,6 @@ class Getput(Benchmark):
         self.subuser = '%s:swift' % self.user
         self.key = config.get('key', 'vzCEkuryfn060dfee4fgQPqFrncKEIkh3ZcdOANY')  # dummy key from ceph radosgw docs
         self.auth_urls = config.get('auth', self.cluster.get_auth_urls())
-        self.cleanup()
-        self.cleandir()
 
     def exists(self):
         if os.path.exists(self.out_dir):
@@ -49,6 +47,9 @@ class Getput(Benchmark):
     def initialize(self):
         super(Getput, self).initialize()
 
+        # Set and clear dir
+        self.cleanup()
+        self.cleandir()
         # create the user and key
         self.cluster.add_swift_user(self.user, self.subuser, self.key)
 
