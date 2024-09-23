@@ -77,6 +77,7 @@ Optional tools and benchmarks can be used if desired:
  6. fio - benchmark suite with integrated posix, libaio, and librbd 
     support
  7. cosbench - object storage benchmark from Intel
+ 8. pytest - to run the unit tests.
 
 ## USER AND NODE SETUP
 
@@ -144,10 +145,12 @@ lab here:
 <https://github.com/ceph/cbt/blob/master/tools/mkpartmagna.sh>
 
 
-## CREATING A YAML FILE
+## CREATING A TEST PLAN YAML FILE
 
 CBT yaml files have a basic structure where you define a cluster and a set of
-benchmarks to run against it.  For example, the following yaml file creates a
+benchmarks to run against it.  The high level structure of a test plan is
+detailed in the [documentation](docs/TestPlanSchema.md).
+For example, the following yaml file creates a
 single node cluster on a node with hostname "burnupiX". A pool profile is
 defined for a 1x replication pool using 256 PGs, and that pool is used to run
 RBD performance tests using fio with the librbd engine.
@@ -249,6 +252,15 @@ files to create parametric sweeps of tests.  A script in the tools directory
 called mkcephconf.py lets you automatically generate hundreds or thousands of
 ceph.conf files from defined ranges of different options that can then be used
 with cbt in this way.
+
+## RECENT FEATURES
+
+* Support for [workloads](docs/Workloads.md), that is sequence of performance tests, particularly
+useful to generate *Response latency curves*.
+
+* Automatic unit test [generation](docs/AutomaticUnitTestGeneration.md) for the Benchmark classes, intended to help
+refactoring to detect regressions.
+
 
 ## CONCLUSION
 
