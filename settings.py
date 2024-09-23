@@ -142,3 +142,23 @@ def uniquenodes(nodes):
 
 def shutdown(message):
     sys.exit(message)
+
+
+def mock_initialize(config_file="tools/invariant.yaml"):
+    """ Auxiliary method only to be used from serialise_benchmarks.py"""
+    global common, cluster, client_endpoints, benchmarks, monitoring_profiles
+    config = {}
+    try:
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+    except IOError as e:
+        raise argparse.ArgumentTypeError(str(e))
+
+    common = config.get('common', {})
+    cluster = config.get('cluster', {})
+    client_endpoints = config.get('client_endpoints', {})
+    benchmarks = config.get('benchmarks', {})
+    monitoring_profiles = config.get('monitoring_profiles', dict(collectl={}))
+    # Set some defaults required
+    cluster['tmp_dir'] = '/tmp/cbt.XYZ'
+    cluster['osd_ra'] = '0'

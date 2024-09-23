@@ -5,6 +5,7 @@ class Cluster(object):
         self.mnt_dir = config.get('mnt_dir', "%s/%s" % (base_tmp, 'mnt'))
         self.tmp_dir = "%s/%s" % (base_tmp, config.get('clusterid'))
         self.archive_dir = "%s/%s" % (config.get('archive_dir'), config.get('clusterid'))
+        self.tmp_conf = config.get('tmp_conf', '/tmp/cbt')
 
     def get_mnt_dir(self):
         return self.mnt_dir

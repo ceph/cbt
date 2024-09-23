@@ -1,3 +1,6 @@
+"""
+Common classes to wrap around pdsh (parallel shell)
+"""
 import errno
 import logging
 import os
@@ -9,17 +12,40 @@ import settings
 
 logger = logging.getLogger("cbt")
 
+class Localhost(object):
+    """
+    This class encapsulates a single dictionary with the information of the localhost
+    """ 
+    def __init__(self):
+        self.local_fqdn = get_fqdn_local()
+        self.local_hostname = socket.gethostname()
+        self.local_short_hostname = self.local_hostname.split('.')[0]
+        self.local_list = ('localhost', self.local_fqdn, self.local_hostname, self.local_short_hostname)
+
+    def is_localhost(self, node):
+        """ Returns true if the name refers to the local host """
+        if node in self.local_list:
+            return node
+        return None
+
+#global 
+SINGLETON_LOCALHOST = None
+def getLocalhost(node):
+    global SINGLETON_LOCALHOST 
+    if SINGLETON_LOCALHOST is None:
+        SINGLETON_LOCALHOST = Localhost()
+    return SINGLETON_LOCALHOST.is_localhost(node)
 
 def join_nostr(command):
     if isinstance(command, list):
         return ' '.join(command)
     return command
 
-# this class overrides the communicate() method to check the return code and
-# throw an exception if return code is not OK
-
-
 class CheckedPopen(object):
+    """
+    This class overrides the communicate() method to check the return code and
+    throw an exception if return code is not OK
+    """ 
     UNINIT = -720
     OK = 0
 
@@ -106,7 +132,7 @@ def expanded_node_list(nodes):
     # logger.info("full list of hosts: %s" % str(full_node_list))
     return node_list
 
-
+# Define an auxiliar method to sanitize the list of nodes, once
 def get_localnode(nodes):
     # Similarly to `expanded_node_list(nodes)` we assume the passed nodes
     # param is always string. This is justified as the callers use `nodes`
@@ -116,18 +142,7 @@ def get_localnode(nodes):
     nodes_list = expanded_node_list(nodes)
     if len(nodes_list) < 1:
         return None
-
-    local_fqdn = get_fqdn_local()
-    local_hostname = socket.gethostname()
-    local_short_hostname = local_hostname.split('.')[0]
-
-    remote_host = settings.host_info(nodes_list[0])['host']
-    #logger.debug('remote_host=%s, local_fqdn=%s local_hostname=%s local_short_hostname=%s'
-    #                 % (remote_host, str(local_fqdn), str(local_hostname), str(local_short_hostname) ))
-    if remote_host in ('localhost', local_fqdn, local_hostname, local_short_hostname):
-        return remote_host
-    return None
-
+    return getLocalhost(nodes_list[0])
 
 def sh(local_node, command, continue_if_error=True):
     return CheckedPopenLocal(local_node, join_nostr(command),
@@ -144,7 +159,7 @@ def pdsh(nodes, command, continue_if_error=True):
         env = {}
         if pdsh_ssh_args:
             env = {'PDSH_SSH_ARGS':pdsh_ssh_args}
-        # -f: fan out n nodes, -R rcmd name, -w target node list
+        # -f: fan out n nodes, -R rcmd name (ssh by default), -w target node list
         args = [pdsh_cmd, '-f', str(len(expanded_node_list(nodes))), '-R', 'ssh', '-w', nodes, join_nostr(command)]
         # -S means pdsh fails if any host fails
         if not continue_if_error:
