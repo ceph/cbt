@@ -253,7 +253,7 @@ def clean_remote_dir(remote_dir):
 
 def make_remote_dir(remote_dir):
     nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
-    pdsh(nodes, 'mkdir -p -m0755 -- %s' % remote_dir,
+    pdsh(nodes, 'sudo mkdir -p -m0755 -- %s' % remote_dir,
          continue_if_error=False).communicate()
 
 
