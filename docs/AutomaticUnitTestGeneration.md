@@ -22,7 +22,7 @@ The following is an example of the execution of the script:
 ```
 An example of the expected normal ouput is shown below.
 
-![cbt_utests_gen](cbt_utest_gen.png)
+![cbt_utests_gen](./cbt_utests_gen.png)
 
 This would have created (or updated if existing already) the set of unit tests for the supported benchmarks.
 
@@ -35,7 +35,7 @@ The unit tests can be executed from the command line as follows:
 ```
 An example output showing a successful execution:
 
-![cbt_utests_gen](cbt_utest_gen.png)
+![cbt_utests_run](./cbt_utests_run.png)
 
 Note: the tests skipped above require an environment variable to be defined to identify the target nodes 
 for exercising pdsh.
@@ -69,7 +69,7 @@ whether some attributes has been changed, replaced or deleted. This is especiall
 during code refactoring.
 
 
-## Workflow recommeded
+## Workflow recommeded
 
 
 * Before starting a code refactoring effort, run the unit tests: they should all pass as shown above.
