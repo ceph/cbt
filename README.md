@@ -1,5 +1,9 @@
 # CBT - The Ceph Benchmarking Tool
 
+Release v0.3 will be the final version of CBT that contains support for cosbench.
+There will be a PR soon that will deprecate support for cosbench. If you require
+support for cosbench please continue to use v0.3.
+
 ## INTRODUCTION
 
 CBT is a testing harness written in python that can automate a variety of tasks
