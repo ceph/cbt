@@ -20,6 +20,8 @@ class Cosbench(Benchmark):
 
         config = self.parse_conf(config)
 
+        logger.warning("Cosbench support within CBT will be deprecated in a later PR. Please use release tag v0.3 for continued use of cosbench.")
+
         self.op_size = config["obj_size"]
         self.total_procs = config["workers"]
         self.containers = config["containers_max"]
