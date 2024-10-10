@@ -16,7 +16,7 @@ class TestBenchmarkhsbench(unittest.TestCase):
     cl_name = "tools/invariant.yaml"
     bl_name = "tools/baseline.json"
     bl_json = {}
-    bl_md5 = 'e6b6fcd2be74bd08939c64a249ab2125'
+    bl_md5 = '30f2e8cc8a8aca6538d818919834ef27'
     md5_returned = None
 
     @classmethod
