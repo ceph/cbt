@@ -19,7 +19,7 @@ class Cluster:
     def cleanup(self):
         pass
 
-    # Adding these 4 in here for fio refactor. Ideally the cluster class will
+    # Adding these in here for fio refactor. Ideally the cluster class will
     # eventually be an abstract base class (ABC), but that is work for the
     # future
     def dump_config(self, run_dir):

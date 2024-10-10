@@ -164,11 +164,14 @@ class Fio(FioCommon):
         log.info("Recovery thread completed!")
 
     def analyze(self, output_directory: str) -> None:
+        """
+        Convert the results from the run to a json format
+        """
         log.info("Converting results to json format.")
         for client in settings.getnodes("clients").split(","):  # type: ignore [no-untyped-call]
             host = settings.host_info(client)["host"]  # type: ignore [no-untyped-call]
             for i in range(self._endpoints_per_client):
-                found = 0
+                found = 1
                 out_file = "%s/output.%d.%s" % (output_directory, i, host)
                 json_out_file = "%s/json_output.%d.%s" % (output_directory, i, host)
                 with open(out_file) as fd:
@@ -179,6 +182,3 @@ class Fio(FioCommon):
                                 break
                             if found == 1:
                                 json_fd.write(line)
-                            if found == 0:
-                                if "Starting" in line:
-                                    found = 1

@@ -44,7 +44,7 @@ class FioCommon(Benchmark, ABC):
         self._set_cli_options_from_configuration()
         self._set_cli_flags_from_configuration()
 
-        self.cmd_path = f"{self._cli_options.get('cmd_path')}"
+        self.cmd_path = f"{self._configuration_with_defaults.get('cmd_path')}"
 
         self._client_endpoints: Optional[str] = self._configuration_with_defaults.get("client_endpoints", None)
 
@@ -74,12 +74,19 @@ class FioCommon(Benchmark, ABC):
         """
 
     def exists(self) -> bool:
+        """
+        Make sure we do not overwrite results from a previous run of the tool
+        """
         if os.path.exists(self._output_directory):
             log.info("Skipping existing test in %s.", self._output_directory)
             return True
         return False
 
     def cleanup(self) -> None:
+        """
+        Make sure that all the processes for this test have completed or been
+        stopped
+        """
         cmd_name = PurePath(self.cmd_path).name
         common.pdsh(settings.getnodes("clients"), f"sudo killall -2 {cmd_name}").communicate()  # type: ignore [no-untyped-call]
 
