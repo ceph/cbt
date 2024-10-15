@@ -39,10 +39,11 @@ from operator import add
 # Keys are metric names, vallues are the string path in the .json to seek
 # For MultiFIO JSON files, the jobname no neccessarily matches any of the predef_dict keys,
 # so we need instead to use a separate query:
-#job_type='jobs/jobname=*/job options/rw'
+# jobname would be associated with the volume name
+#job_type = "jobs/jobname=*/job options/rw"
 # Better still, use the global options
 job_type='global options/rw'
-# All the following should be within the path
+# All the following should be within the path
 #  'jobs/jobname=*/read/iops'
 predef_dict = {
     "randwrite": {
@@ -229,6 +230,23 @@ def reduce_result_list(result_dict, jobname):
     return _res
 
 
+def get_jobs_type(job, jobname: str):
+    """
+    Condition to get the jobname -- shouldbe deprecated since the new
+    FIO job files are follow the convention of jobtype being the
+    global "rw" attribute.
+    """
+    #jobname = str(job["jobname"])
+    if jobname in predef_dict:
+        # this gives the paths to query for the metrics
+        query_dict = predef_dict[jobname]
+    else:
+        jobname = job["job options"]["rw"]
+        query_dict = predef_dict[jobname]
+        #result_dict["jobname"] = jobname
+    return query_dict 
+
+
 def process_fio_json_file(json_file, json_tree_path):
     """
     Collect metrics from an individual JSON file, which might
@@ -245,23 +263,16 @@ def process_fio_json_file(json_file, json_tree_path):
         node = json.load(json_data)
         # Extract the json timestamp: useful for matching same workloads from
         # different FIO processes
-        result_dict['timestamp'] = str(node['timestamp'])
-        result_dict['iodepth'] = node['global options']['iodepth']
-        result_dict['jobname'] = node['global options']['rw']
-        result_dict['iodepth'] = node['global options']['iodepth']
+        result_dict["timestamp"] = str(node["timestamp"])
+        result_dict["iodepth"] = node["global options"]["iodepth"]
+        result_dict["jobname"] = node["global options"]["rw"]
         # Use the jobname to index the predef_dict for the json query
         jobs_list = node["jobs"]
         print(f"Num jobs: {len(jobs_list)}")
         job_result = {}
         for _i, job in enumerate(jobs_list):
-            jobname = str(job["jobname"])
-            if jobname in predef_dict:
-                # this gives the paths to query for the metrics
-                query_dict = predef_dict[jobname]
-            else:
-                jobname = job["job options"]["rw"]
-                query_dict = predef_dict[jobname]
-            #result_dict["jobname"] = jobname
+            jobname = result_dict["jobname"]
+            query_dict = predef_dict[jobname]
             for k in query_dict.keys():
                 json_tree_path = query_dict[k].split("/")
                 next_node_list = [job]
@@ -366,10 +377,12 @@ set title "{_title}"
                 head = f"plot '{out_data}' index 0 using 2:{ycol}:5 t '{list_subtables[0]} q-depth' w yerr axes x1y1"
                 head += f",\\\n '' index 0 using 2:{ycol}:5 notitle w lp axes x1y1"
                 head += f",\\\n '' index 0 using 2:{y2col} w lp axes x1y2 t 'CPU%'"
-                tail = ",\\\n".join([
-                    f"  '' index {i} using 2:{ycol} t '{list_subtables[i]} q-depth' w lp axes x1y1"
-                    for i in range(1, len(list_subtables))
-                ])
+                tail = ",\\\n".join(
+                    [
+                        f"  '' index {i} using 2:{ycol} t '{list_subtables[i]} q-depth' w lp axes x1y1"
+                        for i in range(1, len(list_subtables))
+                    ]
+                )
                 template += ",\\\n".join([head, tail])
 
         f.write(template)
@@ -439,6 +452,39 @@ def aggregate_cpu_avg(avg, table, avg_cpu):
         print("Table (after aggregating OSD CPU avg data):")
         pp.pprint(table)
 
+def aggregate_proc_cpu_avg(avg, table, avg_cpu, proc):
+    """
+    This function assumes that the avg .JSON file contains the OSD field
+    """
+    if len(avg_cpu):
+        print(f" avg_cpu list has: {len(avg_cpu)} items")
+        for cpu_item in avg_cpu:
+            for metric in cpu_item[proc]:  # 'sys', 'us' normally from the OSD
+                cpu_avg_k = 0
+                samples = cpu_item[metric]
+                for cpu in samples.keys():
+                    cpu_avg_k += samples[cpu]
+                cpu_avg_k /= len(samples.keys())
+                # Aggregate the CPU values in the avg table
+                if metric not in avg:
+                    avg[metric] = 0
+                avg[metric] += cpu_avg_k
+                # Aggregate the CPU values in the FIO table
+                if metric not in table:
+                    table[metric] = []
+                table[metric].append(cpu_avg_k)
+
+        pp = pprint.PrettyPrinter(width=41, compact=True)
+        print(f"Table (after aggregating {proc} CPU avg data):")
+        pp.pprint(table)
+
+def save_table_json(table,name):
+    """
+    Save the table into a .JSON
+    """
+    with open(name, 'w', encoding='utf-8') as f:
+        json.dump(table, f, indent=4 ) #, sort_keys=True, cls=TopEntryJSONEncoder)
+        f.close()
 
 def gen_table(dict_files, config, title, avg_cpu, multi=False):
     """
@@ -464,7 +510,9 @@ def gen_table(dict_files, config, title, avg_cpu, multi=False):
     # The following produces a List of dicts, each with keys 'sys', 'us',
     # each sample with list of CPU (eg. 0-3, and 4-7)
     # Aggregate osd_cpu_us and osd_cpu_sys into the main table
-    aggregate_cpu_avg(avg, table, avg_cpu)
+    #aggregate_cpu_avg(avg, table, avg_cpu)
+    aggregate_proc_cpu_avg(avg, table, avg_cpu, "OSD")
+    save_table_json(table,config.replace("_list", ".json"))
     # Note: in general the CPU measurements are global across the test time
     # for all FIO processes, so in the MultiFIO case we need to reduce the FIO measurements first
 
