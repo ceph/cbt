@@ -4,6 +4,12 @@ Release v0.3 will be the final version of CBT that contains support for cosbench
 There will be a PR soon that will deprecate support for cosbench. If you require
 support for cosbench please continue to use v0.3.
 
+PR https://github.com/ceph/ceph/pull/60169 implements a change to remove qa/tasks cosbench 
+infrastructure from the Teuthology suite. Ceph releases Quincy and newer did not have any
+cosbench suite tests, since teuthology pulls the latest version of CBT and the ceph CI/CD
+pipeline are run tests from teuthology for Quincy and newer, there are not any backward
+compatibility issues related to removal of cosbench from CBT.
+
 ## INTRODUCTION
 
 CBT is a testing harness written in python that can automate a variety of tasks
