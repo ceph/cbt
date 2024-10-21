@@ -64,10 +64,10 @@ class Fio(FioCommon):
 
         if self._endpoint_type == "rbd" and self._cli_options["ioengine"] != "rbd":
             log.warning("rbd endpoints must use the librbd fio engine! Setting ioengine=rbd")
-            self.ioengine = "rbd"
+            self._cli_options["ioengine"] = "rbd"
         if self._endpoint_type == "rbd" and self._cli_options["direct"] != "1":
             log.warning("rbd endpoints must use O_DIRECT. Setting direct=1")
-            self.direct = "1"
+            self._cli_options["direct"] = "1"
 
     def fio_command_extra(self, endpoint_number: int) -> str:
         command: str = ""

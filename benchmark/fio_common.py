@@ -27,7 +27,7 @@ class FioCommon(Benchmark, ABC):
         super().__init__(archive_dir, cluster, configuration)  # type: ignore [no-untyped-call]
 
         self._cluster: Cluster = cluster
-        self._output_directory: str = archive_dir
+        self._output_directory: str = self.archive_dir
 
         self._defaults: Dict[str, str]
 
