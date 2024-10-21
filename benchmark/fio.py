@@ -164,6 +164,9 @@ class Fio(FioCommon):
         log.info("Recovery thread completed!")
 
     def analyze(self, output_directory: str) -> None:
+        """
+        Converts the output files from each run to a JSON format
+        """
         log.info("Converting results to json format.")
         for client in settings.getnodes("clients").split(","):  # type: ignore [no-untyped-call]
             host = settings.host_info(client)["host"]  # type: ignore [no-untyped-call]
