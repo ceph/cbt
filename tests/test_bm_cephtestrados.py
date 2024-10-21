@@ -16,7 +16,7 @@ class TestBenchmarkcephtestrados(unittest.TestCase):
     cl_name = "tools/invariant.yaml"
     bl_name = "tools/baseline.json"
     bl_json = {}
-    bl_md5 = '30f2e8cc8a8aca6538d818919834ef27'
+    bl_md5 = 'aa42ab3c2da0e01ecec18add853f7d79'
     md5_returned = None
 
     @classmethod

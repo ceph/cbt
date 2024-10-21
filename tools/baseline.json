@@ -286,7 +286,7 @@
         },
         "_endpoint_type": "",
         "_endpoints": [],
-        "_output_directory": "/tmp",
+        "_output_directory": "/tmp/results/00000000/id-83a653b5",
         "_procs_per_endpoint": 1,
         "_recovery_test_type": "blocking",
         "acceptable": {},
@@ -398,7 +398,7 @@
             "use_existing": false,
             "version_compat": ""
         },
-        "cmd_path": "None",
+        "cmd_path": "/usr/bin/fio",
         "cmd_path_full": "",
         "config": {
             "iteration": 0
