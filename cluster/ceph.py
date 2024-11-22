@@ -658,7 +658,7 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('osds'), 'find /var/run/ceph/ceph-osd*.asok -maxdepth 1 -exec sudo %s --admin-daemon {} dump_historic_ops \; > %s/historic_ops.out' % (self.ceph_cmd, run_dir)).communicate()
 
     def set_osd_param(self, param, value):
-        common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*data -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
+        common.pdsh(settings.getnodes('osds'), 'find /dev/disk/by-partlabel/osd-device-*{data,block} -exec readlink {} \; | cut -d"/" -f 3 | sed "s/[0-9]$//;s/p[0-9]*//" | xargs -I{} sudo sh -c "echo %s > /sys/block/\'{}\'/queue/%s"' % (value, param))
 
     def __str__(self):
         return "foo"
