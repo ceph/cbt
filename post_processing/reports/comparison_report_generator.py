@@ -12,7 +12,6 @@ The pdf file will have the same name as the markdown file, and be saved in the s
 directory.
 """
 
-# from datetime import datetime
 import subprocess
 from logging import Logger, getLogger
 from pathlib import Path
