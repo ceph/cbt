@@ -107,6 +107,14 @@ class ComparisonReportGenerator(ReportGenerator):
     def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml files")
 
+        yaml_paragraph: str = (
+            "Only yaml files that differ by more than 20 lines from the yaml file for the "
+            + "baseline directory will be added here in addition to the baseline yaml"
+        )
+
+        self._report.new_paragraph(yaml_paragraph)
+        self._report.new_line()
+
         yaml_files: list[Path] = self._find_configuration_yaml_files()
 
         base_yaml_file: Path = yaml_files.pop(0)
@@ -122,6 +130,10 @@ class ComparisonReportGenerator(ReportGenerator):
         """
         self._report.new_header(level=2, title=f"{file_path.parts[-2]}")
 
+        file_contents: str = file_path.read_text()
+        safe_contents = strip_confidential_data_from_yaml(file_contents)
+        markdown_string: str = f"```{safe_contents}```"
+        self._report.new_paragraph(markdown_string)
         file_contents: str = file_path.read_text()
         safe_contents = strip_confidential_data_from_yaml(file_contents)
         markdown_string: str = f"```{safe_contents}```"
