@@ -23,7 +23,7 @@ import subprocess
 from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
 
-from common_output_formatter import CommonOutputFormatter
+from post_processing.common_output_formatter import CommonOutputFormatter
 
 log: Logger = getLogger()
 

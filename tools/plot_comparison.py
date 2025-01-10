@@ -75,9 +75,9 @@ import subprocess
 from argparse import ArgumentParser, Namespace
 from logging import INFO, Logger, basicConfig, getLogger
 
-from plotter.common_format_plotter import CommonFormatPlotter
-from plotter.directory_comparison_plotter import DirectoryComparisonPlotter
-from plotter.file_comparison_plotter import FileComparisonPlotter
+from post_processing.plotter.common_format_plotter import CommonFormatPlotter
+from post_processing.plotter.directory_comparison_plotter import DirectoryComparisonPlotter
+from post_processing.plotter.file_comparison_plotter import FileComparisonPlotter
 
 log: Logger = getLogger(f"{os.path.basename(__file__)}")
 
