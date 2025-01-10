@@ -24,6 +24,7 @@ from post_processing.common import (
     get_latency_throughput_from_file,
     strip_confidential_data_from_yaml,
 )
+from post_processing.plotter.simple_plotter import SimplePlotter
 from post_processing.reports.report_generator import ReportGenerator
 
 log: Logger = getLogger("cbt")
@@ -122,6 +123,12 @@ class SimpleReportGenerator(ReportGenerator):
         plot_files: list[Path] = []
         for directory in self._data_directories:
             plot_files.extend(list(directory.glob(f"*{PLOT_FILE_EXTENSION_WITH_DOT}")))
+
+            # If there are no plotfiles in the directory then we should create them
+            if len(plot_files) == 0:
+                plotter = SimplePlotter(str(directory.parent))
+                plotter.draw_and_save()
+                plot_files.extend(list(directory.glob(f"*{PLOT_FILE_EXTENSION_WITH_DOT}")))
 
         for plot_file in plot_files:
             subprocess.call(f"cp {plot_file} {self._plots_directory}/", shell=True)

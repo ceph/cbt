@@ -5,7 +5,7 @@ Unit tests for the CommonOutputFormatter class
 import unittest
 from typing import Dict, List, Union
 
-from common_output_formatter import CommonOutputFormatter
+from post_processing.common_output_formatter import CommonOutputFormatter
 
 
 # pyright: ignore[reportPrivateUsage]
