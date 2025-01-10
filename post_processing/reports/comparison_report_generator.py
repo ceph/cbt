@@ -13,6 +13,7 @@ directory.
 """
 
 # from datetime import datetime
+import subprocess
 from logging import Logger, getLogger
 from pathlib import Path
 from typing import Optional
@@ -103,18 +104,28 @@ class ComparisonReportGenerator(ReportGenerator):
                 self._report.new_line(text=line)
             self._report.new_line()
 
-    def _add_configuration_yaml_file(self) -> None:
+    def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml files")
 
-        for yaml_file in self._find_configuration_yaml_files():
-            # The title here is the directory containing the yaml file
-            self._report.new_header(level=2, title=f"{yaml_file.parts[-2]}")
+        yaml_files: list[Path] = self._find_configuration_yaml_files()
 
-            file_contents: str = yaml_file.read_text()
-            safe_contents = strip_confidential_data_from_yaml(file_contents)
-            markdown_string: str = f"```{safe_contents}```"
+        base_yaml_file: Path = yaml_files.pop(0)
+        self._add_yaml_file_title_and_contents(base_yaml_file)
 
-            self._report.new_paragraph(markdown_string)
+        for yaml_file in yaml_files:
+            if self._yaml_file_has_more_that_20_differences(base_yaml_file, yaml_file):
+                self._add_yaml_file_title_and_contents(yaml_file)
+
+    def _add_yaml_file_title_and_contents(self, file_path: Path) -> None:
+        """
+        Add a title heading and the contents of a yaml file to the report
+        """
+        self._report.new_header(level=2, title=f"{file_path.parts[-2]}")
+
+        file_contents: str = file_path.read_text()
+        safe_contents = strip_confidential_data_from_yaml(file_contents)
+        markdown_string: str = f"```{safe_contents}```"
+        self._report.new_paragraph(markdown_string)
 
     def _generate_report_name(self) -> str:
         datetime_string: str = get_date_time_string()
@@ -220,3 +231,22 @@ class ComparisonReportGenerator(ReportGenerator):
                     data_string += f"{max_throughput.split(' ')[0]}@{latency_ms}|{throughput_percentage_difference}|"
 
             data_tables[operation].append(data_string)
+
+    def _yaml_file_has_more_that_20_differences(self, base_file: Path, comparison_file: Path) -> bool:
+        """
+        If there are more that 20 differences between base and comparison then
+        return True, otherwise False
+        """
+        diff_command: str = (
+            f"/usr/bin/env diff -wy --suppress-common-lines {str(base_file)} {str(comparison_file)} | wc -l"
+        )
+
+        output: bytes
+        try:
+            output = subprocess.check_output(diff_command, shell=True)
+        except subprocess.CalledProcessError:
+            return False
+
+        output_as_string: str = output.decode().strip()
+
+        return int(output_as_string) > 20

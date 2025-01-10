@@ -84,7 +84,7 @@ class ReportGenerator(ABC):
 
         self._add_summary_table()
         self._add_plots()
-        self._add_configuration_yaml_file()
+        self._add_configuration_yaml_files()
 
         # Add a table of contents
         self._report.new_table_of_contents(depth=3)
@@ -160,7 +160,7 @@ class ReportGenerator(ABC):
         """
 
     @abstractmethod
-    def _add_configuration_yaml_file(self) -> None:
+    def _add_configuration_yaml_files(self) -> None:
         """
         Add the configuration yaml file to the report
         """

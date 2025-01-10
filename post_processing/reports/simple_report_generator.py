@@ -109,7 +109,7 @@ class SimpleReportGenerator(ReportGenerator):
                     table_images.append("")
                 self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
 
-    def _add_configuration_yaml_file(self) -> None:
+    def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml")
         yaml_file_path: Path = self._find_configuration_yaml_files()[0]
 
