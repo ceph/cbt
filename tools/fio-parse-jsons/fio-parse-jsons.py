@@ -6,14 +6,14 @@
 # Input parameters:
 #
 # -c <file_name>- a file name containing a list of JSONs FIO output
-#  result files, each following the naming convention:
+#  result files, each following the (workload) naming convention:
 #  <prefix>_\d+job_d+io_<suffix>
 #
 # -t <title> - a string describing the Title for the chart, eg.
 # 'Crimson 4k Random Write (Single 200GB OSD)'
 #
 # -a <file_name> - a JSON filename with the CPU average list, normally
-# produced by the parse-top.pl script.
+# produced by the parse-top.py script.
 #
 # -d <dir> - work directory
 #
@@ -35,14 +35,17 @@ import math
 import functools
 from operator import add
 
+__author__ = 'Jose J Palacios-Perez'
+
 # Predefined dictionary of metrics (query paths on the ouput FIO .json) for typical workloads
 # Keys are metric names, vallues are the string path in the .json to seek
 # For MultiFIO JSON files, the jobname no neccessarily matches any of the predef_dict keys,
 # so we need instead to use a separate query:
-#job_type='jobs/jobname=*/job options/rw'
+# jobname would be associated with the volume name
+#job_type = "jobs/jobname=*/job options/rw"
 # Better still, use the global options
 job_type='global options/rw'
-# All the following should be within the path
+# All the following should be within the path
 #  'jobs/jobname=*/read/iops'
 predef_dict = {
     "randwrite": {
@@ -61,7 +64,7 @@ predef_dict = {
         "usr_cpu": "usr_cpu",
         "sys_cpu": "sys_cpu",
     },
-    "seqwrite": {
+    "write": { # aka seqwrite
         "bw": "write/bw",
         "total_ios": "write/total_ios",
         "clat_ms": "write/clat_ns",
@@ -69,7 +72,7 @@ predef_dict = {
         "usr_cpu": "usr_cpu",
         "sys_cpu": "sys_cpu",
     },
-    "seqread": {
+    "read": { # seqread
         "bw": "read/bw",
         "total_ios": "read/total_ios",
         "clat_ms": "read/clat_ns",
@@ -137,7 +140,7 @@ def process_fio_item(k, next_node_list):
     json files for the same timestamp and then divide by total IOPs to get
     an average latency
     """
-    #    match k: # Python version on the SV1 node does not support 'match'
+    #    match k: # Python version on node does not support 'match'
     #    case 'iops' | 'usr_cpu' | 'sys_cpu':
     if re.search("iops|usr_cpu|sys_cpu|iodepth|total_ios", k):
         return next_node_list[0]
@@ -229,6 +232,21 @@ def reduce_result_list(result_dict, jobname):
     return _res
 
 
+def get_jobs_type(job, jobname: str):
+    """
+    Condition to get the jobname -- shouldbe deprecated since the new
+    FIO job files are follow the convention of jobtype being the
+    global "rw" attribute.
+    """
+    if jobname in predef_dict:
+        # this gives the paths to query for the metrics
+        query_dict = predef_dict[jobname]
+    else:
+        jobname = job["job options"]["rw"]
+        query_dict = predef_dict[jobname]
+    return query_dict 
+
+
 def process_fio_json_file(json_file, json_tree_path):
     """
     Collect metrics from an individual JSON file, which might
@@ -241,27 +259,19 @@ def process_fio_json_file(json_file, json_tree_path):
         if f_info.st_size == 0:
             print(f"JSON input file {json_file} is empty")
             return result_dict
-        # parse the JSON object
         node = json.load(json_data)
         # Extract the json timestamp: useful for matching same workloads from
         # different FIO processes
-        result_dict['timestamp'] = str(node['timestamp'])
-        result_dict['iodepth'] = node['global options']['iodepth']
-        result_dict['jobname'] = node['global options']['rw']
-        result_dict['iodepth'] = node['global options']['iodepth']
+        result_dict["timestamp"] = str(node["timestamp"])
+        result_dict["iodepth"] = node["global options"]["iodepth"]
+        result_dict["jobname"] = node["global options"]["rw"]
         # Use the jobname to index the predef_dict for the json query
         jobs_list = node["jobs"]
         print(f"Num jobs: {len(jobs_list)}")
         job_result = {}
         for _i, job in enumerate(jobs_list):
-            jobname = str(job["jobname"])
-            if jobname in predef_dict:
-                # this gives the paths to query for the metrics
-                query_dict = predef_dict[jobname]
-            else:
-                jobname = job["job options"]["rw"]
-                query_dict = predef_dict[jobname]
-            #result_dict["jobname"] = jobname
+            jobname = result_dict["jobname"]
+            query_dict = predef_dict[jobname]
             for k in query_dict.keys():
                 json_tree_path = query_dict[k].split("/")
                 next_node_list = [job]
@@ -281,6 +291,8 @@ def process_fio_json_file(json_file, json_tree_path):
 def traverse_files(sdir, config, json_tree_path):
     """
     Traverses the JSON files given in the config
+    Returns a dictionary whose keys are the input .json file names, values
+    are the (sub)dictionary of the metrics collected from the input .json file
     """
     os.chdir(sdir)
     try:
@@ -301,34 +313,40 @@ def traverse_files(sdir, config, json_tree_path):
     return dict_new
 
 
-def gen_plot(config, data, list_subtables, title):
+def gen_plot(config, data, list_subtables, title, header_keys ):
     """
-    Generate a gnuplot script and .dat files -- assumes OSD CPU util only
+    Generate a gnuplot script and .dat files -- for response
+    latency curves, it charts Throughput/latency against CPU util
+    of the group of processes (eg OSD, FIO)
     """
     plot_dict = {
         # Use the dict key as the suffix for the output file .png,
         # the .dat file is the same for the different charts
-        "iops_vs_lat_vs_cpu_sys": {
+        "iops_vs_lat_vs_cpu": {
             "ylabel": "Latency (ms)",
-            "ycolumn": "4",
-            "y2label": "OSD CPU system",
-            "y2column": "9",
-        },
-        "iops_vs_lat_vs_cpu_usr": {
-            "ylabel": "Latency (ms)",
-            "ycolumn": "4",
-            "y2label": "OSD CPU user",
-            "y2column": "8",
-        },
+            "ycolumn": "clat_ms",
+            "y2label": "CPU",
+            "y2column": "OSD_cpu",
+        }
     }
-    header = """
+    pg_y2column = {
+        'OSD_cpu': 8,
+        #'OSD_mem': 9,
+        'FIO_cpu': 10,	
+        #'FIO_mem': 11, 
+    }
+    # Use the header_keys to ensure we refer to the correct column number
+    for k in pg_y2column.keys():
+        pg_y2column[k]=str(header_keys[k])
+
+    header = r"""
 set terminal pngcairo size 650,420 enhanced font 'Verdana,10'
 set key box left Left noreverse title 'Iodepth'
 set datafile missing '-'
 set key outside horiz bottom center box noreverse noenhanced autotitle
 set grid
 set autoscale
-#set logscale
+set xtics border in scale 1,0.5 nomirror rotate by -45  autojustify
 # Hockey stick graph:
 set style function linespoints
 """
@@ -339,17 +357,14 @@ set style function linespoints
     # Gnuplot quirk: '_' is interpreted as a sub-index:
     _title = title.replace("_", "-")
 
-    with open(out_plot, "w") as f:
-        f.write(header)
-        for pk in plot_dict.keys():
-            out_chart = config.replace("list", pk + ".png")
-            ylabel = plot_dict[pk]["ylabel"]
-            ycol = plot_dict[pk]["ycolumn"]
-            y2label = plot_dict[pk]["y2label"]
-            y2col = plot_dict[pk]["y2column"]
-            template += f"""
+    for pk in plot_dict.keys():
+        out_chart = config.replace("list", pk + ".png")
+        ylabel = plot_dict[pk]["ylabel"]
+        ycol = str(header_keys[plot_dict[pk]["ycolumn"]])
+        y2label = plot_dict[pk]["y2label"]
+        template += f"""
 set ylabel "{ylabel}"
-set xlabel "IOPS"
+set xlabel "IOPS (thousand)"
 set y2label "{y2label}"
 set ytics nomirror
 set y2tics
@@ -359,19 +374,27 @@ set autoscale y2
 set output '{out_chart}'
 set title "{_title}"
 """
-            # To plot CPU util in the same response curve, we need the extra axis
-            # This list_subtables indicates how many sub-tables the .datfile will have
-            # The stdev is the error column:5
-            if len(list_subtables) > 0:
-                head = f"plot '{out_data}' index 0 using 2:{ycol}:5 t '{list_subtables[0]} q-depth' w yerr axes x1y1"
-                head += f",\\\n '' index 0 using 2:{ycol}:5 notitle w lp axes x1y1"
-                head += f",\\\n '' index 0 using 2:{y2col} w lp axes x1y2 t 'CPU%'"
-                tail = ",\\\n".join([
-                    f"  '' index {i} using 2:{ycol} t '{list_subtables[i]} q-depth' w lp axes x1y1"
-                    for i in range(1, len(list_subtables))
-                ])
+        # To plot CPU util in the same response curve, we need the extra axis
+        # This list_subtables indicates how many sub-tables the .datfile will have
+        # The stdev is the error column:5
+        if len(list_subtables) > 0:
+            head = f"plot '{out_data}' index 0 using ($2/1e3):{ycol}:5 t '{list_subtables[0]} q-depth' w yerr axes x1y1 lc 1"
+            head += f",\\\n '' index 0 using ($2/1e3):{ycol} notitle w lp lc 1 axes x1y1"
+            for pg,y2col  in pg_y2column.items():
+                head += f",\\\n '' index 0 using ($2/1e3):{y2col} w lp axes x1y2 t '{pg}'"
+            if len(list_subtables) > 1:
+                tail = ",\\\n".join(
+                    [
+                        f"  '' index {i} using ($2/1e3):{ycol} t '{list_subtables[i]} q-depth' w lp axes x1y1"
+                        for i in range(1, len(list_subtables))
+                    ]
+                )
                 template += ",\\\n".join([head, tail])
+            else:
+                template += head + "\n"
 
+    with open(out_plot, "w") as f:
+        f.write(header)
         f.write(template)
         f.close()
     with open(out_data, "w") as f:
@@ -401,10 +424,6 @@ def initial_fio_table(dict_files, multi):
                 if k not in table:
                     avg[k] = 0.0
                 avg[k] += item[k]
-    # Probably might use some other avg rather than arithmetic avg
-    # For a sinlge data point, table == avg
-    # For multiple FIO: probably want to do the same reduction as multi job
-    # For response time curves, we want to have the sequence of increasing queue depth
     for k in avg.keys():
         avg[k] /= len(table[k])
     return table, avg
@@ -439,6 +458,76 @@ def aggregate_cpu_avg(avg, table, avg_cpu):
         print("Table (after aggregating OSD CPU avg data):")
         pp.pprint(table)
 
+def aggregate_proc_cpu_avg(avg, table, avg_cpu, proc):
+    """
+    This function assumes that the avg .JSON file contains the following fields:
+    avg$VAR1 = {
+          'FIO' => {
+                     'cpu' => {
+                                'index' => 10,
+                                'total' => '296.850333333333',
+                                'data' => [ .. ]
+                                }
+                    'mem' > { similar dict }
+                    }
+        'OSD' => { similar dict }
+    """
+    if len(avg_cpu):
+        print(f" avg_cpu list has: {len(avg_cpu)} items")
+        for cpu_item in avg_cpu:
+            if proc in cpu_item:
+                for metric in cpu_item[proc]: # 'cpu', 'mem' from the OSD
+                    # Aggregate the CPU values in the avg table
+                    mt = f"{proc}_{metric}"
+                    table[mt]= cpu_item[proc][metric]["data"]
+
+        pp = pprint.PrettyPrinter(width=41, compact=True)
+        print(f"Table (after aggregating {proc} CPU avg data):")
+        pp.pprint(table)
+
+def _aggregate_proc_cpu_avg_(avg, table, avg_cpu, proc):
+    """
+    This function is going to be deprecated soon
+    """
+    cpu_proc = {} # proc: {"mem": 0.0, "cpu": 0.0}}
+    num_entries=0
+    #metrics = []
+    if len(avg_cpu):
+        print(f" avg_cpu list has: {len(avg_cpu)} items")
+        for cpu_item in avg_cpu:
+            if proc in cpu_item:
+                if not cpu_proc:
+                    cpu_proc = cpu_item[proc]
+                else:
+                    for metric in cpu_item[proc]: # 'cpu', 'mem' from the OSD
+                        # We could detect the layout of this .json, whether is from
+                        # a Response latency or individual run
+                        cpu_proc[metric] = cpu_item[proc][metric]["data"]
+                        num_entries += 1
+
+        for metric in cpu_proc:
+            if num_entries > 1:
+                cpu_proc[metric] /= num_entries 
+            # Aggregate the CPU values in the avg table
+            mt = f"{proc}_{metric}"
+            if mt not in avg:
+                avg[mt] = cpu_proc[metric]
+            # Aggregate the CPU values in the FIO table
+            if mt not in table:
+                table[mt] = []
+            table[mt].append(avg[mt])
+
+        pp = pprint.PrettyPrinter(width=41, compact=True)
+        print(f"Table (after aggregating {proc} CPU avg data):")
+        pp.pprint(table)
+
+def save_table_json(table,name):
+    """
+    Save the table into a .JSON
+    """
+    with open(name, 'w', encoding='utf-8') as f:
+        json.dump(table, f, indent=4 ) #, sort_keys=True, cls=TopEntryJSONEncoder)
+        f.close()
 
 def gen_table(dict_files, config, title, avg_cpu, multi=False):
     """
@@ -448,23 +537,28 @@ def gen_table(dict_files, config, title, avg_cpu, multi=False):
     Each row of the table is the results from a run in a single .json
 
     The avg_cpu is a list of dict each with keys 'sys' and 'us', containing values per cpu core
+    This list of dicts now also has an entry for the process groups (eg OSD, FIO) which the
+    response curves use.
 
-    The optional multi option is used to differentiate between multiple FIO instances,
+    The optional multi option (would be deprecated) is used to differentiate between multiple FIO instances,
     which involve several .json files all from a concurrent execution (within the same timespan),
-    as opposed to a response curve run which also involve
-    several json files but within its own timespan.
+    as opposed to a response curve run which also involve several json files but within its own timespan.
 
     For a response curve over a double range (that is num_jobs and iodepth), the data for gnuplot is
-    separated into its own table, so the .dat file ends up with one table per num_job.
+    separated into its own tables, so the .dat file ends up with one table per num_job.
     """
     table, avg = initial_fio_table(dict_files, multi)
     table_iters = {}
     list_subtables = []
+    out_tex = config.replace("_list", ".tex")
     num_files = len(dict_files.keys())
     # The following produces a List of dicts, each with keys 'sys', 'us',
     # each sample with list of CPU (eg. 0-3, and 4-7)
     # Aggregate osd_cpu_us and osd_cpu_sys into the main table
-    aggregate_cpu_avg(avg, table, avg_cpu)
+    for pname in ("OSD", "FIO"):
+        aggregate_proc_cpu_avg(avg, table, avg_cpu, pname)
+    
+    save_table_json(table,config.replace("_list", ".json"))
     # Note: in general the CPU measurements are global across the test time
     # for all FIO processes, so in the MultiFIO case we need to reduce the FIO measurements first
 
@@ -478,17 +572,32 @@ def gen_table(dict_files, config, title, avg_cpu, multi=False):
 
     wiki = (
         r"""{| class="wikitable"
-|-
-! colspan="7"  | """
+|- """ +
+        f"""
+ ! colspan=\"{len(table)}\"  | 
+        """
         + config.replace("_list", "")
         + """
-! colspan="2"  | OSD CPU%
 |-
 ! """
     )
     wiki += " !! ".join(table.keys())
     wiki += "\n|-\n"
 
+    latex = (
+         r"""
+\begin{table}[h!]
+\centering
+\begin{tabular}[t]{*{""" + f"{len(table)}" + r""" }{|c|}}
+\hline 
+"""
+    )
+    latex += " & ".join(map(lambda x: x.replace(r"_",r"\_"), list(table.keys())))
+    latex += r"\\" + "\n" + r"\hline" + "\n"
+
+    # Construct a header_keys list that describes the order of the columns in the gnuplot .dat
+    # table
+    header_keys = { v:i for i,v in enumerate(table.keys(),1) }
     for k in table.keys():
         table_iters[k] = iter(table[k])
     # Construct the wiki table: the order given by the file names is important here,
@@ -516,11 +625,14 @@ def gen_table(dict_files, config, title, avg_cpu, multi=False):
                 if k == "iodepth":  # This metric is the first column
                     gplot += f" {item} "
                     wiki += f" | {item} "
+                    latex += f"{item} "
                 else:
                     gplot += f" {item:.2f} "
                     wiki += f" || {item:.2f} "
+                    latex += f" & {item:.2f} "
             gplot += "\n"
             wiki += "\n|-\n"
+            latex += r"\\" + "\n" + r"\hline" + "\n"
     if multi:
         wiki += "! Avg:"
         for k in avg.keys():
@@ -537,7 +649,19 @@ def gen_table(dict_files, config, title, avg_cpu, multi=False):
     wiki += "|}\n"
     print(f" Wiki table: {title}")
     print(wiki)
-    gen_plot(config, gplot, list_subtables, title)
+    latex += f"""
+\\hline
+\\end{{tabular}}
+\\caption{{Performance Throughput vs Latency vs CPU util: {title}.}}
+\\label{{table:iops-lat-cpu-{title}}}
+\\end{{table}}
+"""
+    print(latex)
+    with open(out_tex, "w") as f:
+        f.write(latex)
+        f.close()
+
+    gen_plot(config, gplot, list_subtables, title, header_keys )
     print("Done")
 
 
@@ -559,6 +683,7 @@ def load_avg_cpu_json(json_fname):
     """
     Load a .json file containing the CPU avg samples -- normally produced by the script
     parse-top.pl
+    Probably extend this single .json for all the required files
     """
     try:
         with open(json_fname, "r") as json_data:
