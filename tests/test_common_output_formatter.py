@@ -5,7 +5,8 @@ Unit tests for the CommonOutputFormatter class
 import unittest
 from typing import Dict, List, Union
 
-from post_processing.common_output_formatter import CommonOutputFormatter
+from post_processing.formatter.common_output_formatter import CommonOutputFormatter
+from post_processing.formatter.test_run_result import TestRunResult
 
 
 # pyright: ignore[reportPrivateUsage]
@@ -51,6 +52,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
     def setUp(self) -> None:
         print("setting up tests")
         self.formatter = CommonOutputFormatter("/tmp")
+        self.test_run_results = TestRunResult("/tmp", "unit_tests", "output")
 
     def test_do_nothing(self) -> None:
         """
@@ -65,7 +67,8 @@ class TestCommonOutputFormatter(unittest.TestCase):
         """
         Check the parsing of global_options
         """
-        output = self.formatter._get_global_options(self.global_options_data)  # pyright: ignore[reportPrivateUsage]
+
+        output = self.test_run_results._get_global_options(self.global_options_data)  # pyright: ignore[reportPrivateUsage]
 
         expected_output: Dict[str, str] = {
             "number_of_jobs": self.global_options_data["numjobs"],
@@ -81,7 +84,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
         """
         extended_test_data: Dict[str, str] = self.global_options_data.copy()
         extended_test_data.update({"rwmixread": "70", "rwmixwrite": "30"})
-        output = self.formatter._get_global_options(extended_test_data)  # pyright: ignore[reportPrivateUsage]
+        output = self.test_run_results._get_global_options(extended_test_data)  # pyright: ignore[reportPrivateUsage]
 
         expected_output: Dict[str, str] = {
             "number_of_jobs": extended_test_data["numjobs"],
@@ -100,7 +103,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
         read_job_details: List[Dict[str, Union[str, Dict[str, Union[int, float, Dict[str, Union[int, float]]]]]]] = [
             {"read": self.read_data}
         ]
-        output = self.formatter._get_io_details(read_job_details)  # pyright: ignore[reportPrivateUsage]
+        output = self.test_run_results._get_io_details(read_job_details)  # pyright: ignore[reportPrivateUsage]
 
         assert isinstance(self.read_data["io_bytes"], int)
         assert isinstance(self.read_data["bw_bytes"], int)
@@ -121,7 +124,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
         write_job_details: List[Dict[str, Union[str, Dict[str, Union[int, float, Dict[str, Union[int, float]]]]]]] = [
             {"write": self.write_data}
         ]
-        output = self.formatter._get_io_details(write_job_details)  # pyright: ignore[reportPrivateUsage]
+        output = self.test_run_results._get_io_details(write_job_details)  # pyright: ignore[reportPrivateUsage]
 
         assert isinstance(self.write_data["io_bytes"], int)
         assert isinstance(self.write_data["bw_bytes"], int)
@@ -140,7 +143,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
         Make sure we pull the correct details from the read data
         """
 
-        output = self.formatter._get_io_details(self.job_data)  # pyright: ignore[reportPrivateUsage]
+        output = self.test_run_results._get_io_details(self.job_data)  # pyright: ignore[reportPrivateUsage]
 
         assert isinstance(self.write_data["io_bytes"], int)
         assert isinstance(self.read_data["io_bytes"], int)

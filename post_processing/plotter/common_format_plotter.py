@@ -11,12 +11,11 @@ from types import ModuleType
 from typing import Optional, Union
 
 from post_processing.common import (
-    COMMON_FORMAT_DATA_TYPE,
     DATA_FILE_EXTENSION_WITH_DOT,
-    PLOT_DATA_TYPE,
     PLOT_FILE_EXTENSION,
     get_blocksize_percentage_operation_from_file_name,
 )
+from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE, PLOT_DATA_TYPE
 
 log: Logger = getLogger(f"{os.path.basename(__file__)}")
 
@@ -124,7 +123,7 @@ class CommonFormatPlotter(ABC):
         plotter.xlim(0, maximum_x)
         plotter.ylim(0, maximum_y)
 
-    def _sort_plot_data(self, unsorted_data: COMMON_FORMAT_DATA_TYPE) -> PLOT_DATA_TYPE:
+    def _sort_plot_data(self, unsorted_data: COMMON_FORMAT_FILE_DATA_TYPE) -> PLOT_DATA_TYPE:
         """
         Sort the data read from the file by queue depth
         """
@@ -141,7 +140,9 @@ class CommonFormatPlotter(ABC):
 
         return sorted_plot_data
 
-    def _add_single_file_data_with_errorbars(self, plotter: ModuleType, file_data: COMMON_FORMAT_DATA_TYPE) -> None:
+    def _add_single_file_data_with_errorbars(
+        self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE
+    ) -> None:
         """
         Add the data from a single file to a plot. Include error bars. Each point
         in the plot is the latency vs IOPs or bandwidth for a given queue depth.
@@ -173,7 +174,7 @@ class CommonFormatPlotter(ABC):
 
         plotter.errorbar(x_data, y_data, error_bars, capsize=3, ecolor="red")
 
-    def _add_single_file_data(self, plotter: ModuleType, file_data: COMMON_FORMAT_DATA_TYPE, label: str) -> None:
+    def _add_single_file_data(self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE, label: str) -> None:
         """
         Add the data from a single file to a plot.
 

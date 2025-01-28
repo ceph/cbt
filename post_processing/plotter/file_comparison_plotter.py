@@ -11,13 +11,13 @@ from typing import Optional
 import matplotlib.pyplot as plotter
 
 from post_processing.common import (
-    COMMON_FORMAT_DATA_TYPE,
     DATA_FILE_EXTENSION_WITH_DOT,
     PLOT_FILE_EXTENSION_WITH_DOT,
     get_blocksize_percentage_operation_from_file_name,
     read_intermediate_file,
 )
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
+from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE
 
 log: Logger = getLogger("cbt")
 
@@ -39,7 +39,7 @@ class FileComparisonPlotter(CommonFormatPlotter):
 
         for file_path in self._comparison_files:
             index: int = self._comparison_files.index(file_path)
-            file_data: COMMON_FORMAT_DATA_TYPE = read_intermediate_file(f"{file_path}")
+            file_data: COMMON_FORMAT_FILE_DATA_TYPE = read_intermediate_file(f"{file_path}")
 
             operation_details: tuple[str, str, str] = get_blocksize_percentage_operation_from_file_name(
                 file_name=file_path.stem

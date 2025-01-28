@@ -23,7 +23,7 @@ import subprocess
 from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
 
-from post_processing.common_output_formatter import CommonOutputFormatter
+from post_processing.formatter.common_output_formatter import CommonOutputFormatter
 
 log: Logger = getLogger()
 
@@ -59,7 +59,7 @@ def main() -> int:
         formatter.write_output_file()
     except Exception as e:
         log.error(
-            "Encountered and error parsing results in directory %s with name %s"
+            "Encountered an error parsing results in directory %s with name %s"
             % (args.archive, args.results_file_root)
         )
         log.exception(e)
