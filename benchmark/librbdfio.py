@@ -172,7 +172,18 @@ class LibrbdFio(Benchmark):
                 enable_monitor = bool(test['monitor'])
             # TODO: simplify this loop to have a single iterator for general queu depth
             for job in test['numjobs']:
-                for iod in test['iodepth']:
+                iodepth: list[str] = []
+                use_total_iodepth: bool = False
+                if "total_iodepth" in test.keys():
+                    iodepth = test["total_iodepth"]
+                    use_total_iodepth = True
+                else:
+                    iodepth = test["iodepth"]
+                for iod in iodepth:
+                    if use_total_iodepth:
+                        self._ioddepth_per_volume = self._calculate_iodepth_per_volume(
+                            int(self.volumes_per_client), int(iod)
+                        )
                     self.mode = test['mode']
                     if 'op_size' in test:
                         self.op_size = test['op_size']
@@ -183,7 +194,10 @@ class LibrbdFio(Benchmark):
                                      f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
                     common.make_remote_dir(self.run_dir)
 
-                    for i in range(self.volumes_per_client):
+                    number_of_volumes: int = int(self.volumes_per_client)
+                    if use_total_iodepth:
+                        number_of_volumes = len(self._ioddepth_per_volume.keys())
+                    for i in range(number_of_volumes):
                         fio_cmd = self.mkfiocmd(i)
                         p = common.pdsh(settings.getnodes('clients'), fio_cmd)
                         ps.append(p)
@@ -235,7 +249,10 @@ class LibrbdFio(Benchmark):
             monitoring.start(self.run_dir)
             logger.info('Running rbd fio %s test.', self.mode)
             ps = []
-            for i in range(self.volumes_per_client):
+            number_of_volumes: int = int(self.volumes_per_client)
+            if self._ioddepth_per_volume != {}:
+                number_of_volumes = len(self._ioddepth_per_volume.keys())
+            for i in range(number_of_volumes):
                 fio_cmd = self.mkfiocmd(i)
                 p = common.pdsh(settings.getnodes('clients'), fio_cmd)
                 ps.append(p)
@@ -436,7 +453,6 @@ class LibrbdFio(Benchmark):
                 "Number of volumes per client will be reduced from %s to %s", number_of_volumes, total_desired_iodepth
             )
             number_of_volumes = total_desired_iodepth
-            self.volumes_per_client = number_of_volumes
 
         iodepth_per_volume: int = total_desired_iodepth // number_of_volumes
         remainder: int = total_desired_iodepth % number_of_volumes
