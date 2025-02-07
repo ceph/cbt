@@ -330,3 +330,5 @@ class TestRunResult:
                 iodepth = logfile_iodepth
 
         return str(iodepth)
+
+    __test__ = False
