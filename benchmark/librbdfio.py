@@ -29,6 +29,8 @@ class LibrbdFio(Benchmark):
         self.recov_test_type = config.get('recov_test_type', 'blocking')
         self.data_pool_profile = config.get('data_pool_profile', None)
         self.time = config.get('time', None)
+        self.precond_time = config.get('precond_time',None )
+
         # Global FIO options can be overwritten for specific workload options
         # would be nice to have them as a separate class -- future PR
         self.time_based = bool(config.get('time_based', False))
@@ -187,18 +189,36 @@ class LibrbdFio(Benchmark):
                     self.mode = test['mode']
                     if 'op_size' in test:
                         self.op_size = test['op_size']
+                    if 'precond' in test:
+                        fioruntime = self.precond_time
+                    else:
+                        fioruntime = self.time
+
                     self.mode = test['mode']
                     self.numjobs = job
                     self.iodepth = iod
-                    self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
-                                     f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+
+                    # Needed to allow for different mixed ratio results with the same block size, we
+                    # store the ratio within the directory name. Otherwise workloads would only support
+                    # 1 mixed workload for a given block size. For 100% read, 100% write don't need to
+                    # store the read/write ratio.
+
+                    if self.mode == 'randrw':
+                        self.rwmixread = test['rwmixread']
+                        self.rwmixwrite = 100 - self.rwmixread
+                        self.run_dir =  ( f'{self.base_run_dir}/{self.mode}{self.rwmixread}{self.rwmixwrite}_{int(self.op_size)}/'
+                                          f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+                    else:
+                        self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
+                                          f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+
                     common.make_remote_dir(self.run_dir)
 
                     number_of_volumes: int = int(self.volumes_per_client)
                     if use_total_iodepth:
                         number_of_volumes = len(self._ioddepth_per_volume.keys())
                     for i in range(number_of_volumes):
-                        fio_cmd = self.mkfiocmd(i)
+                        fio_cmd = self.mkfiocmd(i,fioruntime)
                         p = common.pdsh(settings.getnodes('clients'), fio_cmd)
                         ps.append(p)
                     if enable_monitor:
@@ -253,7 +273,7 @@ class LibrbdFio(Benchmark):
             if self._ioddepth_per_volume != {}:
                 number_of_volumes = len(self._ioddepth_per_volume.keys())
             for i in range(number_of_volumes):
-                fio_cmd = self.mkfiocmd(i)
+                fio_cmd = self.mkfiocmd(i,self.time)
                 p = common.pdsh(settings.getnodes('clients'), fio_cmd)
                 ps.append(p)
             for p in ps:
@@ -269,8 +289,7 @@ class LibrbdFio(Benchmark):
         common.sync_files(f'{self.run_dir}/*', self.out_dir)
         self.analyze(self.out_dir)
 
-
-    def mkfiocmd(self, volnum: int) -> str:
+    def mkfiocmd(self, volnum: int, time) -> str:
         """
         Construct a FIO cmd (note the shell interpolation for the host
         executing FIO).
@@ -291,8 +310,8 @@ class LibrbdFio(Benchmark):
         fio_cmd += ' --output-format=%s' % self.fio_out_format
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
             fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
-        if self.time is not None:
-            fio_cmd += ' --runtime=%d' % self.time
+        if time is not None:
+            fio_cmd += ' --runtime=%d' % time
         if self.time_based is True:
             fio_cmd += ' --time_based'
         if self.ramp is not None:
