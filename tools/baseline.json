@@ -727,6 +727,7 @@
         "vol_size": 58982.4
     },
     "librbdfio": {
+        "_ioddepth_per_volume": {},
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "base_run_dir": "/tmp/cbt.XYZ/00000000/LibrbdFio",
@@ -865,6 +866,7 @@
         "pgs": 2048,
         "pool_name": "cbt-librbdfio",
         "pool_profile": "default",
+        "precond_time": null,
         "prefill_vols": {
             "blocksize": "4M",
             "numjobs": "1"

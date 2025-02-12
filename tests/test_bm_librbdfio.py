@@ -16,7 +16,7 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
     cl_name = "tools/invariant.yaml"
     bl_name = "tools/baseline.json"
     bl_json = {}
-    bl_md5 = 'e6b6fcd2be74bd08939c64a249ab2125'
+    bl_md5 = '84dd2f3a66eab442cc3825e0d57a9e3f'
     md5_returned = None
 
     @classmethod
@@ -39,6 +39,12 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
     def test_valid_baseline(self):
         """ Verify the baseline has not been compromised """
         self.assertEqual( self.bl_md5, str(self.md5_returned) )
+
+    def test_valid__ioddepth_per_volume(self):
+        """ Basic sanity attribute identity _ioddepth_per_volume check"""
+        b = benchmarkfactory.get_object(self.archive_dir,
+                                            self.cluster, 'librbdfio', self.iteration)
+        self.assertEqual(self.bl_json['librbdfio']['_ioddepth_per_volume'], b.__dict__['_ioddepth_per_volume'])
 
     def test_valid_archive_dir(self):
         """ Basic sanity attribute identity archive_dir check"""
@@ -207,6 +213,12 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
         b = benchmarkfactory.get_object(self.archive_dir,
                                             self.cluster, 'librbdfio', self.iteration)
         self.assertEqual(self.bl_json['librbdfio']['pool_profile'], b.__dict__['pool_profile'])
+
+    def test_valid_precond_time(self):
+        """ Basic sanity attribute identity precond_time check"""
+        b = benchmarkfactory.get_object(self.archive_dir,
+                                            self.cluster, 'librbdfio', self.iteration)
+        self.assertEqual(self.bl_json['librbdfio']['precond_time'], b.__dict__['precond_time'])
 
     def test_valid_prefill_vols(self):
         """ Basic sanity attribute identity prefill_vols check"""
