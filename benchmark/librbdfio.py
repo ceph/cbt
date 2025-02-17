@@ -99,6 +99,7 @@ class LibrbdFio(Benchmark):
         Backup/copy the FIO global options into a dictionary
         """
         self.global_fio_options['time_based'] = self.time_based
+        self.global_fio_options['time'] = self.time
         self.global_fio_options['ramp'] = self.ramp
         self.global_fio_options['iodepth'] = self.iodepth
         self.global_fio_options['numjobs'] = self.numjobs
@@ -124,7 +125,7 @@ class LibrbdFio(Benchmark):
         self.log_avg_msec = self.global_fio_options['log_avg_msec']
         self.op_size = self.global_fio_options['op_size']
         self.time_based = self.global_fio_options['time_based']
-
+        self.time = self.global_fio_options['time']
 
     def exists(self):
         """
@@ -184,14 +185,28 @@ class LibrbdFio(Benchmark):
                         self._ioddepth_per_volume = self._calculate_iodepth_per_volume(
                             int(self.volumes_per_client), int(iod)
                         )
+
+                    self.time = test['time']
                     self.mode = test['mode']
                     if 'op_size' in test:
                         self.op_size = test['op_size']
-                    self.mode = test['mode']
                     self.numjobs = job
                     self.iodepth = iod
-                    self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
-                                     f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+
+                    # Needed to allow for different mixed ratio results with the same block size, we
+                    # store the ratio within the directory name. Otherwise workloads would only support
+                    # 1 mixed workload for a given block size. For 100% read, 100% write don't need to
+                    # store the read/write ratio.
+
+                    if self.mode == 'randrw':
+                        self.rwmixread = test['rwmixread']
+                        self.rwmixwrite = 100 - self.rwmixread
+                        self.run_dir =  ( f'{self.base_run_dir}/{self.mode}{self.rwmixread}{self.rwmixwrite}_{int(self.op_size)}/'
+                                          f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+                    else:
+                        self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
+                                          f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+
                     common.make_remote_dir(self.run_dir)
 
                     number_of_volumes: int = int(self.volumes_per_client)
