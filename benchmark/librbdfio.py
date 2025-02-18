@@ -174,6 +174,14 @@ class LibrbdFio(Benchmark):
                                      f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
                     common.make_remote_dir(self.run_dir)
 
+                    # If there is a script to run specified in the yaml for this workload
+                    # then add it to the process list before the actual test
+                    script_command: str = test.get("pre_workload_script", "")
+                    if script_command != "":
+                        logger.debug("Scheduling script %s to run before this workolad", script_command)
+                        script_process = common.pdsh(settings.getnodes("clients"), script_command)
+                        script_process.wait()
+
                     for i in range(self.volumes_per_client):
                         fio_cmd = self.mkfiocmd(i)
                         p = common.pdsh(settings.getnodes('clients'), fio_cmd)
