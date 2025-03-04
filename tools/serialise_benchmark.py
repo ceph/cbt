@@ -96,7 +96,10 @@ class BenchGenerator(object):
             if isinstance(self.djson[bm], dict):
                 for k in self.djson[bm].keys():
                     # Skip Cluster since its a Ceph object, and acceptable was removed
-                    if k == "cluster" or k == "acceptable":
+                    # We need to skip _iodepth_per_volume here as the json file format
+                    # cannot cope with a dictionary that does not use a str as the key.
+                    # _iodepth_per_volume is intentionally a dict[int,int]
+                    if k == "cluster" or k == "acceptable" or k == "_iodepth_per_volume":
                         continue
                     if not self.djson[bm][k] == self.current[bm][k]:
                         if isinstance(self.djson[bm][k], dict):
