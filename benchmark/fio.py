@@ -1,273 +1,181 @@
-import common
-import settings
-import monitoring
-import os
-import time
-import logging
-import pathlib
+"""
+A benchark run using the fio I/O exercisor
+"""
+
+from logging import Logger, getLogger
+from time import sleep
+from typing import Any, Dict, List, Union
+
 import client_endpoints_factory
+import common
+import monitoring
+import settings
+from benchmark.fio_common import FioCommon
+from cluster.cluster import Cluster
 
-from .benchmark import Benchmark
-
-logger = logging.getLogger("cbt")
+log: Logger = getLogger("cbt")
 
 
-class Fio(Benchmark):
-    def __init__(self, archive_dir, cluster, config):
-        super(Fio, self).__init__(archive_dir, cluster, config)
+class Fio(FioCommon):
+    def __init__(self, archive_dir: str, cluster: Cluster, configuration: Dict[str, Any]):
+        self._defaults = {"prefill_iodepth": "16"}
+        super().__init__(archive_dir, cluster, configuration)
 
-        # FIXME there are too many permutations, need to put results in SQLITE3
-        self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
-        self.direct = str(config.get('direct', 1))
-        self.time = config.get('time', None)
-        self.time_based = bool(config.get('time_based', False))
-        self.ramp = config.get('ramp', None)
-        self.iodepth = config.get('iodepth', 16)
-        self.prefill_iodepth = config.get('prefill_iodepth', 16)
-        self.numjobs = config.get('numjobs', 1)
-        self.sync = config.get('sync', None)
-        self.end_fsync = config.get('end_fsync', 0)
-        self.mode = config.get('mode', 'write')
-        self.rwmixread = config.get('rwmixread', 50)
-        self.rwmixwrite = 100 - self.rwmixread
-        self.logging = config.get('logging', True)
-        self.log_avg_msec = config.get('log_avg_msec', None)
-        self.ioengine = config.get('ioengine', 'libaio')
-        self.bssplit = config.get('bssplit', None)
-        self.bsrange = config.get('bsrange', None)
-        self.bs = config.get('bs', None)
-        self.op_size = config.get('op_size', 4194304) # Deprecated, please use bs
-        self.size = config.get('size', 4096)
-        self.procs_per_endpoint = config.get('procs_per_endpoint', 1)
-        self.random_distribution = config.get('random_distribution', None)
-        self.rate_iops = config.get('rate_iops', None)
-        self.fio_out_format = "json,normal"
-        self.prefill_flag = config.get('prefill', True)
-        self.norandommap = config.get("norandommap", False)
-        self.out_dir = self.archive_dir
-        self.client_endpoints = config.get("client_endpoints", None)
-        self.recov_test_type = config.get('recov_test_type', 'blocking')
+        self._procs_per_endpoint: int = self._configuration_with_defaults.get("procs_per_endpoint", 1)
+        self._recovery_test_type: str = self._configuration_with_defaults.get("recov_test_type", "blocking")
+        self._endpoints_per_client: int
+        self._endpoint_type: str = ""
+        self._endpoints: List[str] = []
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
-            return True
-        return False
+    def initialize(self) -> None:
+        common.clean_remote_dir(self.run_dir)  # type: ignore [no-untyped-call]
+        common.make_remote_dir(self.run_dir)  # type: ignore [no-untyped-call]
 
-    def initialize(self):
-        super(Fio, self).initialize()
-
-        # Clean and Create the run directory
-        common.clean_remote_dir(self.run_dir)
-        common.make_remote_dir(self.run_dir)
-
-    def initialize_endpoints(self):
-        super(Fio, self).initialize_endpoints()
-
+    def initialize_endpoints(self) -> None:
         # Get the client_endpoints and set them up
-        if self.client_endpoints is None:
-            raise ValueError('No client_endpoints defined!')
-        self.client_endpoints_object = client_endpoints_factory.get(self.cluster, self.client_endpoints)
+        if self._client_endpoints is None:
+            raise ValueError("No client_endpoints defined!")
+        self.client_endpoints_object = client_endpoints_factory.get(self._cluster, self._client_endpoints)  # type: ignore [no-untyped-call]
 
         # Create the recovery image based on test type requested
-        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
-            self.client_endpoints_object.create_recovery_image()
+        if "recovery_test" in self._cluster.config and self._recovery_test_type == "background":
+            self.client_endpoints_object.create_recovery_image()  # type: ignore [no-untyped-call]
         self.create_endpoints()
 
-    def create_endpoints(self):
-        if not self.client_endpoints_object.get_initialized():
-            self.client_endpoints_object.initialize()
-            new_ep = True
+    def create_endpoints(self) -> None:
+        if not self.client_endpoints_object.get_initialized():  # type: ignore [no-untyped-call]
+            self.client_endpoints_object.initialize()  # type: ignore [no-untyped-call]
 
-        self.endpoint_type = self.client_endpoints_object.get_endpoint_type()
-        self.endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()
-        self.endpoints = self.client_endpoints_object.get_endpoints()
+        self._endpoint_type = self.client_endpoints_object.get_endpoint_type()  # type: ignore [no-untyped-call]
+        self._endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()  # type: ignore [no-untyped-call]
+        self._endpoints = self.client_endpoints_object.get_endpoints()  # type: ignore [no-untyped-call]
 
         # Error out if the aggregate fio size is going to be larger than the endpoint size
-        aggregate_size = self.numjobs * self.procs_per_endpoint * self.size
-        endpoint_size = self.client_endpoints_object.get_endpoint_size()
+        assert self._cli_options["size"] is not None and self._cli_options["numjobs"] is not None
+        aggregate_size = (
+            int(self._cli_options["numjobs"]) * self._procs_per_endpoint * int(self._cli_options["size"][:1])
+        )
+        endpoint_size = self.client_endpoints_object.get_endpoint_size()  # type: ignore [no-untyped-call]
         if aggregate_size > endpoint_size:
-            raise ValueError("Aggregate fio data size (%dKB) exceeds end_point size (%dKB)! Please check numjobs, procs_per_endpoint, and size settings." % (aggregate_size, endpoint_size))
+            raise ValueError(
+                "Aggregate fio data size (%dKB) exceeds end_point size (%dKB)! Please check numjobs, procs_per_endpoint, and size settings."
+                % (aggregate_size, endpoint_size)
+            )
 
-        if self.endpoint_type == 'rbd' and self.ioengine != 'rbd':
-            logger.warn('rbd endpoints must use the librbd fio engine! Setting ioengine=rbd')
-            self.ioengine = 'rbd'
-        if self.endpoint_type == 'rbd' and self.direct != '1':
-            logger.warn('rbd endpoints must use O_DIRECT. Setting direct=1')
-            self.direct = '1'
+        if self._endpoint_type == "rbd" and self._cli_options["ioengine"] != "rbd":
+            log.warning("rbd endpoints must use the librbd fio engine! Setting ioengine=rbd")
+            self._cli_options["ioengine"] = "rbd"
+        if self._endpoint_type == "rbd" and self._cli_options["direct"] != "1":
+            log.warning("rbd endpoints must use O_DIRECT. Setting direct=1")
+            self._cli_options["direct"] = "1"
 
-    def fio_command_extra(self, ep_num):
-        cmd = ''
+    def fio_command_extra(self, endpoint_number: int) -> str:
+        command: str = ""
 
         # typical directory endpoints
-        if self.endpoint_type == 'directory':
-            for proc_num in range(self.procs_per_endpoint):
-                cmd += ' --name=%s/`%s`-%s-%s' % (self.endpoints[ep_num], common.get_fqdn_cmd(), ep_num, proc_num)
+        if self._endpoint_type == "directory":
+            for proc_num in range(self._procs_per_endpoint):
+                command = (
+                    f"--name={self._endpoints[endpoint_number]}/`{common.get_fqdn_cmd()}"  # type: ignore [no-untyped-call]
+                    + "`-{endpoint_number}-{proc_num} "
+                )
 
         # handle rbd endpoints with the librbbd engine.
-        elif self.endpoint_type == 'rbd':
-            pool_name, rbd_name = self.endpoints[ep_num].split("/")
-            cmd += ' --clientname=admin'
-            cmd += ' --pool=%s' % pool_name
-            cmd += ' --rbdname=%s' % rbd_name
-            cmd += ' --invalidate=0'
-            for proc_num in range(self.procs_per_endpoint):
-                rbd_name = '%s-%d' % (self.endpoints[ep_num], proc_num)
-                cmd += ' --name=%s' % rbd_name
-        return cmd
+        elif self._endpoint_type == "rbd":
+            pool_name, rbd_name = self._endpoints[endpoint_number].split("/")
+            command += " --clientname=admin --invalidate=0"
+            command += f" --pool={pool_name} --rbdname={rbd_name}"
+            for proc_num in range(self._procs_per_endpoint):
+                rbd_name = f"{self._endpoints[endpoint_number]}-{proc_num}"
+                command += f" --name={rbd_name}"
+        return command
 
-    def prefill_command(self, ep_num):
-        cmd = 'sudo %s' % self.cmd_path
-        cmd += ' --ioengine=%s' % self.ioengine
-        cmd += ' --rw=write'
-        cmd += ' --numjobs=%d' % self.numjobs
-        cmd += ' --bs=4M'
-        cmd += ' --iodepth=%d' % self.prefill_iodepth
-        cmd += ' --size %dM' % self.size
-        cmd += ' --output-format=%s' % self.fio_out_format
-        cmd += self.fio_command_extra(ep_num)
-        return cmd
+    def _build_prefill_command(self, endpoint_number: int) -> str:
+        command = f"sudo {self.cmd_path} --rw=write --bs=4M --iodepth={self._configuration_with_defaults.get('prefill_iodepth')}"
 
-    def prefill(self):
-        super(Fio, self).prefill()
-        if not self.prefill_flag:
+        for option in ["ioengine", "numjobs", "size", "output-format"]:
+            command += f"--{option}={self._cli_options[option]}"
+
+        command += self.fio_command_extra(endpoint_number)
+        return command
+
+    def prefill(self) -> None:
+        if not self._configuration_with_defaults.get("prefill", True):
             return
-        # populate the fio files
-        ps = []
-        logger.info('Attempting to prefill fio files...')
-        for ep_num in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes('clients'), self.prefill_command(ep_num))
-            ps.append(p)
-        for p in ps:
-            p.wait()
+        # pre-populate the fio files
+        processes: List[Union[common.CheckedPopen, common.CheckedPopenLocal]] = []
+        log.info("Attempting to prefill fio files")
+        for endpoint_number in range(self._endpoints_per_client):
+            process = common.pdsh(settings.getnodes("clients"), self._build_prefill_command(endpoint_number))  # type: ignore [no-untyped-call]
+            processes.append(process)
+        for process in processes:
+            process.wait()
 
-    def run_command(self, ep_num):
-        out_file = '%s/output.%d' % (self.run_dir, ep_num)
-
-        # cmd_path_full includes any valgrind or other preprocessors vs cmd_path
-        cmd = 'sudo %s' % self.cmd_path_full
-
-        # IO options
-        cmd += ' --ioengine=%s' % self.ioengine
-        cmd += ' --direct=%s' % self.direct
-        if self.bssplit is not None:
-            cmd += ' --bssplit=%s' % self.bssplit
-        if self.bsrange is not None:
-            cmd += ' --bsrange=%s' % self.bsrange
-        if self.bs is not None:
-            cmd += ' --bs=%s' % self.bs
-        elif self.op_size is not None:
-            logger.warn('op_size is deprecated, please use bs in the future')
-            cmd += ' --bs=%s' % self.op_size
-        cmd += ' --iodepth=%d' % self.iodepth
-        if self.sync is not None:
-            cmd += ' --sync=%s' % self.sync
-        cmd += ' --end_fsync=%d' % self.end_fsync
-        cmd += ' --rw=%s' % self.mode
-        if (self.mode == 'readwrite' or self.mode == 'randrw'):
-            cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
-        if self.random_distribution is not None:
-            cmd += ' --random_distribution=%s' % self.random_distribution
-        if self.rate_iops is not None:
-            cmd += ' --rate_iops=%d' % self.rate_iops
-        if self.norandommap:
-            cmd += ' --norandommap'
-
-        # Set the output size
-        if self.size:
-            cmd += ' --size=%dM' % self.size
-        cmd += ' --numjobs=%d' % self.numjobs
-
-        # Time options
-        if self.time is not None:
-            cmd += ' --runtime=%d' % self.time
-        if self.time_based is True:
-            cmd += ' --time_based'
-        if self.ramp is not None:
-            cmd += ' --ramp_time=%d' % self.ramp
-
-        # Put extra options before logging and output for conveneince of debugging
-        cmd += self.fio_command_extra(ep_num)
-
-        # Logging and output options
-        if self.logging:
-            cmd += ' --write_iops_log=%s' % out_file
-            cmd += ' --write_bw_log=%s' % out_file
-            cmd += ' --write_lat_log=%s' % out_file
-            if self.log_avg_msec is not None:
-                cmd += ' --log_avg_msec=%d' % self.log_avg_msec
-        cmd += ' --output-format=%s' % self.fio_out_format
-
-        # End the fio_cmd
-        cmd += ' > %s' % (out_file)
-        return cmd
-
-    def run(self):
-        super(Fio, self).run()
+    def run(self) -> None:
+        super().run()  # type: ignore [no-untyped-call]
 
         # We'll always drop caches for rados bench
-        self.dropcaches()
+        self.dropcaches()  # type: ignore [no-untyped-call]
 
         # Create the run directory
-        common.make_remote_dir(self.run_dir)
+        common.make_remote_dir(self.run_dir)  # type: ignore [no-untyped-call]
 
         # dump the cluster config
-        self.cluster.dump_config(self.run_dir)
+        self._cluster.dump_config(self.run_dir)  # type: ignore [no-untyped-call]
 
-        time.sleep(5)
+        sleep(5)
 
         # Run the backfill testing thread if requested
-        if 'recovery_test' in self.cluster.config:
-            if self.recov_test_type == 'blocking':
+        if "recovery_test" in self._cluster.config:
+            if self._recovery_test_type == "blocking":
                 recovery_callback = self.recovery_callback_blocking
-            elif self.recov_test_type == 'background':
+            elif self._recovery_test_type == "background":
                 recovery_callback = self.recovery_callback_background
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
+            self._cluster.create_recovery_test(self.run_dir, recovery_callback, self._recovery_test_type)  # type: ignore [no-untyped-call]
 
-        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+        if "recovery_test" in self._cluster.config and self._recovery_test_type == "background":
             # Wait for signal to start client IO
-            self.cluster.wait_start_io()
+            self._cluster.wait_start_io()  # type: ignore [no-untyped-call]
 
-        monitoring.start(self.run_dir)
+        monitoring.start(self.run_dir)  # type: ignore [no-untyped-call]
 
-        logger.info('Running fio %s test.', self.mode)
-        ps = []
-        for i in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes('clients'), self.run_command(i))
-            ps.append(p)
-        for p in ps:
-            p.wait()
+        log.info("Running fio %s test.", self._cli_options["rw"])
+        processes: List[Union[common.CheckedPopen, common.CheckedPopenLocal]] = []
+        for i in range(self._endpoints_per_client):
+            process = common.pdsh(settings.getnodes("clients"), self._generate_command_line(i))  # type: ignore [no-untyped-call]
+            processes.append(process)
+        for process in processes:
+            process.wait()
         # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
-            self.cluster.wait_recovery_done()
+        if "recovery_test" in self._cluster.config:
+            self._cluster.wait_recovery_done()  # type: ignore [no-untyped-call]
 
-        monitoring.stop(self.run_dir)
+        monitoring.stop(self.run_dir)  # type: ignore [no-untyped-call]
 
         # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
-        self.analyze(self.out_dir)
+        self._cluster.dump_historic_ops(self.run_dir)  # type: ignore [no-untyped-call]
+        common.sync_files("%s/*" % self.run_dir, self._output_directory)  # type: ignore [no-untyped-call]
+        self.analyze(self._output_directory)
 
-    def cleanup(self):
-        cmd_name = pathlib.PurePath(self.cmd_path).name
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -2 %s' % cmd_name).communicate()
-
-    def recovery_callback_blocking(self):
+    def recovery_callback_blocking(self) -> None:
         self.cleanup()
 
-    def recovery_callback_background(self):
-        logger.info('Recovery thread completed!')
+    def recovery_callback_background(self) -> None:
+        log.info("Recovery thread completed!")
 
-    def analyze(self, out_dir):
-        logger.info('Convert results to json format.')
-        for client in settings.getnodes('clients').split(','):
-            host = settings.host_info(client)["host"]
-            for i in range(self.endpoints_per_client):
+    def analyze(self, output_directory: str) -> None:
+        """
+        Converts the output files from each run to a JSON format
+        """
+        log.info("Converting results to json format.")
+        for client in settings.getnodes("clients").split(","):  # type: ignore [no-untyped-call]
+            host = settings.host_info(client)["host"]  # type: ignore [no-untyped-call]
+            for i in range(self._endpoints_per_client):
                 found = 0
-                out_file = '%s/output.%d.%s' % (out_dir, i, host)
-                json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)
+                out_file = "%s/output.%d.%s" % (output_directory, i, host)
+                json_out_file = "%s/json_output.%d.%s" % (output_directory, i, host)
                 with open(out_file) as fd:
-                    with open(json_out_file, 'w') as json_fd:
+                    with open(json_out_file, "w") as json_fd:
                         for line in fd.readlines():
                             if len(line.strip()) == 0:
                                 found = 0
@@ -277,6 +185,3 @@ class Fio(Benchmark):
                             if found == 0:
                                 if "Starting" in line:
                                     found = 1
-
-    def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Fio, self).__str__())
