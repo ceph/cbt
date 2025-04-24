@@ -41,7 +41,6 @@ class FioCommand(Command):
 
         fio_cli_options.update(self.REQUIRED_OPTIONS)
         for option in self.DIRECT_TRANSLATIONS:
-            # Below only needed if testing?
             fio_cli_options[option] = options[option] if option in options.keys() else ""
 
         fio_cli_options["rw"] = options.get("mode", "write")
@@ -49,7 +48,7 @@ class FioCommand(Command):
         fio_cli_options["pool"] = options.get("poolname", "cbt-librbdfio")
         fio_cli_options["numjobs"] = options.get("numjobs", "1")
         fio_cli_options["bs"] = options.get("op_size", "4194304")
-        fio_cli_options["end_fsync"] = f"{options.get('end_fsync', 0)}"
+        fio_cli_options["end_fsync"] = f"{options.get('end_fsync', '0')}"
 
         if options.get("random_distribution", None) is not None:
             fio_cli_options["random_distribution"] = options.get("random_distribution", None)
