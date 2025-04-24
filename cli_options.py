@@ -11,6 +11,12 @@ log: Logger = getLogger("cbt")
 
 
 class CliOptions(UserDict[str, Optional[str]]):
+    """
+    Thic class encapsulates a set of CLI options that can be passed to a
+    command line invocation. It is based on a python dictionary, but with
+    behaviour modified  so that duplicate entries do not update the original.
+    """
+
     def __setitem__(self, key: str, value: Optional[str]) -> None:
         """
         Add an entry to the configuration.
@@ -48,6 +54,3 @@ class CliOptions(UserDict[str, Optional[str]]):
         Clear the configuration
         """
         self.data = {}
-
-    def __str__(self) -> str:
-        return super().__str__()

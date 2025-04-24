@@ -162,7 +162,7 @@ class FioCommand(Command):
 
     def _setup_logging(self, output_file_name: str) -> None:
         """
-        Set up the log paths if required
+        Set up the additional fio log paths if required
         """
         if "log_iops" in self._options.keys():
             self._options.pop("log_iops")

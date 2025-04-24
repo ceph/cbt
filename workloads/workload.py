@@ -10,8 +10,8 @@ from benchmarkfactory import all_configs  # pyright: ignore[reportUnknownVariabl
 from command.command import Command
 from command.fio_command import FioCommand
 
-WORKLOAD_TYPE = dict[str, Union[str, list[str]]]
-WORKLOAD_YAML_TYPE = dict[str, WORKLOAD_TYPE]
+WORKLOAD_TYPE = dict[str, Union[str, list[str]]]  # pylint: disable=["invalid-name"]
+WORKLOAD_YAML_TYPE = dict[str, WORKLOAD_TYPE]  # pylint: disable=["invalid-name"]
 
 log: Logger = getLogger("cbt")
 
@@ -39,10 +39,10 @@ class Workload:
         Return all I/O exerciser commands that need to be run to fully execute
         this workload
         """
-        if self._commands == []:
+        if not self._commands:
             self._create_commands_from_options()
 
-        if self._commands == []:
+        if not self._commands:
             log.warning("There are no commands for workload %s", self._name)
             return
 
@@ -61,7 +61,7 @@ class Workload:
         require more re-factoring in the CBT code that is outwith the scope of
         this change
         """
-        if self._commands == []:
+        if not self._commands:
             self._create_commands_from_options()
 
         for command in self._commands:
@@ -136,8 +136,8 @@ class Workload:
             )
             unique_options["name"] = self._name
 
-            for volume_number in iodepth_per_volume.keys():
-                unique_options["iodepth"] = f"{iodepth_per_volume[volume_number]}"
+            for volume_number, iodepth in iodepth_per_volume.items():
+                unique_options["iodepth"] = f"{iodepth}"
                 unique_options["volume_number"] = f"{volume_number}"
                 self._commands.append(self._create_command_class(unique_options))
 

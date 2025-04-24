@@ -9,7 +9,7 @@ from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyr
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import WORKLOAD_TYPE, WORKLOAD_YAML_TYPE, Workload
 
-BENCHMARK_CONFIGURATION_TYPE = dict[
+BENCHMARK_CONFIGURATION_TYPE = dict[  # pylint: disable = ["invalid-name"]
     str, dict[str, Union[str, list[str], dict[str, dict[str, Union[str, list[int]]]], dict[str, str]]]
 ]
 
@@ -17,6 +17,17 @@ log: Logger = getLogger("cbt")
 
 
 class Workloads:
+    """
+    A class that holds a collection of workloads that are used for a particular
+    benchmark type.
+
+    It parses the benchmark type configuration for a workloads section, and
+    for each workload named therein it will create a workload object.
+
+    set_executable() and set_benchmark_type() must be called on the Workloads
+    before attemting to use the run() method
+    """
+
     def __init__(self, benchmark_configuration: BENCHMARK_CONFIGURATION_TYPE, base_run_directory: str) -> None:
         self._benchmark_configuration: BENCHMARK_CONFIGURATION_TYPE = benchmark_configuration
         self._base_run_directory: str = base_run_directory
@@ -37,13 +48,14 @@ class Workloads:
         Can be used to check if we want to run a workload-style test run
         or a normal style test run
         """
-        return self._workloads != []
+        return bool(self._workloads)
 
     def run(self) -> None:
         """
-        Run each workload in turn
+        Run all the I/O exerciser commands for each workload in turn, including
+        any scripts that should be run between workloads
         """
-        if self._workloads == []:
+        if not self._workloads:
             log.error("No workloads to run %s", self._workloads)
             return
 
