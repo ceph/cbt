@@ -156,7 +156,7 @@ class FioCommand(Command):
         job_name: str = ""
 
         for process_number in range(processes_per_volume):
-            job_name += f"cbt-fio-{parent_workload_name}-`{get_fqdn_cmd()}`-file-{process_number} "  # type: ignore[no-untyped-call]
+            job_name += f"cbt-fio-{parent_workload_name}-`hostname`-file-{process_number} "
 
         return job_name
 

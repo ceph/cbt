@@ -3,8 +3,10 @@ The workloads class that contains all the Workloads for a given Benchmark run
 """
 
 from logging import Logger, getLogger
-from typing import Generator, Union
+from typing import Union
 
+from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
+from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import WORKLOAD_TYPE, WORKLOAD_YAML_TYPE, Workload
 
 BENCHMARK_CONFIGURATION_TYPE = dict[
@@ -37,35 +39,48 @@ class Workloads:
         """
         return self._workloads != []
 
-    def get(self) -> Generator[Workload, None, None]:
+    def run(self) -> None:
         """
-        Return all the workloads, one at a time
+        Run each workload in turn
         """
         if self._workloads == []:
+            log.error("No workloads to run %s", self._workloads)
             return
 
         if not self._benchmark_type:
             log.error("Benchmark type has not been set. Run set_benchmark_type() to set it")
+            return
 
         if not self._executable:
             log.error("Executable path has not been set Run set_executable() to set it")
+            return
 
+        processes: list[Union[CheckedPopen, CheckedPopenLocal]] = []
         for workload in self._workloads:
             workload.set_benchmark_type(self._benchmark_type)
             workload.set_executable(self._executable)
-            # workload.create_output_directory()
-            yield workload
-        return
 
-    def get_all_commands(self) -> Generator[str, None, None]:
+            script_command = workload.get_script_command()
+            if workload.has_script() and script_command is not None:
+                log.debug("Scheduling script %s to run before workload %s", script_command, workload.get_name())
+                pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
+            for output_directory in workload.get_output_directories():
+                make_remote_dir(output_directory)  # type: ignore[no-untyped-call]
+            for fio_command in workload.get_commands():
+                processes.append(pdsh(getnodes("clients"), fio_command))  # type: ignore[no-untyped-call]
+            for process in processes:
+                process.wait()  # type: ignore[no-untyped-call]
+
+        log.info("== Workloads completed ==")
+
+    def get_names(self) -> str:
         """
-        Yield the string for each of the commands required to run all
-        the workloads we know about
-        TODO: Do we want this?????
+        Get the names for all the workloads
         """
+        names: str = ""
         for workload in self._workloads:
-            for command in workload.get_commands():
-                yield command
+            names += f"{workload.get_name()} "
+        return names
 
     def set_benchmark_type(self, benchmark_type: str) -> None:
         """

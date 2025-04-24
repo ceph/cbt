@@ -73,7 +73,7 @@ class Command(metaclass=ABCMeta):
         """
         Return the output directory that will be used for this command
         """
-        return self._output_directory
+        return self._generate_output_directory_path()
 
     def set_executable(self, executable_path: str) -> None:
         """

@@ -19,7 +19,7 @@ class CliOptions(UserDict[str, Optional[str]]):
         if key not in self.data.keys():
             self.data[key] = value
         else:
-            log.warning("Not adding %s:%s to configuration. A value is already set", key, value)
+            log.debug("Not adding %s:%s to configuration. A value is already set", key, value)
 
     def __update__(self, key_value_pair: tuple[str, str]) -> None:
         """
@@ -30,7 +30,7 @@ class CliOptions(UserDict[str, Optional[str]]):
         if key not in self.data.keys():
             self.data[key] = value
         else:
-            log.warning("Not Updating %s:%s in configuration. Value already exists", key, value)
+            log.debug("Not Updating %s:%s in configuration. Value already exists", key, value)
 
     def __getitem__(self, key: str) -> Optional[str]:
         """
@@ -40,7 +40,7 @@ class CliOptions(UserDict[str, Optional[str]]):
         if key in self.data.keys():
             return self.data[key]
         else:
-            log.warning("Key %s does not exist in configuration", key)
+            log.debug("Key %s does not exist in configuration", key)
             return None
 
     def clear(self) -> None:

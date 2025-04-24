@@ -6,7 +6,7 @@ run by any benchmark
 from logging import Logger, getLogger
 from typing import Generator, Optional, Union
 
-from benchmarkfactory import all_configs  # pyright: ignore [reportUnknownVariableType]
+from benchmarkfactory import all_configs  # pyright: ignore[reportUnknownVariableType]
 from command.command import Command
 from command.fio_command import FioCommand
 
@@ -32,9 +32,15 @@ class Workload:
         self._parent_benchmark_type: Optional[str] = None
         self._all_options: WORKLOAD_TYPE = options.copy()
         self._executable_path: str
+        self._script: str = f"{options.get('pre_workload_script', '')}"
 
     def get_commands(self) -> Generator[str, None, None]:
-        self._create_commands_from_options()
+        """
+        Return all I/O exerciser commands that need to be run to fully execute
+        this workload
+        """
+        if self._commands == []:
+            self._create_commands_from_options()
 
         if self._commands == []:
             log.warning("There are no commands for workload %s", self._name)
@@ -44,6 +50,44 @@ class Workload:
             command.set_executable(self._executable_path)
             yield command.get()
         return
+
+    def get_output_directories(self) -> Generator[str, None, None]:
+        """
+        For each individual run of the I/O exerciser get the output directory
+        for the results.
+
+        Eventually the idea is to change this to 'create_output_directories()'
+        and have the workload be able to create what is needed, but that will
+        require more re-factoring in the CBT code that is outwith the scope of
+        this change
+        """
+        if self._commands == []:
+            self._create_commands_from_options()
+
+        for command in self._commands:
+            yield command.get_output_directory()
+
+    def get_name(self) -> str:
+        """
+        Return the name of this workload
+        """
+        return self._name
+
+    def has_script(self) -> bool:
+        """
+        True if there is a script for this workload, otherwise false
+        """
+        return self._script != ""
+
+    def get_script_command(self) -> Optional[str]:
+        """
+        If the yaml specifies a script to be run before this workload then
+        return the command line invocation, otherwise return None
+        """
+        if self._script == "":
+            return None
+
+        return self._script
 
     def set_executable(self, executable_path: str) -> None:
         """
@@ -69,12 +113,6 @@ class Workload:
         for key, value in global_options.items():
             if key not in self._all_options.keys():
                 self._all_options[key] = value
-
-    def create_output_directory(self) -> None:
-        """
-        create the results directory for the test run
-        """
-        pass
 
     def _create_command_class(self, options: dict[str, str]) -> Command:
         """
@@ -103,9 +141,10 @@ class Workload:
                 unique_options["volume_number"] = f"{volume_number}"
                 self._commands.append(self._create_command_class(unique_options))
 
-            # I htink the above will overwrite the iodepth to be used for the command,
+            # The above will overwrite the iodepth to be used for the command,
             # while still retaining a total_iodepth value if one is passed. We can then
             # use the total_iodepth value to add into the output_dir so we can read it
+            # in post-processing.
 
     def _get_iodepth_key(self, configuration_keys: list[str]) -> str:
         """
