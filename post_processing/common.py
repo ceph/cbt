@@ -48,7 +48,7 @@ def get_blocksize_percentage_operation_from_file_name(file_name: str) -> tuple[s
     # The split on _ will mean that the last element [-1] will always be
     # the operation, and the first part [0] will be the blocksize
     operation: str = f"{TITLE_CONVERSION[file_parts[-1]]}"
-    blocksize: str = f"{int(int(file_parts[0][:-1]) / 1024)}K"
+    blocksize: str = f"{int(int(file_parts[0]) / 1024)}K"
     read_percent: str = ""
 
     if len(file_parts) > 2:

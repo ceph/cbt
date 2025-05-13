@@ -35,9 +35,10 @@ and the details for read operations
 """
 
 import json
+import re
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Optional
 
 from common import pdsh  # make_remote_dir  # pyright: ignore[reportUnknownVariableType]
 from post_processing.formatter.test_run_result import TestRunResult
@@ -75,7 +76,7 @@ class CommonOutputFormatter:
         # to specify a single run? How full do these get?
 
         self._path: Path
-        self._file_list: Generator[Path, None, None]
+        self._file_list: list[Path] = []
 
     def convert_all_files(self) -> None:
         """
@@ -134,7 +135,11 @@ class CommonOutputFormatter:
         self._path = Path(self._directory)
         # this gives a generator where each contained object is a Path of format:
         # <self._directory>/results/<iteration>/<run_id>/json_output.<vol_id>.<hostname>
-        self._file_list = self._path.glob(f"**/{self._filename_root}.?")
+        self._file_list = [
+            path
+            for path in self._path.glob(f"**/{self._filename_root}.*")
+            if re.search(f"{self._filename_root}.\d+$", f"{path}")  # pyright: ignore[reportInvalidStringEscapeSequence]
+        ]
 
     def _find_all_testrun_ids(self) -> None:
         """
@@ -147,13 +152,26 @@ class CommonOutputFormatter:
         """
 
         for file_path in self._file_list:
-            # We know that the output files reside in the directory with the
+            # We know the format of the output dir is something like
+            # <archive_dir>/00000000/id-ab40819c/<job_specific_details>/output.x
+            #
+            # We know that the output files reside in the directory structure with the
             # test run ID, so splitting up the path gives the filename as the
-            # last element (-1) and the test run id directory as the penultimate
-            # element (-2)
+            # last element (-1) and the test run id directory somewhere higher up
+            # the directory structure.
             # This should allow us to get test run IDs when any point in the
             # archive directory tree is passed as the archive directory
-            self._all_test_run_ids.add(file_path.parts[-2])
+            potential_ids: list[str] = [part for part in file_path.parts if "id-" in part]
+            # There is a possibility that there could be more than one id-xxxxxx string in the
+            # file path, and we want only one. We choose to always take the fist one.
+            # If there are none then just return the directory name above the file
+            id: str = potential_ids[0]
+            if not id:
+                # if we get no matches then just use the directory directly above
+                # the output file
+                id = file_path.parts[-2]
+
+            self._all_test_run_ids.add(id)
 
     def _find_maximum_bandwidth_and_iops_with_latency(
         self, test_run_data: COMMON_FORMAT_FILE_DATA_TYPE

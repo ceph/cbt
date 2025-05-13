@@ -1,2 +1,6 @@
 *.pyc
 *.pyo
+*.venv
+*.code-workspace
+.devcontainer
+*.toml

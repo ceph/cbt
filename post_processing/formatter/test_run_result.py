@@ -3,6 +3,7 @@ Data from a test run in fio output files
 """
 
 import json
+import re
 from logging import Logger, getLogger
 from math import sqrt
 from pathlib import Path
@@ -87,8 +88,10 @@ class TestRunResult:
         with open(str(file_path), "r", encoding="utf8") as file:
             data: dict[str, Any] = json.load(file)
             iodepth: str = self._get_iodepth(
-                f"{data['global options']['iodepth']}", f"{data['global options']['write_iops_log']}"
+                f"{data['global options']['iodepth']}", f"{data['jobs'][0]['job options']['write_iops_log']}"
             )
+            # was f"{data['global options']['iodepth']}", f"{data['global options']['write_iops_log']}"
+
             blocksize: str = f"{data['global options']['bs']}"
             operation: str = f"{data['global options']['rw']}"
             global_details: IODEPTH_DETAILS_TYPE = self._get_global_options(data["global options"])
@@ -130,7 +133,7 @@ class TestRunResult:
         global_options_details: dict[str, str] = {
             "number_of_jobs": f"{fio_global_options['numjobs']}",
             "runtime_seconds": f"{fio_global_options['runtime']}",
-            "blocksize": f"{fio_global_options['bs'][:-1]}",
+            "blocksize": f"{fio_global_options['bs']}",
         }
 
         # if rwmixread exists in the output then so does rwmixwrite
@@ -182,7 +185,11 @@ class TestRunResult:
         # We need to use a list here as we can possibly iterate over the file
         # list multiple times, and a Generator object only allows iterating
         # once
-        return list(self._archive_path.glob(f"**/{testrun_id}/{file_name_root}.?"))
+        return [
+            path
+            for path in self._archive_path.glob(f"**/{testrun_id}/**/{file_name_root}")
+            if re.search(f"{file_name_root}.\d+$", f"{path}")  # pyright: ignore[reportInvalidStringEscapeSequence]
+        ]
 
     def _file_is_empty(self, file_path: Path) -> bool:
         """
@@ -317,19 +324,31 @@ class TestRunResult:
         """
         iodepth: int = int(iodepth_value)
 
-        # the logfile name is of the format:
-        #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
-        iodepth_start_index: int = logfile_name.find("iodepth")
-        numjobs_start_index: int = logfile_name.find("numjobs")
-        # an index of -1 is no match found, so do nothing
-        if iodepth_start_index != -1 and numjobs_start_index != -1:
-            iodepth_end_index: int = iodepth_start_index + len("iodepth")
-            iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
-            logfile_iodepth: int = int(iodepth_string)
+        # We need to cope with both the separate workload class directory structure
+        # as well as the older style non-class workload deirectory structure
+        logfile_iodepth: int = 0
 
-            if logfile_iodepth > iodepth:
-                iodepth = logfile_iodepth
+        # New workloads
+        for value in logfile_name.split("/"):
+            if "total_iodepth" in value:
+                logfile_iodepth = int(value[len("total_iodepth") + 1 :])
+
+        # Old-style workloads
+        if not logfile_iodepth:
+            # the logfile name is of the format:
+            #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
+            iodepth_start_index: int = logfile_name.find("iodepth")
+            numjobs_start_index: int = logfile_name.find("numjobs")
+            # an index of -1 is no match found, so do nothing
+            if iodepth_start_index != -1 and numjobs_start_index != -1:
+                iodepth_end_index: int = iodepth_start_index + len("iodepth")
+                iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
+                logfile_iodepth = int(iodepth_string)
+
+        if logfile_iodepth > iodepth:
+            iodepth = logfile_iodepth
 
         return str(iodepth)
 
-    __test__ = False
+
+__test__ = False

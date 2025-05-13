@@ -403,23 +403,23 @@ class LibrbdFio(Benchmark):
         Filters the JSON output from the mix output and writes it to a
         separate file.
         """
-        for client in settings.getnodes('clients').split(','):
-            host = settings.host_info(client)["host"]
-            for i in range(self.volumes_per_client):
-                found = 0
-                out_file = f'{out_dir}/output.{i:d}.{host}'
-                json_out_file = f'{out_dir}/json_output.{i:d}.{host}'
-                with open(out_file) as fd:
-                    with open(json_out_file, 'w') as json_fd:
-                        for line in fd.readlines():
-                            if len(line.strip()) == 0:
-                                found = 0
-                                break
-                            if found == 1:
-                                json_fd.write(line)
-                            if found == 0:
-                                if "Starting" in line:
-                                    found = 1
+        archive_path: Path = Path(self.archive_dir)
+        files_to_process: list[Path] = [
+            file for file in archive_path.glob("**/output.*") if re.search("output.\d+$", str(file))
+        ]
+        for file in files_to_process:
+            with file.open("r", encoding="utf-8") as input_file:
+                output_file_name: str = f"{file.parent}/json_output{file.name[file.name.find('.'):]}"
+                output_path = Path(output_file_name)
+                found: bool = False
+                with output_path.open("w", encoding="utf-8") as output_file:
+                    for line in input_file.readlines():
+                        # Note that we could use if line == "{\n": here, but that is less friendly to non-unix systems
+                        if re.search("^{$", line):
+                            found = True
+                        if re.search("^}$", line):
+                            found = False
+                            break
 
 
     def analyze(self, out_dir):
