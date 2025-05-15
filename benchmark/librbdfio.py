@@ -8,6 +8,7 @@ import pprint
 import common
 import settings
 import monitoring
+from typing import Dict, List
 
 from .benchmark import Benchmark
 
@@ -52,7 +53,7 @@ class LibrbdFio(Benchmark):
 
         iodepth_key: str = self._get_iodepth_key(config.keys())  # type: ignore[arg-type]
         self.iodepth: int = int(config.get(iodepth_key, 16))
-        self._iodepth_per_volume: dict[int, int] = self._calculate_iodepth_per_volume(
+        self._iodepth_per_volume: Dict[int, int] = self._calculate_iodepth_per_volume(
             self.volumes_per_client, int(self.iodepth), iodepth_key
         )
 
@@ -426,7 +427,7 @@ class LibrbdFio(Benchmark):
         logger.info('Convert results to json format.')
         self.parse(out_dir)
 
-    def _get_iodepth_key(self, configuration_keys: list[str]) -> str:
+    def _get_iodepth_key(self, configuration_keys: List[str]) -> str:
         """
         Get the string that represents the key to use when reading the iodepth
         values from the configuration. This will be 'total_iodepth' if it is
@@ -438,7 +439,7 @@ class LibrbdFio(Benchmark):
 
         return iodepth_key
 
-    def _calculate_iodepth_per_volume(self, number_of_volumes: int, iodepth: int, iodepth_key: str) -> dict[int, int]:
+    def _calculate_iodepth_per_volume(self, number_of_volumes: int, iodepth: int, iodepth_key: str) -> Dict[int, int]:
         """
         Calculate the desired iodepth per volume for a single benchmark run.
         If total_iodepth is to be used calculate what the iodepth per volume
@@ -452,7 +453,7 @@ class LibrbdFio(Benchmark):
 
     def _calculate_iodepth_per_volume_from_total_iodepth(
         self, number_of_volumes: int, total_desired_iodepth: int
-    ) -> dict[int, int]:
+    ) -> Dict[int, int]:
         """
         Given the total desired iodepth and the number of volumes from the
         configuration yaml file, calculate the iodepth for each volume
@@ -461,7 +462,7 @@ class LibrbdFio(Benchmark):
         an iodepth of 1 per volume, then reduce the number of volumes
         used to allow an iodepth of 1 per volume.
         """
-        queue_depths: dict[int, int] = {}
+        queue_depths: Dict[int, int] = {}
 
         if number_of_volumes > total_desired_iodepth:
             logger.warning(
@@ -487,12 +488,12 @@ class LibrbdFio(Benchmark):
 
         return queue_depths
 
-    def _set_iodepth_for_every_volume(self, number_of_volumes: int, iodepth: int) -> dict[int, int]:
+    def _set_iodepth_for_every_volume(self, number_of_volumes: int, iodepth: int) -> Dict[int, int]:
         """
         Given an iodepth value and the number of volumes return a dictionary
         that contains the desired iodepth value for each volume
         """
-        queue_depths: dict[int, int] = {}
+        queue_depths: Dict[int, int] = {}
         for volume_id in range(number_of_volumes):
             queue_depths[volume_id] = iodepth
 
