@@ -59,7 +59,7 @@ CBT uses several libraries and tools to run:
  4. pdsh (and pdcp) - a parallel ssh and scp implementation
  5. ceph - A scalable distributed storage system
 
-Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributations 
+Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributions 
 at this time, though the rawhide pdsh packages install and are usable.  The
 RPMs for these packages are available here:
 
