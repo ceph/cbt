@@ -96,7 +96,7 @@ class Workloads:
 
     def set_benchmark_type(self, benchmark_type: str) -> None:
         """
-        set the benchmark type that will be used to run the workload
+        set the benchmark type that will be used to run the workloads
 
         This must be done by the benchmark before it attempts to run
         any commands
@@ -105,7 +105,9 @@ class Workloads:
 
     def set_executable(self, executable_path: str) -> None:
         """
-        Set the executable to be used for the
+        Set the executable to be used for this set of workloads.
+
+        This must be set by the parent benchmark before calling the run() method
         """
         self._executable = executable_path
 
@@ -122,7 +124,7 @@ class Workloads:
 
     def _get_global_options_from_configuration(self, configuration: BENCHMARK_CONFIGURATION_TYPE) -> WORKLOAD_TYPE:
         """
-        Get any configuration options from the yaml that are not workload
+        Get any configuration options from the test plan .yaml that are not workload
         specific
         """
         global_options: WORKLOAD_TYPE = {}
@@ -131,7 +133,7 @@ class Workloads:
             if option_name == "workloads" or option_name == "prefill":
                 # prefill is not an option for workloads as it is used in the Benchmark prefill()
                 # method.
-                # Workloads we also want to ignore
+                # workloads we also want to ignore as these will be dealt with at a later date
                 pass
             elif isinstance(value, list):
                 global_options[option_name] = value

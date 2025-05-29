@@ -92,8 +92,3 @@ class Command(metaclass=ABCMeta):
         Update the command with the new_options dictionary
         """
         self._options.update(new_options)
-        for key, value in new_options.items():
-            if key not in self._options.keys():
-                self._options[key] = value
-            else:
-                log.debug("key %s already exists. Not overwriting", key)

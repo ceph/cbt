@@ -14,7 +14,7 @@ class CliOptions(UserDict[str, Optional[str]]):
     """
     Thic class encapsulates a set of CLI options that can be passed to a
     command line invocation. It is based on a python dictionary, but with
-    behaviour modified  so that duplicate entries do not update the original.
+    behaviour modified so that duplicate keys do not update the original.
     """
 
     def __setitem__(self, key: str, value: Optional[str]) -> None:

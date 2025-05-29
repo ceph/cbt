@@ -1,35 +1,46 @@
 """
 A class to deal with a command that will run a single instance of the
-fio I/O exerciser
+FIO I/O exerciser
 
 It will return the full executable string that can be used to run a
-cli command using whatever method the Benchmark chooses
+cli command using whatever method the calling Benchmark chooses.
+
+It deals with the FIO options that are common to all I/O engine types. For
+options that are specific to a particular I/O engine e.g. rbd a subclass
+should be created that parses these options
 """
 
+from abc import ABCMeta, abstractmethod
 from logging import Logger, getLogger
 from typing import Optional
 
 from cli_options import CliOptions
 from command.command import Command
-from common import get_fqdn_cmd
 
 log: Logger = getLogger("cbt")
 
 
-class FioCommand(Command):
+class FioCommand(Command, metaclass=ABCMeta):
     """
-    The fio command class. This class represents a single fio command
+    The FIO command class. This class represents a single FIO command
     line that can be run on a local or remote client system.
     """
 
-    REQUIRED_OPTIONS = {"ioengine": "rbd", "clientname": "admin", "invalidate": "0", "direct": "1"}
-    DIRECT_TRANSLATIONS: list[str] = ["numjobs", "iodepth"]
+    _REQUIRED_OPTIONS = {"invalidate": "0", "direct": "1"}
+    _DIRECT_TRANSLATIONS: list[str] = ["numjobs", "iodepth"]
 
     def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
-        self._volume_number: int = int(options["volume_number"])
+        self._target_number: int = int(options["target_number"])
         self._total_iodepth: Optional[str] = options.get("total_iodepth", None)
         self._workload_output_directory: str = workload_output_directory
         super().__init__(options)
+
+    @abstractmethod
+    def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:
+        """
+        Get any options that are specific to the I/O engine being used
+        for this fio run and add them to the CliOptons for this workload
+        """
 
     def _parse_global_options(self, options: dict[str, str]) -> CliOptions:
         global_options: CliOptions = CliOptions(options)
@@ -39,13 +50,14 @@ class FioCommand(Command):
     def _parse_options(self, options: dict[str, str]) -> CliOptions:
         fio_cli_options: CliOptions = CliOptions()
 
-        fio_cli_options.update(self.REQUIRED_OPTIONS)
-        for option in self.DIRECT_TRANSLATIONS:
+        fio_cli_options.update(self._parse_ioengine_specific_parameters(options))
+        fio_cli_options.update(self._REQUIRED_OPTIONS)
+        for option in self._DIRECT_TRANSLATIONS:
             fio_cli_options[option] = options[option] if option in options.keys() else ""
 
         fio_cli_options["rw"] = options.get("mode", "write")
         fio_cli_options["output-format"] = options.get("fio_out_format", "json,normal")
-        fio_cli_options["pool"] = options.get("poolname", "cbt-librbdfio")
+
         fio_cli_options["numjobs"] = options.get("numjobs", "1")
         fio_cli_options["bs"] = options.get("op_size", "4194304")
         fio_cli_options["end_fsync"] = f"{options.get('end_fsync', '0')}"
@@ -84,11 +96,6 @@ class FioCommand(Command):
             fio_cli_options["rwmixread"] = read_percent
             fio_cli_options["rwmixwrite"] = write_percent
 
-        rbd_name: str = options.get("rbdname", "")
-        if rbd_name == "":
-            rbd_name = f"cbt-fio-`{get_fqdn_cmd()}`-{self._volume_number:d}"  # type: ignore[no-untyped-call]
-        fio_cli_options["rbdname"] = rbd_name
-
         if bool(options.get("log_iops", True)):
             fio_cli_options["log_iops"] = ""
 
@@ -107,7 +114,7 @@ class FioCommand(Command):
     def _generate_full_command(self) -> str:
         command: str = ""
 
-        output_file: str = f"{self._generate_output_directory_path()}/output.{self._volume_number:d}"
+        output_file: str = f"{self._generate_output_directory_path()}/output.{self._target_number:d}"
         self._setup_logging(output_file)
 
         if "sudo" in self._options.keys():
@@ -131,7 +138,7 @@ class FioCommand(Command):
 
     def _generate_output_directory_path(self) -> str:
         """
-        For an fio command the output format is:
+        For an FIO command the output format is:
         numjobs-<numjobs>/total_iodepth-<total_iodepth>/iodepth-<iodepth>
         if total_iodepth was used in the options, otherwise:
         numjobs-<numjobs>/iodepth-<iodepth>
@@ -141,16 +148,16 @@ class FioCommand(Command):
         if self._total_iodepth is not None:
             output_path += f"total_iodepth-{self._total_iodepth}/"
 
-        output_path += f"iodepth-{int(str(self._options['iodepth'])):03d}"
+        output_path += f"iodepth-{int(str(self._options['iodepth'])):06d}"
 
         return output_path
 
     def _get_job_name(self, parent_workload_name: str, processes_per_volume: int) -> str:
         """
-        Get the name for this job to give to fio
+        Get the name for this job to give to FIO
         This is of the format:
 
-        cbt-<workload_name>-<hostname>-
+        cbt-<workload_name>-<hostname>-<process_number>
         """
 
         job_name: str = ""
@@ -162,7 +169,7 @@ class FioCommand(Command):
 
     def _setup_logging(self, output_file_name: str) -> None:
         """
-        Set up the additional fio log paths if required
+        Set up the additional FIO log paths if required
         """
         if "log_iops" in self._options.keys():
             self._options.pop("log_iops")
