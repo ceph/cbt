@@ -6,7 +6,7 @@ run by any benchmark
 from logging import Logger, getLogger
 from typing import Generator, Optional, Union
 
-from benchmarkfactory import all_configs  # pyright: ignore[reportUnknownVariableType]
+from common import all_configs  # pyright: ignore[reportUnknownVariableType]
 from command.command import Command
 from command.rbd_fio_command import RbdFioCommand
 
