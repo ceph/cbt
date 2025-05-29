@@ -1,4 +1,5 @@
 import settings
+from common import all_configs
 from benchmark.radosbench import Radosbench
 from benchmark.fio import Fio
 from benchmark.hsbench import Hsbench
