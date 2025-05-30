@@ -24,6 +24,7 @@ class LibrbdFio(Benchmark):
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
+        self.clientname= config.get('clientname', 'admin')
         self.pool_profile = config.get('pool_profile', 'default')
         self.recov_pool_profile = config.get('recov_pool_profile', 'default')
         self.recov_test_type = config.get('recov_test_type', 'blocking')
@@ -283,7 +284,7 @@ class LibrbdFio(Benchmark):
         fio_cmd: str = ''
         if not self.no_sudo:
             fio_cmd = 'sudo '
-        fio_cmd += '%s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path, self.pool_name, rbdname)
+        fio_cmd += '%s --ioengine=rbd --clientname=%s --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path,self.clientname, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
         fio_cmd += ' --output-format=%s' % self.fio_out_format
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
@@ -378,7 +379,7 @@ class LibrbdFio(Benchmark):
                     pre_cmd += 'sudo '
                 numjobs = self.prefill_vols['numjobs']
                 bs = self.prefill_vols['blocksize']
-                pre_cmd += ( f'{self.cmd_path} --ioengine=rbd --clientname=admin'
+                pre_cmd += ( f'{self.cmd_path} --ioengine=rbd --clientname={self.clientname}'
                             f' --pool={self.pool_name}'
                             f' --rbdname={rbd_name} --invalidate=0  --rw=write'
                             f' --numjobs={numjobs}'
