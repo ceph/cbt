@@ -18,6 +18,7 @@ class Fio(Benchmark):
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
+        self.clientname= config.get('clientname', 'admin')
         self.direct = str(config.get('direct', 1))
         self.time = config.get('time', None)
         self.time_based = bool(config.get('time_based', False))
@@ -107,7 +108,7 @@ class Fio(Benchmark):
         # handle rbd endpoints with the librbbd engine.
         elif self.endpoint_type == 'rbd':
             pool_name, rbd_name = self.endpoints[ep_num].split("/")
-            cmd += ' --clientname=admin'
+            cmd += ' --clientname=%s' % self.clientname
             cmd += ' --pool=%s' % pool_name
             cmd += ' --rbdname=%s' % rbd_name
             cmd += ' --invalidate=0'
