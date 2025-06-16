@@ -368,28 +368,50 @@ class LibrbdFio(Benchmark):
 
     def prefill(self):
         """
-        Execute a FIO cmd to prefill the volumes
+        Execute a FIO cmd to prefill the volumes with optimized settings for speed
         """
         ps = []
         if not self.use_existing_volumes:
+            # Optimize prefill settings for speed
+            prefill_blocksize = self.prefill_vols.get('blocksize', '16M')  # Increased from 4M
+            prefill_numjobs = self.prefill_vols.get('numjobs', '4')  # Increased from 1
+            prefill_iodepth = self.prefill_vols.get('iodepth', '32')  # Added iodepth for better parallelism
+            
+            logger.info('Starting volume prefill with optimized settings:')
+            logger.info('  Block size: %s', prefill_blocksize)
+            logger.info('  Number of jobs: %s', prefill_numjobs)
+            logger.info('  IO depth: %s', prefill_iodepth)
+            
             for volnum in range(self.volumes_per_client):
                 rbd_name = f'cbt-librbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}'
                 pre_cmd = ''
                 if not self.no_sudo:
                     pre_cmd += 'sudo '
-                numjobs = self.prefill_vols['numjobs']
-                bs = self.prefill_vols['blocksize']
+                
                 pre_cmd += ( f'{self.cmd_path} --ioengine=rbd --clientname={self.clientname}'
                             f' --pool={self.pool_name}'
-                            f' --rbdname={rbd_name} --invalidate=0  --rw=write'
-                            f' --numjobs={numjobs}'
-                            f' --bs={bs}'
-                            f' --size {self.vol_size:d}M {self.names}'
+                            f' --rbdname={rbd_name} --invalidate=0'
+                            f' --rw=write'
+                            f' --numjobs={prefill_numjobs}'
+                            f' --bs={prefill_blocksize}'
+                            f' --iodepth={prefill_iodepth}'
+                            f' --size {self.vol_size:d}M'
+                            f' --group_reporting=1'  # Added for better progress reporting
+                            f' --write_bw_log=/tmp/fio_prefill_{rbd_name}'  # Added for progress tracking
+                            f' --write_lat_log=/tmp/fio_prefill_{rbd_name}'
+                            f' --log_avg_msec=1000'  # Log every second
+                            f' {self.names}'
                             f' --output-format={self.fio_out_format} > /dev/null' )
+                
+                logger.info('Prefilling volume %d/%d: %s', volnum + 1, self.volumes_per_client, rbd_name)
                 p = common.pdsh(settings.getnodes('clients'), pre_cmd)
                 ps.append(p)
+            
+            # Wait for all prefills to complete
             for p in ps:
                 p.wait()
+            
+            logger.info('Volume prefill completed')
 
 
     def recovery_callback_blocking(self):
