@@ -184,7 +184,7 @@ class LibrbdFio(Benchmark):
                     self.mode = test['mode']
                     self.numjobs = job
                     self.iodepth = iodepth_value
-                    self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
+                    self.run_dir =  ( f'{self.base_run_dir}/{wk}/{self.mode}_{int(self.op_size)}/'
                                      f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
                     common.make_remote_dir(self.run_dir)
 
