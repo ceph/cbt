@@ -46,13 +46,6 @@ class LibrbdFio(Benchmark):
         self.enable_clat_percentiles = config.get('enable_clat_percentiles', False)
         self.enable_slat_percentiles = config.get('enable_slat_percentiles', False)
         self.enable_lat_percentiles = config.get('enable_lat_percentiles', False)
-        # Ensure percentile_list is always a list
-        percentile_list = config.get('percentile_list', [50, 90, 95, 99, 99.9, 99.99])
-        if isinstance(percentile_list, (int, float)):
-            self.percentile_list = [percentile_list]
-        else:
-            self.percentile_list = list(percentile_list)
-
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
         self.vol_object_size = config.get('vol_object_size', 22)
@@ -322,14 +315,10 @@ class LibrbdFio(Benchmark):
         # Add percentile latency reporting only if explicitly enabled
         if self.enable_clat_percentiles:
             fio_cmd += ' --clat_percentiles=1'
-            fio_cmd += ' --percentile_list=' + ','.join(f'{p:.2f}' for p in self.percentile_list)
         if self.enable_slat_percentiles:
             fio_cmd += ' --slat_percentiles=1'
-            fio_cmd += ' --percentile_list=' + ','.join(f'{p:.2f}' for p in self.percentile_list)
         if self.enable_lat_percentiles:
             fio_cmd += ' --lat_percentiles=1'
-            fio_cmd += ' --percentile_list=' + ','.join(f'{p:.2f}' for p in self.percentile_list)
-
         if self.norandommap:
             fio_cmd += ' --norandommap'
         if self.log_iops:
