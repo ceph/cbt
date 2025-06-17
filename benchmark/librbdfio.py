@@ -42,6 +42,12 @@ class LibrbdFio(Benchmark):
         self.log_avg_msec = config.get('log_avg_msec', None)
         self.op_size = config.get('op_size', 4194304)
 
+        # Add percentile latency configuration - only if explicitly enabled
+        self.enable_clat_percentiles = config.get('enable_clat_percentiles', False)
+        self.enable_slat_percentiles = config.get('enable_slat_percentiles', False)
+        self.enable_lat_percentiles = config.get('enable_lat_percentiles', False)
+        self.percentile_list = config.get('percentile_list', [50, 90, 95, 99, 99.9, 99.99])
+
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
         self.vol_object_size = config.get('vol_object_size', 22)
@@ -184,8 +190,12 @@ class LibrbdFio(Benchmark):
                     self.mode = test['mode']
                     self.numjobs = job
                     self.iodepth = iodepth_value
-                    self.run_dir =  ( f'{self.base_run_dir}/{wk}/{self.mode}_{int(self.op_size)}/'
-                                     f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+                    # Update run directory structure to include workload name
+                    self.run_dir =  ( f'{self.base_run_dir}/{wk}/'
+                                     f'op_size-{int(self.op_size):08d}/'
+                                     f'concurrent_procs-{int(self.total_procs):03d}/'
+                                     f'iodepth-{int(self.iodepth):03d}/'
+                                     f'numjobs-{int(self.numjobs):03d}/{self.mode}' )
                     common.make_remote_dir(self.run_dir)
 
                     # If there is a script to run specified in the yaml for this workload
@@ -303,8 +313,18 @@ class LibrbdFio(Benchmark):
         
         fio_cmd += ' --iodepth=%s' % iodepth
         fio_cmd += ' --end_fsync=%d' % self.end_fsync
-#        if self.vol_size:
-#            fio_cmd += ' -- size=%dM' % self.vol_size
+
+        # Add percentile latency reporting only if explicitly enabled
+        if self.enable_clat_percentiles:
+            fio_cmd += ' --clat_percentiles=1'
+            fio_cmd += ' --percentile_list=' + ','.join(map(str, self.percentile_list))
+        if self.enable_slat_percentiles:
+            fio_cmd += ' --slat_percentiles=1'
+            fio_cmd += ' --percentile_list=' + ','.join(map(str, self.percentile_list))
+        if self.enable_lat_percentiles:
+            fio_cmd += ' --lat_percentiles=1'
+            fio_cmd += ' --percentile_list=' + ','.join(map(str, self.percentile_list))
+
         if self.norandommap:
             fio_cmd += ' --norandommap'
         if self.log_iops:
