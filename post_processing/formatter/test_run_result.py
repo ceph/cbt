@@ -7,8 +7,9 @@ import re
 from logging import Logger, getLogger
 from math import sqrt
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Optional, Union
 
+from post_processing.common import recursive_search
 from post_processing.types import (
     INTERNAL_BLOCKSIZE_DATA_TYPE,
     INTERNAL_FORMATTED_OUTPUT_TYPE,
@@ -87,10 +88,8 @@ class TestRunResult:
 
         with open(str(file_path), "r", encoding="utf8") as file:
             data: dict[str, Any] = json.load(file)
-            iodepth: str = self._get_iodepth(
-                f"{data['global options']['iodepth']}", f"{data['jobs'][0]['job options']['write_iops_log']}"
-            )
-            # was f"{data['global options']['iodepth']}", f"{data['global options']['write_iops_log']}"
+            filename: Optional[str] = recursive_search(data, "write_iops_log")
+            iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", filename)
 
             blocksize: str = f"{data['global options']['bs']}"
             operation: str = f"{data['global options']['rw']}"
@@ -130,10 +129,16 @@ class TestRunResult:
         """
         read the data from the 'global options' section of the fio output
         """
+        blocksize: str = f"{fio_global_options['bs']}"
+        # in older results blocksize was of the format 1024K or 1024B, so we need to trim
+        # the last character if this is the case
+        if re.search("\D+$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
+            blocksize = blocksize[:-1]
+
         global_options_details: dict[str, str] = {
             "number_of_jobs": f"{fio_global_options['numjobs']}",
             "runtime_seconds": f"{fio_global_options['runtime']}",
-            "blocksize": f"{fio_global_options['bs']}",
+            "blocksize": blocksize,
         }
 
         # if rwmixread exists in the output then so does rwmixwrite
@@ -315,7 +320,7 @@ class TestRunResult:
 
         return latency_standard_deviation
 
-    def _get_iodepth(self, iodepth_value: str, logfile_name: str) -> str:
+    def _get_iodepth(self, iodepth_value: str, logfile_name: Optional[str]) -> str:
         """
         Checks to see if the iodepth encoded in the logfile name matches
         the iodepth in the output file. If it does, return the iodepth
@@ -323,30 +328,30 @@ class TestRunResult:
         log file path
         """
         iodepth: int = int(iodepth_value)
+        if logfile_name is not None:
+            # We need to cope with both the separate workload class directory structure
+            # as well as the older style non-class workload deirectory structure
+            logfile_iodepth: int = 0
 
-        # We need to cope with both the separate workload class directory structure
-        # as well as the older style non-class workload deirectory structure
-        logfile_iodepth: int = 0
+            # New workloads
+            for value in logfile_name.split("/"):
+                if "total_iodepth" in value:
+                    logfile_iodepth = int(value[len("total_iodepth") + 1 :])
 
-        # New workloads
-        for value in logfile_name.split("/"):
-            if "total_iodepth" in value:
-                logfile_iodepth = int(value[len("total_iodepth") + 1 :])
+            # Old-style workloads
+            if not logfile_iodepth:
+                # the logfile name is of the format:
+                #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
+                iodepth_start_index: int = logfile_name.find("iodepth")
+                numjobs_start_index: int = logfile_name.find("numjobs")
+                # an index of -1 is no match found, so do nothing
+                if iodepth_start_index != -1 and numjobs_start_index != -1:
+                    iodepth_end_index: int = iodepth_start_index + len("iodepth")
+                    iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
+                    logfile_iodepth = int(iodepth_string)
 
-        # Old-style workloads
-        if not logfile_iodepth:
-            # the logfile name is of the format:
-            #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
-            iodepth_start_index: int = logfile_name.find("iodepth")
-            numjobs_start_index: int = logfile_name.find("numjobs")
-            # an index of -1 is no match found, so do nothing
-            if iodepth_start_index != -1 and numjobs_start_index != -1:
-                iodepth_end_index: int = iodepth_start_index + len("iodepth")
-                iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
-                logfile_iodepth = int(iodepth_string)
-
-        if logfile_iodepth > iodepth:
-            iodepth = logfile_iodepth
+            if logfile_iodepth > iodepth:
+                iodepth = logfile_iodepth
 
         return str(iodepth)
 

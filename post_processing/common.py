@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import Union
+from typing import Any, Optional, Union
 
 log: Logger = getLogger("cbt")
 
@@ -207,3 +207,26 @@ def get_date_time_string() -> str:
     # Convert to string
     datetime_string: str = current_datetime.strftime("%y%m%d_%H%M%S")
     return datetime_string
+
+
+def recursive_search(data_to_search: dict[str, Any], search_key: str) -> Optional[str]:
+    """
+    Recursively search through a python dictionary for a particular key, and
+    return the value stored at that key
+
+    This can handle a dictionary containing other dictionaries and lists
+    """
+    # Note: As we don't know the structure the data will take we need to type
+    # the dictioary as Any.
+
+    for key, value in data_to_search.items():
+        if key == search_key:
+            return f"{value}"
+        if isinstance(value, list):
+            for item in value:  # pyright: ignore[reportUnknownVariableType]
+                if isinstance(item, dict):
+                    return recursive_search(item, search_key)  # pyright: ignore[reportUnknownArgumentType]
+        if isinstance(value, dict):
+            return recursive_search(value, search_key)  # pyright: ignore[reportUnknownArgumentType]
+
+    return None
