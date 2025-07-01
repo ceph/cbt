@@ -15,17 +15,21 @@ Usage:
 
 
 Input:
-        --output_directory  [Required] The directory to write the comparison plot
+        --output_directory      [Required] The directory to write the comparison plot
                                     to. If this does not exists it will be created.
 
-        --archive           [Required] The directory that contains the common
-                                format .json files and plot files to include
-                                in the report.
+        --archive               [Required] The directory that contains the common
+                                    format .json files and plot files to include
+                                    in the report.
 
-        --create_pdf        [Optional] Create a pdf file of the report markdown
-                                file.
-                                This requires pandoc to be installed,
-                                and be on the path.
+        --results_file_root     [Optional]  The base name for the json output files
+                                    produced from an fio run in cbt.
+                                    Default: "json_output"
+
+        --create_pdf            [Optional] Create a pdf file of the report markdown
+                                    file.
+                                    This requires pandoc to be installed,
+                                    and be on the path.
 
 Examples:
 
@@ -43,13 +47,44 @@ Examples:
 """
 
 import os
-import subprocess
 from argparse import ArgumentParser, Namespace
-from logging import INFO, Logger, basicConfig, getLogger
+from logging import Logger, getLogger
 
+from post_processing.formatter.common_output_formatter import CommonOutputFormatter
+from post_processing.log_configuration import setup_logging
 from post_processing.reports.simple_report_generator import SimpleReportGenerator
 
-log: Logger = getLogger(f"{os.path.basename(__file__)}")
+setup_logging()
+
+log: Logger = getLogger("reports")
+
+
+def generate_intermediate_files(arguments: Namespace) -> None:
+    """ """
+    output_directory: str = f"{arguments.archive}/visualisation/"
+
+    if not os.path.exists(output_directory) or not os.listdir(output_directory):
+        # directory doesn't exist so we need o post-process the CBT results files first
+        os.makedirs(output_directory, exist_ok=True)
+
+        log.debug("Creating directory %s" % output_directory)
+        os.makedirs(output_directory, exist_ok=True)
+
+        log.info("Generating intermediate files for %s in directory %s" % (arguments.archive, output_directory))
+        formatter: CommonOutputFormatter = CommonOutputFormatter(
+            archive_directory=arguments.archive, filename_root=arguments.results_file_root
+        )
+
+        try:
+            formatter.convert_all_files()
+            formatter.write_output_file()
+        except Exception as e:
+            log.error(
+                "Encountered an error parsing results in directory %s with name %s"
+                % (arguments.archive, arguments.results_file_root)
+            )
+            log.exception(e)
+            raise e
 
 
 def main() -> int:
@@ -87,16 +122,26 @@ def main() -> int:
         help="Generate a pdf report file in addition to the markdown report",
     )
 
+    parser.add_argument(
+        "--results_file_root",
+        type=str,
+        required=False,
+        default="json_output",
+        help="The filename root of all the CBT output json files",
+    )
+
     arguments: Namespace = parser.parse_args()
 
     # will only create the output directory if it does not already exist
-    subprocess.run(f"mkdir -p -m0755 {arguments.output_directory}", shell=True)
-
-    report_generator = SimpleReportGenerator(
-        archive_directories=arguments.archive, output_directory=arguments.output_directory
-    )
+    log.info("Attempting to create directory %s" % arguments.output_directory)
+    os.makedirs(f"{arguments.output_directory}", exist_ok=True)
 
     try:
+        generate_intermediate_files(arguments)
+        # sleep(10)
+        report_generator = SimpleReportGenerator(
+            archive_directories=arguments.archive, output_directory=arguments.output_directory
+        )
         report_generator.create_report()
 
         if arguments.create_pdf:
@@ -109,13 +154,5 @@ def main() -> int:
     return result
 
 
-def initialise_logging() -> None:
-    """
-    Set up the logging for the sub-modules
-    """
-    basicConfig(level=INFO, format="%(name)-20s: %(levelname)-8s %(message)s")
-
-
 if __name__ == "__main__":
-    initialise_logging()
     main()

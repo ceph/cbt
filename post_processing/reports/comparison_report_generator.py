@@ -29,7 +29,7 @@ from post_processing.common import (
 from post_processing.plotter.directory_comparison_plotter import DirectoryComparisonPlotter
 from post_processing.reports.report_generator import ReportGenerator
 
-log: Logger = getLogger("cbt")
+log: Logger = getLogger("reports")
 
 
 class ComparisonReportGenerator(ReportGenerator):

@@ -3,7 +3,6 @@ A file containing the classes and code required to read a file stored in the com
 intermediate format introduced in PR 319 (https://github.com/ceph/cbt/pull/319) and produce a hockey-stick curve graph
 """
 
-import os
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from pathlib import Path
@@ -17,7 +16,7 @@ from post_processing.common import (
 )
 from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE, PLOT_DATA_TYPE
 
-log: Logger = getLogger(f"{os.path.basename(__file__)}")
+log: Logger = getLogger("plotter")
 
 
 class CommonFormatPlotter(ABC):

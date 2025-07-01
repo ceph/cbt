@@ -22,7 +22,7 @@ from post_processing.common import (
     get_date_time_string,
 )
 
-log: Logger = getLogger("cbt")
+log: Logger = getLogger("reports")
 
 
 class ReportGenerator(ABC):

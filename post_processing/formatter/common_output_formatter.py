@@ -47,7 +47,7 @@ from post_processing.types import (
     INTERNAL_FORMATTED_OUTPUT_TYPE,
 )
 
-log: Logger = getLogger("cbt")
+log: Logger = getLogger("formatter")
 
 
 class CommonOutputFormatter:
@@ -83,11 +83,12 @@ class CommonOutputFormatter:
         Convert all files in a given directory to our internal format and then
         write out the intermediate file that can then be used to produce a graph
         """
-
+        log.info("Converting all files with name %s in directory %s" % (self._directory, self._filename_root))
         self._find_all_results_files_in_directory()
 
         self._find_all_testrun_ids()
         for id in self._all_test_run_ids:
+            log.debug("Looking at test run with id %s" % id)
             results: TestRunResult = TestRunResult(self._directory, id, self._filename_root)
 
             results.process()
@@ -108,7 +109,9 @@ class CommonOutputFormatter:
         """
         Write the formatted output to the output file in JSON format
         """
+
         destination_directory: str = f"{self._directory}/visualisation/"
+        log.info("writing new format files to %s" % destination_directory)
 
         if not Path(destination_directory).is_dir():
             pdsh("localhost", f"mkdir -p {destination_directory}").communicate()  # type: ignore[no-untyped-call]
