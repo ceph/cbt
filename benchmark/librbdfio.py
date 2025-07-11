@@ -65,6 +65,7 @@ class LibrbdFio(Benchmark):
         self.recov_pool_name = config.get("recov_pool_name", "cbt-librbdfio-recov")
         self.rbdname = config.get('rbdname', '')
         self.prefill_vols = config.get('prefill', {'blocksize': '4M',
+                                              'numjobs': '1'})
         self.total_procs =  (self.procs_per_volume * self.volumes_per_client *
                              len(settings.getnodes('clients').split(',')))
         if not self._workloads.exist():
