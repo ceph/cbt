@@ -4,10 +4,11 @@
 import os
 import time
 import logging
-import pprint
 import common
 import settings
 import monitoring
+import re
+from pathlib import Path
 
 from .benchmark import Benchmark
 
@@ -64,10 +65,11 @@ class LibrbdFio(Benchmark):
         self.recov_pool_name = config.get("recov_pool_name", "cbt-librbdfio-recov")
         self.rbdname = config.get('rbdname', '')
         # workloads: specify a list of tests
-        self.global_fio_options = {}
-        self.workloads = config.get('workloads', {})
-        if self.workloads:
-            self.backup_global_fio_options()
+        if not self._workloads.exist():
+            self.run_dir +=  ( f'op_size-{int(self.op_size):08d}/'
+                            f'concurrent_procs-{int(self.total_procs):03d}/'
+                            f'iodepth-{int(self.iodepth):03d}/{self.mode}' )
+
         self.prefill_vols = config.get('prefill', {'blocksize': '4M',
                                               'numjobs': '1'})
         self.total_procs =  (self.procs_per_volume * self.volumes_per_client *
@@ -89,41 +91,6 @@ class LibrbdFio(Benchmark):
         for proc_num in range(self.procs_per_volume):
             rbd_name = f'cbt-librbdfio-`{common.get_fqdn_cmd()}`-file-{proc_num:d}'
             self.names += f'--name={rbd_name} '
-
-
-    def backup_global_fio_options(self):
-        """
-        Backup/copy the FIO global options into a dictionary
-        """
-        self.global_fio_options['time_based'] = self.time_based
-        self.global_fio_options['ramp'] = self.ramp
-        self.global_fio_options['iodepth'] = self.iodepth
-        self.global_fio_options['numjobs'] = self.numjobs
-        self.global_fio_options['mode'] = self.mode
-        self.global_fio_options['end_fsync'] = self.end_fsync
-        self.global_fio_options['rwmixread'] = self.rwmixread
-        self.global_fio_options['rwmixwrite'] = self.rwmixwrite
-        self.global_fio_options['log_avg_msec'] = self.log_avg_msec
-        self.global_fio_options['op_size'] = self.op_size
-        self.global_fio_options['volumes_per_client'] = self.volumes_per_client
-
-
-    def restore_global_fio_options(self):
-        """
-        Restore the global values that are set before each workload
-        """
-        self.ramp = self.global_fio_options['ramp']
-        self.iodepth = self.global_fio_options['iodepth']
-        self.numjobs = self.global_fio_options['numjobs']
-        self.mode = self.global_fio_options['mode']
-        self.end_fsync = self.global_fio_options['end_fsync']
-        self.rwmixread = self.global_fio_options['rwmixread']
-        self.rwmixwrite = self.global_fio_options['rwmixwrite']
-        self.log_avg_msec = self.global_fio_options['log_avg_msec']
-        self.op_size = self.global_fio_options['op_size']
-        self.time_based = self.global_fio_options['time_based']
-        self.volumes_per_client = self.global_fio_options['volumes_per_client']
-
 
     def exists(self):
         """
@@ -148,67 +115,12 @@ class LibrbdFio(Benchmark):
         # Create the recovery image based on test type requested
         if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
             self.mkrecovimage()
-        if self.workloads:
-            logger.info(" %d Workloads:\n    %s", len(self.workloads.keys()),
-                        pprint.pformat(self.workloads).replace("\n", "\n    "))
+        if self._workloads.exist():
+            logger.info("Workloads:\n    %s", self._workloads.get_names().replace(" ", "\n"))
         logger.info('Creating fio images...')
         self.mkimages()
         logger.info('Attempting to prefill fio images...')
         self.prefill()
-
-
-    def run_workloads(self):
-        """
-        Main loop for executing workloads
-        """
-        for wk in self.workloads:
-            ps = []
-            # aggregate/overwrite the global options
-            test = dict(self.global_fio_options, **self.workloads[wk])
-            enable_monitor = True
-            logger.info('Running rbd fio %s test, mode %s', wk, test['mode'])
-            if 'monitor' in test:
-                enable_monitor = bool(test['monitor'])
-            # TODO: simplify this loop to have a single iterator for general queu depth
-            for job in test['numjobs']:
-                iodepth_key: str = self._get_iodepth_key(test.keys())  # type: ignore[arg-type]
-                for iodepth_value in test[iodepth_key]:
-                    self._iodepth_per_volume = self._calculate_iodepth_per_volume(
-                        int(test.get("volumes_per_client", 1)), int(iodepth_value), iodepth_key
-                    )
-                    self.mode = test['mode']
-                    if 'op_size' in test:
-                        self.op_size = test['op_size']
-                    self.mode = test['mode']
-                    self.numjobs = job
-                    self.iodepth = iodepth_value
-                    self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
-                                     f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
-                    common.make_remote_dir(self.run_dir)
-
-                    # If there is a script to run specified in the yaml for this workload
-                    # then add it to the process list before the actual test
-                    script_command: str = test.get("pre_workload_script", "")
-                    if script_command != "":
-                        logger.debug("Scheduling script %s to run before this workolad", script_command)
-                        script_process = common.pdsh(settings.getnodes("clients"), script_command)
-                        script_process.wait()
-
-                    number_of_volumes: int = len(self._iodepth_per_volume.keys())
-                    for i in range(number_of_volumes):
-                        fio_cmd = self.mkfiocmd(i)
-                        p = common.pdsh(settings.getnodes('clients'), fio_cmd)
-                        ps.append(p)
-                    if enable_monitor:
-                        time.sleep(self.ramp) # ramp up time before measuring
-                        monitoring.start(self.run_dir)
-                    for p in ps:
-                        p.wait()
-                    if enable_monitor:
-                        monitoring.stop(self.run_dir)
-                    self.restore_global_fio_options()
-
-        logger.info('== Workloads completed ==')
 
 
     def run(self):
@@ -239,9 +151,10 @@ class LibrbdFio(Benchmark):
             # Wait for a signal from the recovery thread to initiate client IO
             self.cluster.wait_start_io()
 
-        if len(self.workloads) > 0:
-            # New style: execute the list of workloads
-            self.run_workloads()
+        if self._workloads.exist():
+            self._workloads.set_benchmark_type("rbdfio")
+            self._workloads.set_executable(self.cmd_path)
+            self._workloads.run()
         else:
             # Original style
             monitoring.start(self.run_dir)
@@ -254,6 +167,7 @@ class LibrbdFio(Benchmark):
                 ps.append(p)
             for p in ps:
                 p.wait()
+        
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
@@ -262,7 +176,10 @@ class LibrbdFio(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files(f'{self.run_dir}/*', self.out_dir)
+        source_dir: str = f'{self.run_dir}/*'
+        if self._workloads.exist():
+            source_directory = f"{self._workloads.get_base_run_directory()}/*"
+        common.sync_files(source_directory, self.out_dir)
         self.analyze(self.out_dir)
 
 
@@ -418,8 +335,12 @@ class LibrbdFio(Benchmark):
                         if re.search("^{$", line):
                             found = True
                         if re.search("^}$", line):
+                            output_file.write(line)
                             found = False
                             break
+                        
+                        if found:
+                            output_file.write(line)
 
 
     def analyze(self, out_dir):

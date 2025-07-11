@@ -92,6 +92,8 @@ class TestRunResult:
             iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", filename)
 
             blocksize: str = self._get_blocksize(f"{data['global options']['bs']}")
+            if re.search("\D$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
+                blocksize = blocksize[:-1]
             operation: str = f"{data['global options']['rw']}"
             global_details: IODEPTH_DETAILS_TYPE = self._get_global_options(data["global options"])
             blocksize_details: INTERNAL_BLOCKSIZE_DATA_TYPE = {blocksize: {}}

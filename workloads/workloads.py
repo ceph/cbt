@@ -111,6 +111,12 @@ class Workloads:
         """
         self._executable = executable_path
 
+    def get_base_run_directory(self) -> str:
+        """
+        Return the base un directory for this test
+        """
+        return self._base_run_directory
+
     def _create_configurations(self, workload_json: WORKLOAD_YAML_TYPE) -> None:
         """
         Get the options needed to construct the benchmark command to run the test

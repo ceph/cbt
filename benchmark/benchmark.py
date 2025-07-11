@@ -8,6 +8,8 @@ import yaml
 import settings
 import common
 
+from workloads.workloads import Workloads
+
 logger = logging.getLogger('cbt')
 
 
@@ -42,6 +44,10 @@ class Benchmark(object):
             self.osd_ra_changed = True
         else:
             self.osd_ra = common.get_osd_ra()
+
+        self.run_dir += f'/osd_ra-{int(self.osd_ra):08d}/'
+
+        self._workloads = Workloads(config, self.run_dir)
 
     def create_data_analyzer(self, run, host, proc):
         pass
