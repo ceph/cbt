@@ -64,16 +64,14 @@ class LibrbdFio(Benchmark):
         self.pool_name = config.get("poolname", "cbt-librbdfio")
         self.recov_pool_name = config.get("recov_pool_name", "cbt-librbdfio-recov")
         self.rbdname = config.get('rbdname', '')
-        # workloads: specify a list of tests
+        self.prefill_vols = config.get('prefill', {'blocksize': '4M',
+        self.total_procs =  (self.procs_per_volume * self.volumes_per_client *
+                             len(settings.getnodes('clients').split(',')))
         if not self._workloads.exist():
             self.run_dir +=  ( f'op_size-{int(self.op_size):08d}/'
                             f'concurrent_procs-{int(self.total_procs):03d}/'
                             f'iodepth-{int(self.iodepth):03d}/{self.mode}' )
 
-        self.prefill_vols = config.get('prefill', {'blocksize': '4M',
-                                              'numjobs': '1'})
-        self.total_procs =  (self.procs_per_volume * self.volumes_per_client *
-                             len(settings.getnodes('clients').split(',')))
         self.base_run_dir = self.run_dir # we need this for the new workloads block
         self.run_dir =  f'{self.base_run_dir}/'
         if self.osd_ra is not None:
