@@ -32,9 +32,7 @@ class RbdFioCommand(FioCommand):
     def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:
         rbd_options: dict[str, str] = self._RBD_DEFAULT_OPTIONS
 
-        rbd_base_name: str = options.get("rbdname", "")
-        if rbd_base_name == "":
-            rbd_base_name = "cbt-fio"
+        rbd_base_name: str = options.get("rbdname", "cbt-fio")
         rbd_name: str = f"{rbd_base_name}-`{get_fqdn_cmd()}`-{self._target_number:d}"  # type: ignore [no-untyped-call]
         rbd_options["rbdname"] = rbd_name
         rbd_options["pool"] = options.get("poolname", "cbt-rbdfio")
