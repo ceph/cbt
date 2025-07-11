@@ -62,7 +62,7 @@ class LibrbdFio(Benchmark):
         self.no_sudo = bool(config.get('no_sudo', False))
         self.idle_monitor_sleep = config.get('idle_monitor_sleep', 60)
         self.pool_name = config.get("poolname", "cbt-librbdfio")
-        self.recov_pool_name = config.get("recov_pool_name", "cbt-librbdfio-recov")
+        self.recov_pool_name = config.get("recov_pool_name", "cbt-rbdfio-recov")
         self.rbdname = config.get('rbdname', '')
         self.prefill_vols = config.get('prefill', {'blocksize': '4M',
                                               'numjobs': '1'})
@@ -88,7 +88,7 @@ class LibrbdFio(Benchmark):
         # Make the file names string (repeated across volumes)
         self.names = ''
         for proc_num in range(self.procs_per_volume):
-            rbd_name = f'cbt-librbdfio-`{common.get_fqdn_cmd()}`-file-{proc_num:d}'
+            rbd_name = f'cbt-rbdfio-`{common.get_fqdn_cmd()}`-file-{proc_num:d}'
             self.names += f'--name={rbd_name} '
 
     def exists(self):
@@ -190,7 +190,7 @@ class LibrbdFio(Benchmark):
         if self.use_existing_volumes and len(self.rbdname):
             rbdname = self.rbdname
         else:
-            rbdname = f'cbt-librbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}'
+            rbdname = f'cbt-rbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}'
 
         logger.debug('Using rbdname %s', rbdname)
         out_file = f'{self.run_dir}/output.{volnum:d}'
@@ -253,7 +253,7 @@ class LibrbdFio(Benchmark):
             for node in common.get_fqdn_list('clients'):
                 for volnum in range(0, self.volumes_per_client):
                     node = node.rpartition("@")[2]
-                    self.cluster.mkimage( f'cbt-librbdfio-recov-{node}-{volnum:d}',
+                    self.cluster.mkimage( f'cbt-rbdfio-recov-{node}-{volnum:d}',
                                          self.vol_size, self.recov_pool_name, self.data_pool,
                                          self.vol_object_size )
         monitoring.stop()
@@ -274,7 +274,7 @@ class LibrbdFio(Benchmark):
         for node in common.get_fqdn_list('clients'):
             for volnum in range(0, self.volumes_per_client):
                 node = node.rpartition("@")[2]
-                self.cluster.mkimage( f'cbt-librbdfio-{node}-{volnum:d}',
+                self.cluster.mkimage( f'cbt-rbdfio-{node}-{volnum:d}',
                                      self.vol_size, self.pool_name, self.data_pool,
                                      self.vol_object_size)
         monitoring.stop()
@@ -286,7 +286,7 @@ class LibrbdFio(Benchmark):
         """
         ps = []
         if not self.use_existing_volumes:
-            rbd_base_name: str = options.get("rbdname", "cbt-rbdfio")
+            rbd_base_name: str = self.config.get("rbdname", "cbt-rbdfio")
             for volnum in range(self.volumes_per_client):
                 rbd_name = f'{rbd_base_name}-`{common.get_fqdn_cmd()}`-{volnum:d}'
                 pre_cmd = ''
