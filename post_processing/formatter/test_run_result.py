@@ -9,7 +9,6 @@ from math import sqrt
 from pathlib import Path
 from typing import Any, Optional, Union
 
-# from post_processing.common import recursive_search
 from post_processing.types import (
     INTERNAL_BLOCKSIZE_DATA_TYPE,
     INTERNAL_FORMATTED_OUTPUT_TYPE,
