@@ -287,8 +287,9 @@ class LibrbdFio(Benchmark):
         """
         ps = []
         if not self.use_existing_volumes:
+            rbd_base_name: str = options.get("rbdname", "cbt-rbdfio")
             for volnum in range(self.volumes_per_client):
-                rbd_name = f'cbt-librbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}'
+                rbd_name = f'{rbd_base_name}-`{common.get_fqdn_cmd()}`-{volnum:d}'
                 pre_cmd = ''
                 if not self.no_sudo:
                     pre_cmd += 'sudo '

@@ -3,8 +3,10 @@ The workloads class that contains all the Workloads for a given Benchmark run
 """
 
 from logging import Logger, getLogger
+from time import sleep
 from typing import Union
 
+import monitoring
 from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import WORKLOAD_TYPE, WORKLOAD_YAML_TYPE, Workload
@@ -67,6 +69,8 @@ class Workloads:
             log.error("Executable path has not been set Run set_executable() to set it")
             return
 
+        ramp_time: str = f"{self._benchmark_configuration.get('ramp', '')}"
+
         processes: list[Union[CheckedPopen, CheckedPopenLocal]] = []
         for workload in self._workloads:
             workload.set_benchmark_type(self._benchmark_type)
@@ -78,10 +82,20 @@ class Workloads:
                 pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
             for output_directory in workload.get_output_directories():
                 make_remote_dir(output_directory)  # type: ignore[no-untyped-call]
-            for fio_command in workload.get_commands():
-                processes.append(pdsh(getnodes("clients"), fio_command))  # type: ignore[no-untyped-call]
-            for process in processes:
-                process.wait()  # type: ignore[no-untyped-call]
+
+            for output_directory, fio_command_list in workload.get_commands_list():
+                for fio_command in fio_command_list:
+                    processes.append(pdsh(getnodes("clients"), fio_command))  # type: ignore[no-untyped-call]
+
+                # Sleep for the ramp time and then collect stats
+                if ramp_time:
+                    sleep(int(ramp_time))
+                monitoring.start(output_directory)  # type: ignore[no-untyped-call]
+
+                for process in processes:
+                    process.wait()  # type: ignore[no-untyped-call]
+
+                monitoring.stop()  # type: ignore[no-untyped-call]
 
         log.info("== Workloads completed ==")
 

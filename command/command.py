@@ -92,3 +92,9 @@ class Command(metaclass=ABCMeta):
         Update the command with the new_options dictionary
         """
         self._options.update(new_options)
+
+    def get_ramp_time(self) -> Optional[str]:
+        """
+        Get the ramp time for this command
+        """
+        return self._options.get("ramp_time", None)

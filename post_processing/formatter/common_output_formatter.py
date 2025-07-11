@@ -89,10 +89,30 @@ class CommonOutputFormatter:
         self._find_all_testrun_ids()
         for id in self._all_test_run_ids:
             log.debug("Looking at test run with id %s" % id)
-            results: TestRunResult = TestRunResult(self._directory, id, self._filename_root)
+            # TODO: something like:
+            # find all unique directory paths in the test run (../id-XXX/<job type>/<numjobs>/<total_iodepth|iodepth>)
 
-            results.process()
-            self._formatted_output.update(results.get())
+            # Actually find the test run ID directory
+            testrun_directories: list[Path] = list(self._path.glob(f"**/{id}"))
+            if len(testrun_directories) > 1:
+                log.error("We seem to have more than one directory for test run ID %s" % id)
+            testrun_directory_path: Path = testrun_directories[0]
+
+            for io_pattern_directory in [
+                directory for directory in testrun_directory_path.iterdir() if directory.is_dir()
+            ]:
+                log.debug("Looking at results for directory %s" % io_pattern_directory)
+                results: TestRunResult = TestRunResult(io_pattern_directory, self._filename_root)
+                results.process()
+                self._formatted_output.update(results.get())
+
+            # then
+            # for results_dir in unique_results_paths:
+            #     results: TestRunResult = TestRunResult(results_dir, id, self._filename_root)
+            # results: TestRunResult = TestRunResult(self._directory, id, self._filename_root)
+
+            # results.process()
+            # self._formatted_output.update(results.get())
 
         # get the max bandwidth and associated latency for each test run
         for operation in self._formatted_output.keys():
@@ -137,7 +157,7 @@ class CommonOutputFormatter:
         )
         self._path = Path(self._directory)
         # this gives a generator where each contained object is a Path of format:
-        # <self._directory>/results/<iteration>/<run_id>/json_output.<vol_id>.<hostname>
+        # <self._directory>/results/<iteration>/<run_id>/json_output.<vol_id>
         self._file_list = [
             path
             for path in self._path.glob(f"**/{self._filename_root}.*")
@@ -199,3 +219,12 @@ class CommonOutputFormatter:
                     iops_latency_ms = float(float(data["latency"]) / (1000 * 1000))
 
         return (f"{max_bandwidth}", f"{bandwidth_latency_ms}", f"{max_iops}", f"{iops_latency_ms}")
+
+    def _find_unique_results_directories(self) -> list[Path]:
+        """
+        Find all the unique results directories that contain data for a single
+        run
+        """
+        unique_directories: list[Path] = []
+
+        return unique_directories

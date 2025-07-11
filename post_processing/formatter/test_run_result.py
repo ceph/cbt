@@ -9,7 +9,7 @@ from math import sqrt
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from post_processing.common import recursive_search
+# from post_processing.common import recursive_search
 from post_processing.types import (
     INTERNAL_BLOCKSIZE_DATA_TYPE,
     INTERNAL_FORMATTED_OUTPUT_TYPE,
@@ -21,14 +21,11 @@ log: Logger = getLogger("formatter")
 
 
 class TestRunResult:
-    def __init__(self, archive_directory: str, test_run_id: str, file_name_root: str) -> None:
-        self._archive_path: Path = Path(archive_directory)
-        self._id: str = test_run_id
+    def __init__(self, directory: Path, file_name_root: str) -> None:
+        self._path: Path = directory
         self._has_been_processed: bool = False
 
-        self._files: list[Path] = self._find_files_for_testrun_with_id(
-            testrun_id=test_run_id, file_name_root=file_name_root
-        )
+        self._files: list[Path] = self._find_files_for_testrun(file_name_root=file_name_root)
         self._processed_data: INTERNAL_FORMATTED_OUTPUT_TYPE = {}
 
     def have_been_processed(self) -> bool:
@@ -46,7 +43,7 @@ class TestRunResult:
         number_of_volumes_for_test_run: int = len(self._files)
 
         if number_of_volumes_for_test_run == 0:
-            log.warning("test run ID %s has no files - not doing any conversion", self._id)
+            log.warning("test run with directory %s has no files - not doing any conversion", self._path)
             self._has_been_processed = True
             return
 
@@ -73,6 +70,7 @@ class TestRunResult:
         for file_path in self._files:
             if not self._file_is_empty(file_path):
                 if not self._file_is_precondition(file_path):
+                    log.debug("Processing file %s" % file_path)
                     self._convert_file(file_path)
                 else:
                     log.warning("Not processing file %s as it is from a precondition operation", file_path)
@@ -88,8 +86,8 @@ class TestRunResult:
 
         with open(str(file_path), "r", encoding="utf8") as file:
             data: dict[str, Any] = json.load(file)
-            filename: Optional[str] = recursive_search(data, "write_iops_log")
-            iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", filename)
+            # filename: Optional[str] = recursive_search(data, "write_iops_log")
+            iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", str(file_path))
 
             blocksize: str = self._get_blocksize(f"{data['global options']['bs']}")
             if re.search("\D$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
@@ -108,6 +106,7 @@ class TestRunResult:
                 if blocksize in self._processed_data[operation].keys():
                     if iodepth in self._processed_data[operation][blocksize].keys():
                         # we already have data here, so use it
+                        log.debug("We have details for iodepth %s so using them" % iodepth)
                         io_details = self._sum_io_details(
                             self._processed_data[operation][blocksize][iodepth],
                             self._get_io_details(all_jobs=data["jobs"]),
@@ -180,7 +179,7 @@ class TestRunResult:
 
         return combined_data
 
-    def _find_files_for_testrun_with_id(self, testrun_id: str, file_name_root: str) -> list[Path]:
+    def _find_files_for_testrun(self, file_name_root: str) -> list[Path]:
         """
         Return the files for a particular test run
         """
@@ -189,7 +188,7 @@ class TestRunResult:
         # once
         return [
             path
-            for path in self._archive_path.glob(f"**/{testrun_id}/**/{file_name_root}.*")
+            for path in self._path.glob(f"**/{file_name_root}.*")
             if re.search(f"{file_name_root}.\d+$", f"{path}")  # pyright: ignore[reportInvalidStringEscapeSequence]
         ]
 
@@ -324,6 +323,7 @@ class TestRunResult:
         from the file, otherwise return the iodepth parsed from the
         log file path
         """
+        log.debug("Getting iodepth from %s and %s" % (iodepth_value, logfile_name))
         iodepth: int = int(iodepth_value)
         if logfile_name is not None:
             # We need to cope with both the separate workload class directory structure
@@ -350,6 +350,7 @@ class TestRunResult:
             if logfile_iodepth > iodepth:
                 iodepth = logfile_iodepth
 
+        log.debug("Value returned is %s" % iodepth)
         return str(iodepth)
 
     def _get_blocksize(self, blocksize_value: str) -> str:

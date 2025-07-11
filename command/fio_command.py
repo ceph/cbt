@@ -157,7 +157,7 @@ class FioCommand(Command, metaclass=ABCMeta):
         Get the name for this job to give to FIO
         This is of the format:
 
-        cbt-<workload_name>-<hostname>-<process_number>
+        cbt-fio-<workload_name>-<hostname>-<process_number>
         """
 
         job_name: str = ""
