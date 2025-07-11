@@ -175,7 +175,7 @@ class LibrbdFio(Benchmark):
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        source_dir: str = f'{self.run_dir}/*'
+        source_directory: str = f'{self.run_dir}/*'
         if self._workloads.exist():
             source_directory = f"{self._workloads.get_base_run_directory()}/*"
         common.sync_files(source_directory, self.out_dir)
