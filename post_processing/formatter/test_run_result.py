@@ -9,6 +9,7 @@ from math import sqrt
 from pathlib import Path
 from typing import Any, Optional, Union
 
+from post_processing.common import get_blocksize
 from post_processing.types import (
     INTERNAL_BLOCKSIZE_DATA_TYPE,
     INTERNAL_FORMATTED_OUTPUT_TYPE,
@@ -85,12 +86,9 @@ class TestRunResult:
 
         with open(str(file_path), "r", encoding="utf8") as file:
             data: dict[str, Any] = json.load(file)
-            # filename: Optional[str] = recursive_search(data, "write_iops_log")
             iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", str(file_path))
 
-            blocksize: str = self._get_blocksize(f"{data['global options']['bs']}")
-            if re.search("\D$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
-                blocksize = blocksize[:-1]
+            blocksize: str = get_blocksize(f"{data['global options']['bs']}")
             operation: str = f"{data['global options']['rw']}"
             global_details: IODEPTH_DETAILS_TYPE = self._get_global_options(data["global options"])
             blocksize_details: INTERNAL_BLOCKSIZE_DATA_TYPE = {blocksize: {}}
@@ -129,7 +127,7 @@ class TestRunResult:
         """
         read the data from the 'global options' section of the fio output
         """
-        blocksize: str = self._get_blocksize(f"{fio_global_options['bs']}")
+        blocksize: str = get_blocksize(f"{fio_global_options['bs']}")
         global_options_details: dict[str, str] = {
             "number_of_jobs": f"{fio_global_options['numjobs']}",
             "runtime_seconds": f"{fio_global_options['runtime']}",
@@ -349,18 +347,8 @@ class TestRunResult:
             if logfile_iodepth > iodepth:
                 iodepth = logfile_iodepth
 
-        log.debug("Value returned is %s" % iodepth)
+        log.debug("iodepth value is %s" % iodepth)
         return str(iodepth)
-
-    def _get_blocksize(self, blocksize_value: str) -> str:
-        """
-        return a blocksize value without the units
-        """
-        blocksize: str = blocksize_value
-        if re.search("\D+$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
-            blocksize = blocksize[:-1]
-
-        return blocksize
 
 
 __test__ = False

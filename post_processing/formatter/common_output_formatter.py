@@ -89,30 +89,33 @@ class CommonOutputFormatter:
         self._find_all_testrun_ids()
         for id in self._all_test_run_ids:
             log.debug("Looking at test run with id %s" % id)
-            # TODO: something like:
-            # find all unique directory paths in the test run (../id-XXX/<job type>/<numjobs>/<total_iodepth|iodepth>)
 
             # Actually find the test run ID directory
             testrun_directories: list[Path] = list(self._path.glob(f"**/{id}"))
             if len(testrun_directories) > 1:
-                log.error("We seem to have more than one directory for test run ID %s" % id)
-            testrun_directory_path: Path = testrun_directories[0]
+                log.debug("We have more than one directory for test run %s so using the compatibility method" % id)
+                results: TestRunResult = TestRunResult(Path(self._directory), self._filename_root)
 
-            for io_pattern_directory in [
-                directory for directory in testrun_directory_path.iterdir() if directory.is_dir()
-            ]:
-                log.debug("Looking at results for directory %s" % io_pattern_directory)
-                results: TestRunResult = TestRunResult(io_pattern_directory, self._filename_root)
                 results.process()
                 self._formatted_output.update(results.get())
 
-            # then
-            # for results_dir in unique_results_paths:
-            #     results: TestRunResult = TestRunResult(results_dir, id, self._filename_root)
-            # results: TestRunResult = TestRunResult(self._directory, id, self._filename_root)
+            else:
+                testrun_directory_path: Path = testrun_directories[0]
 
-            # results.process()
-            # self._formatted_output.update(results.get())
+                for io_pattern_directory in [
+                    directory for directory in testrun_directory_path.iterdir() if directory.is_dir()
+                ]:
+                    log.debug("Looking at results for directory %s" % io_pattern_directory)
+                    results: TestRunResult = TestRunResult(
+                        directory=io_pattern_directory, file_name_root=self._filename_root
+                    )
+                    results.process()
+                    processed_results: INTERNAL_FORMATTED_OUTPUT_TYPE = results.get()
+                    for run_type in processed_results.keys():
+                        if run_type in self._formatted_output.keys():
+                            self._formatted_output[run_type].update(processed_results[run_type])
+                        else:
+                            self._formatted_output.update(results.get())
 
         # get the max bandwidth and associated latency for each test run
         for operation in self._formatted_output.keys():
@@ -188,8 +191,9 @@ class CommonOutputFormatter:
             # There is a possibility that there could be more than one id-xxxxxx string in the
             # file path, and we want only one. We choose to always take the fist one.
             # If there are none then just return the directory name above the file
-            id: str = potential_ids[0]
-            if not id:
+            if len(potential_ids) > 0:
+                id: str = potential_ids[0]
+            else:
                 # if we get no matches then just use the directory directly above
                 # the output file
                 id = file_path.parts[-2]
