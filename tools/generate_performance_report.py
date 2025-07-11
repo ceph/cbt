@@ -11,6 +11,7 @@ module in CBT PR 321 can be used to generate the plot files
 Usage:
         generate_performance_report.py  --archive=<full_path_to_results_directory>
                                         --output_directory=<full_path_to_directory_to_store_report>
+                                        --results_file_root="ch_json_result"
                                         --create_pdf
 
 
@@ -121,7 +122,6 @@ def main() -> int:
         action="store_true",
         help="Generate a pdf report file in addition to the markdown report",
     )
-
     parser.add_argument(
         "--results_file_root",
         type=str,

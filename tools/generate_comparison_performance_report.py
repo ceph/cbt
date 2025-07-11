@@ -12,6 +12,7 @@ Usage:
         generate_comparison_performance_report.py
                 --baseline=<full_path_to_archive_directory_to_use_as_baseline>
                 --archives=<full_path_to_results_directories_to_compare>
+                --results_file_root="ch_json_result"
                 --output_directory=<full_path_to_directory_to_store_report>
                 --create_pdf
 
@@ -136,7 +137,6 @@ def main() -> int:
         action="store_true",
         help="Generate a pdf report file in addition to the markdown report",
     )
-
     parser.add_argument(
         "--results_file_root",
         type=str,
