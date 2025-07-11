@@ -222,7 +222,7 @@ def recursive_search(data_to_search: dict[str, Any], search_key: str) -> Optiona
 
     for key, value in data_to_search.items():
         if key == search_key:
-            print(f"CHDEBUG: Returning {value} fpr key {key} from {data_to_search}")
+            log.debug("Returning %s for key %s from %s", (value, key, data_to_search))
             return f"{value}"
         if isinstance(value, list):
             for item in value:  # pyright: ignore[reportUnknownVariableType]
