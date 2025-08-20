@@ -2,12 +2,12 @@ cluster:
   use_existing: True
   osds_per_node: 1
   user: 'root'
-  head: "sv1-ceph3.ssd.hursley.ibm.com"
-    #head: "ceph3"
+  head: "mysystem.mycompany.com"
+    #head: "mysystem"
     #clients: [localhost]
-  clients: ["sv1-ceph3.ssd.hursley.ibm.com"]
+  clients: ["mysystem.mycompany.com"]
     #osds: ["localhost"]
-  osds: ["sv1-ceph3.ssd.hursley.ibm.com"]
+  osds: ["mysystem.mycompany.com"]
     #mons: ["localhost"]
   iterations: 1
   conf_file: '/ceph/build/ceph.conf'
@@ -80,6 +80,7 @@ benchmarks:
     numjobs: [1, 4, 8]
     op_size: [4096] # block IO size in bytes
     procs_per_client: [1]
+    # Change this if you want more volumes
     volumes_per_client: [1] # volumes per ceph node
       # for tests involving specific CPU cores:
     fio_cpu_set: '15-15'
@@ -87,19 +88,22 @@ benchmarks:
     prefill:
       blocksize: '4M'
       numjobs: 1
-    # Each block below uses its own local options during its execution
+    # Each block below uses its own local options during its execution (jobs and queue depth can be nested
+    # Example below preconditions the image with 64k random writes, then executes two 10 point response curves with a job of 1 with:
+    # randread queue depths: 1,2,3,4,5,8,16,32,64,128
+    # randwrite queue depths: 1,2,3,4,5,8,16,32,64,128 
     workloads:
       precondition:
         jobname: 'precond1rw'
         mode: 'randwrite'
         numjobs: [ 1 ]
-        iodepth: [ 4 ]
+        iodepth: [ 64 ]
         monitor: False # whether to run the monitors along the test
       test1:
         jobname: 'rr'
         mode: 'randread'
-        numjobs: [ 1]
-        iodepth: [ 1]
+        numjobs: [ 1 ]
+        iodepth: [ 1,2,3,4,5,8,16,32,64,128 ]
           #numjobs: [ 1, 4, 8 ]
           #iodepth: [ 1, 4, 8 ]
         # ToDo: can we add a list of the monitoring subset we are interested for this workload?
@@ -107,6 +111,6 @@ benchmarks:
         jobname: 'rw'
         mode: 'randwrite'
         numjobs: [ 1 ]
-        iodepth: [ 1 ]
+        iodepth: [ 1,2,3,4,5,8,16,32,64,128 ]
           #numjobs: [ 1, 4, 8 ]
           #iodepth: [ 1, 4, 8 ]
