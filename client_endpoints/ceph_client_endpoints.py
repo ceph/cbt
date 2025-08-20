@@ -97,8 +97,7 @@ class CephClientEndpoints(ClientEndpoints):
                 rbd_name = self.get_rbd_name(node, ep_num)
 
                 # Make the RBD Image
-                cmd = '%s -c %s create %s --pool %s --size %s %s --order %s' % (self.rbd_cmd, self.tmp_conf, rbd_name, self.pool, self.endpoint_size, dp_option, self.order)
-                common.pdsh(settings.getnodes('head'), cmd, continue_if_error=False).communicate()
+                self.cluster.mkimage(rbd_name, self.endpoint_size, self.pool, self.data_pool, self.order)
 
                 # Disable Features
                 if self.disabled_features:
