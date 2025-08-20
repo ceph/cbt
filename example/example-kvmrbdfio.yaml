@@ -21,7 +21,7 @@ cluster:
       pg_size: 64
       pgp_size: 64
       replication: 3
-      crush_profile: 1
+      crush_profile: replicated_rule
 benchmarks:
   kvmrbdfio:
     fio_cmd: /usr/local/bin/fio
