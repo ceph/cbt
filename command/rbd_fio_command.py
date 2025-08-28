@@ -1,4 +1,4 @@
-'''
+"""
 A subclasss of an FioCommand that deals with options that are specific the the
 rbd I/O engine.
 
@@ -13,7 +13,7 @@ pool
 busy_poll
 
 Of these clustername and busy_poll are not currently used by CBT
-'''
+"""
 
 from command.fio_command import FioCommand
 from common import get_fqdn_cmd
@@ -32,9 +32,8 @@ class RbdFioCommand(FioCommand):
     def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:
         rbd_options: dict[str, str] = self._RBD_DEFAULT_OPTIONS
 
-        rbd_name: str = options.get("rbdname", "")
-        if rbd_name == "":
-            rbd_name = f"cbt-fio-`{get_fqdn_cmd()}`-{self._target_number:d}"  # type: ignore[no-untyped-call]
+        rbd_base_name: str = options.get("rbdname", "cbt-fio")
+        rbd_name: str = f"{rbd_base_name}-`{get_fqdn_cmd()}`-{self._target_number:d}"  # type: ignore [no-untyped-call]
         rbd_options["rbdname"] = rbd_name
         rbd_options["pool"] = options.get("poolname", "cbt-rbdfio")
 

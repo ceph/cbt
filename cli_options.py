@@ -12,20 +12,10 @@ log: Logger = getLogger("cbt")
 
 class CliOptions(UserDict[str, Optional[str]]):
     """
-    Thic class encapsulates a set of CLI options that can be passed to a
+    This class encapsulates a set of CLI options that can be passed to a
     command line invocation. It is based on a python dictionary, but with
     behaviour modified so that duplicate keys do not update the original.
     """
-
-    def __setitem__(self, key: str, value: Optional[str]) -> None:
-        """
-        Add an entry to the configuration.
-        Will report an error if key already exists
-        """
-        if key not in self.data.keys():
-            self.data[key] = value
-        else:
-            log.debug("Not adding %s:%s to configuration. A value is already set", key, value)
 
     def __update__(self, key_value_pair: tuple[str, str]) -> None:
         """

@@ -27,7 +27,7 @@ from post_processing.common import (
 from post_processing.plotter.simple_plotter import SimplePlotter
 from post_processing.reports.report_generator import ReportGenerator
 
-log: Logger = getLogger("cbt")
+log: Logger = getLogger("reports")
 
 
 class SimpleReportGenerator(ReportGenerator):
@@ -51,6 +51,8 @@ class SimpleReportGenerator(ReportGenerator):
         # columns differently.
         # Therefore we have to build the table ourselves
 
+        log.info("Generating summary table")
+
         self._report.new_line(text="|Workload Name|Maximum Throughput|Latency (ms)|")
         self._report.new_line(text="| :--- | ---: | ---: |")
 
@@ -60,6 +62,7 @@ class SimpleReportGenerator(ReportGenerator):
 
         for file_name in self._data_files.keys():
             for file_path in self._data_files[file_name]:
+                log.debug("Looking at file %s" % file_path)
                 (max_throughput, latency_ms) = get_latency_throughput_from_file(file_path)
 
                 (_, _, operation) = get_blocksize_percentage_operation_from_file_name(file_path.stem)

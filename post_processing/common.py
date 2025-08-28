@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import Union
+from typing import Any, Optional, Union
 
 log: Logger = getLogger("cbt")
 
@@ -48,7 +48,8 @@ def get_blocksize_percentage_operation_from_file_name(file_name: str) -> tuple[s
     # The split on _ will mean that the last element [-1] will always be
     # the operation, and the first part [0] will be the blocksize
     operation: str = f"{TITLE_CONVERSION[file_parts[-1]]}"
-    blocksize: str = f"{int(int(file_parts[0][:-1]) / 1024)}K"
+    blocksize: str = get_blocksize(f"{file_parts[0]}")
+    blocksize = f"{int(blocksize) / 1024}K"
     read_percent: str = ""
 
     if len(file_parts) > 2:
@@ -207,3 +208,38 @@ def get_date_time_string() -> str:
     # Convert to string
     datetime_string: str = current_datetime.strftime("%y%m%d_%H%M%S")
     return datetime_string
+
+
+def recursive_search(data_to_search: dict[str, Any], search_key: str) -> Optional[str]:
+    """
+    Recursively search through a python dictionary for a particular key, and
+    return the value stored at that key
+
+    This can handle a dictionary containing other dictionaries and lists
+    """
+    # Note: As we don't know the structure the data will take we need to type
+    # the dictioary as Any.
+
+    for key, value in data_to_search.items():
+        if key == search_key:
+            log.debug("Returning %s for key %s from %s", (value, key, data_to_search))
+            return f"{value}"
+        if isinstance(value, list):
+            for item in value:  # pyright: ignore[reportUnknownVariableType]
+                if isinstance(item, dict):
+                    return recursive_search(item, search_key)  # pyright: ignore[reportUnknownArgumentType]
+        if isinstance(value, dict):
+            return recursive_search(value, search_key)  # pyright: ignore[reportUnknownArgumentType]
+
+    return None
+
+
+def get_blocksize(blocksize_value: str) -> str:
+    """
+    return a blocksize value without the units
+    """
+    blocksize: str = blocksize_value
+    if re.search("\D$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
+        blocksize = blocksize[:-1]
+
+    return blocksize

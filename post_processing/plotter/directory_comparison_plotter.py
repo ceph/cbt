@@ -17,7 +17,7 @@ from post_processing.common import (
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
 from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE
 
-log: Logger = getLogger("cbt")
+log: Logger = getLogger("plotter")
 
 
 class DirectoryComparisonPlotter(CommonFormatPlotter):

@@ -19,13 +19,16 @@ Examples:
             fio_common_output_wrapper.py --archive="/tmp/ch_cbt_run" --results_file_root="ch_json_result"
 """
 
-import subprocess
+import os
 from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
 
 from post_processing.formatter.common_output_formatter import CommonOutputFormatter
+from post_processing.log_configuration import setup_logging
 
-log: Logger = getLogger()
+setup_logging()
+
+log: Logger = getLogger("formatter")
 
 
 def main() -> int:
@@ -41,15 +44,17 @@ def main() -> int:
         "--results_file_root",
         type=str,
         required=False,
-        default="json_output*",
+        default="json_output",
         help="The filename root of all the CBT output json files",
     )
 
     args: Namespace = parser.parse_args()
 
     output_directory: str = f"{args.archive}/visualisation/"
-    subprocess.run(f"mkdir -p -m0755 {output_directory}", shell=True)
+    log.debug("Creating directory %s" % output_directory)
+    os.makedirs(output_directory, exist_ok=True)
 
+    log.info("Generating intermediate files for %s in directory %s" % (args.archive, output_directory))
     formatter: CommonOutputFormatter = CommonOutputFormatter(
         archive_directory=args.archive, filename_root=args.results_file_root
     )
@@ -59,8 +64,7 @@ def main() -> int:
         formatter.write_output_file()
     except Exception as e:
         log.error(
-            "Encountered an error parsing results in directory %s with name %s"
-            % (args.archive, args.results_file_root)
+            "Encountered an error parsing results in directory %s with name %s" % (args.archive, args.results_file_root)
         )
         log.exception(e)
         result = 1

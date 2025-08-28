@@ -3,11 +3,13 @@ Data from a test run in fio output files
 """
 
 import json
+import re
 from logging import Logger, getLogger
 from math import sqrt
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Optional, Union
 
+from post_processing.common import get_blocksize
 from post_processing.types import (
     INTERNAL_BLOCKSIZE_DATA_TYPE,
     INTERNAL_FORMATTED_OUTPUT_TYPE,
@@ -15,18 +17,15 @@ from post_processing.types import (
     JOBS_DATA_TYPE,
 )
 
-log: Logger = getLogger("cbt")
+log: Logger = getLogger("formatter")
 
 
 class TestRunResult:
-    def __init__(self, archive_directory: str, test_run_id: str, file_name_root: str) -> None:
-        self._archive_path: Path = Path(archive_directory)
-        self._id: str = test_run_id
+    def __init__(self, directory: Path, file_name_root: str) -> None:
+        self._path: Path = directory
         self._has_been_processed: bool = False
 
-        self._files: list[Path] = self._find_files_for_testrun_with_id(
-            testrun_id=test_run_id, file_name_root=file_name_root
-        )
+        self._files: list[Path] = self._find_files_for_testrun(file_name_root=file_name_root)
         self._processed_data: INTERNAL_FORMATTED_OUTPUT_TYPE = {}
 
     def have_been_processed(self) -> bool:
@@ -44,7 +43,7 @@ class TestRunResult:
         number_of_volumes_for_test_run: int = len(self._files)
 
         if number_of_volumes_for_test_run == 0:
-            log.warning("test run ID %s has no files - not doing any conversion", self._id)
+            log.warning("test run with directory %s has no files - not doing any conversion", self._path)
             self._has_been_processed = True
             return
 
@@ -71,6 +70,7 @@ class TestRunResult:
         for file_path in self._files:
             if not self._file_is_empty(file_path):
                 if not self._file_is_precondition(file_path):
+                    log.debug("Processing file %s" % file_path)
                     self._convert_file(file_path)
                 else:
                     log.warning("Not processing file %s as it is from a precondition operation", file_path)
@@ -86,10 +86,9 @@ class TestRunResult:
 
         with open(str(file_path), "r", encoding="utf8") as file:
             data: dict[str, Any] = json.load(file)
-            iodepth: str = self._get_iodepth(
-                f"{data['global options']['iodepth']}", f"{data['global options']['write_iops_log']}"
-            )
-            blocksize: str = f"{data['global options']['bs']}"
+            iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", str(file_path))
+
+            blocksize: str = get_blocksize(f"{data['global options']['bs']}")
             operation: str = f"{data['global options']['rw']}"
             global_details: IODEPTH_DETAILS_TYPE = self._get_global_options(data["global options"])
             blocksize_details: INTERNAL_BLOCKSIZE_DATA_TYPE = {blocksize: {}}
@@ -104,6 +103,7 @@ class TestRunResult:
                 if blocksize in self._processed_data[operation].keys():
                     if iodepth in self._processed_data[operation][blocksize].keys():
                         # we already have data here, so use it
+                        log.debug("We have details for iodepth %s so using them" % iodepth)
                         io_details = self._sum_io_details(
                             self._processed_data[operation][blocksize][iodepth],
                             self._get_io_details(all_jobs=data["jobs"]),
@@ -127,10 +127,11 @@ class TestRunResult:
         """
         read the data from the 'global options' section of the fio output
         """
+        blocksize: str = get_blocksize(f"{fio_global_options['bs']}")
         global_options_details: dict[str, str] = {
             "number_of_jobs": f"{fio_global_options['numjobs']}",
             "runtime_seconds": f"{fio_global_options['runtime']}",
-            "blocksize": f"{fio_global_options['bs'][:-1]}",
+            "blocksize": blocksize,
         }
 
         # if rwmixread exists in the output then so does rwmixwrite
@@ -175,14 +176,18 @@ class TestRunResult:
 
         return combined_data
 
-    def _find_files_for_testrun_with_id(self, testrun_id: str, file_name_root: str) -> list[Path]:
+    def _find_files_for_testrun(self, file_name_root: str) -> list[Path]:
         """
         Return the files for a particular test run
         """
         # We need to use a list here as we can possibly iterate over the file
         # list multiple times, and a Generator object only allows iterating
         # once
-        return list(self._archive_path.glob(f"**/{testrun_id}/{file_name_root}.?"))
+        return [
+            path
+            for path in self._path.glob(f"**/{file_name_root}.*")
+            if re.search(f"{file_name_root}.\d+$", f"{path}")  # pyright: ignore[reportInvalidStringEscapeSequence]
+        ]
 
     def _file_is_empty(self, file_path: Path) -> bool:
         """
@@ -308,28 +313,42 @@ class TestRunResult:
 
         return latency_standard_deviation
 
-    def _get_iodepth(self, iodepth_value: str, logfile_name: str) -> str:
+    def _get_iodepth(self, iodepth_value: str, logfile_name: Optional[str]) -> str:
         """
         Checks to see if the iodepth encoded in the logfile name matches
         the iodepth in the output file. If it does, return the iodepth
         from the file, otherwise return the iodepth parsed from the
         log file path
         """
+        log.debug("Getting iodepth from %s and %s" % (iodepth_value, logfile_name))
         iodepth: int = int(iodepth_value)
+        if logfile_name is not None:
+            # We need to cope with both the separate workload class directory structure
+            # as well as the older style non-class workload deirectory structure
+            logfile_iodepth: int = 0
 
-        # the logfile name is of the format:
-        #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
-        iodepth_start_index: int = logfile_name.find("iodepth")
-        numjobs_start_index: int = logfile_name.find("numjobs")
-        # an index of -1 is no match found, so do nothing
-        if iodepth_start_index != -1 and numjobs_start_index != -1:
-            iodepth_end_index: int = iodepth_start_index + len("iodepth")
-            iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
-            logfile_iodepth: int = int(iodepth_string)
+            # New workloads
+            for value in logfile_name.split("/"):
+                if "total_iodepth" in value:
+                    logfile_iodepth = int(value[len("total_iodepth") + 1 :])
+
+            # Old-style workloads
+            if not logfile_iodepth:
+                # the logfile name is of the format:
+                #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
+                iodepth_start_index: int = logfile_name.find("iodepth")
+                numjobs_start_index: int = logfile_name.find("numjobs")
+                # an index of -1 is no match found, so do nothing
+                if iodepth_start_index != -1 and numjobs_start_index != -1:
+                    iodepth_end_index: int = iodepth_start_index + len("iodepth")
+                    iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
+                    logfile_iodepth = int(iodepth_string)
 
             if logfile_iodepth > iodepth:
                 iodepth = logfile_iodepth
 
+        log.debug("iodepth value is %s" % iodepth)
         return str(iodepth)
 
-    __test__ = False
+
+__test__ = False

@@ -6,9 +6,9 @@ run by any benchmark
 from logging import Logger, getLogger
 from typing import Generator, Optional, Union
 
-from common import all_configs  # pyright: ignore[reportUnknownVariableType]
 from command.command import Command
 from command.rbd_fio_command import RbdFioCommand
+from common import all_configs  # pyright: ignore[reportUnknownVariableType]
 
 WORKLOAD_TYPE = dict[str, Union[str, list[str]]]  # pylint: disable=["invalid-name"]
 WORKLOAD_YAML_TYPE = dict[str, WORKLOAD_TYPE]  # pylint: disable=["invalid-name"]
@@ -28,13 +28,13 @@ class Workload:
     def __init__(self, name: str, options: WORKLOAD_TYPE, base_run_directory: str) -> None:
         self._name: str = name
         self._base_run_directory: str = base_run_directory
-        self._commands: list[Command] = []
+        self._commands: dict[int, list[Command]] = {}
         self._parent_benchmark_type: Optional[str] = None
         self._all_options: WORKLOAD_TYPE = options.copy()
         self._executable_path: str
         self._script: str = f"{options.get('pre_workload_script', '')}"
 
-    def get_commands(self) -> Generator[str, None, None]:
+    def get_commands_list(self) -> Generator[tuple[str, list[str]], None, None]:
         """
         Return all I/O exerciser commands that need to be run to fully execute
         this workload
@@ -46,9 +46,14 @@ class Workload:
             log.warning("There are no commands for workload %s", self._name)
             return
 
-        for command in self._commands:
-            command.set_executable(self._executable_path)
-            yield command.get()
+        for command_list in self._commands.values():
+            commands_list: list[str] = []
+            output_directory: str = command_list[0].get_output_directory()
+            for command in command_list:
+                command.set_executable(self._executable_path)
+                commands_list.append(command.get())
+
+            yield (output_directory, commands_list)
         return
 
     def get_output_directories(self) -> Generator[str, None, None]:
@@ -64,8 +69,14 @@ class Workload:
         if not self._commands:
             self._create_commands_from_options()
 
-        for command in self._commands:
-            yield command.get_output_directory()
+        unique_output_directories: set[str] = set()
+
+        for command_list in self._commands.values():
+            for command in command_list:
+                unique_output_directories.add(command.get_output_directory())
+
+        for directory in unique_output_directories:
+            yield directory
 
     def get_name(self) -> str:
         """
@@ -128,6 +139,8 @@ class Workload:
 
     def _create_commands_from_options(self) -> None:
         unique_options: dict[str, str]
+
+        set_number: int = 0
         for unique_options in all_configs(self._all_options):  # type: ignore[no-untyped-call]
             iodepth_key: str = self._get_iodepth_key(list(unique_options.keys()))
             unique_options["iodepth_key"] = iodepth_key
@@ -138,10 +151,15 @@ class Workload:
             )
             unique_options["name"] = self._name
 
+            command_list: list[Command] = []
             for target_number, iodepth in iodepth_per_target.items():
                 unique_options["iodepth"] = f"{iodepth}"
+
                 unique_options["target_number"] = f"{target_number}"
-                self._commands.append(self._create_command_class(unique_options))
+                command_list.append(self._create_command_class(unique_options))
+
+            self._commands[set_number] = command_list
+            set_number += 1
 
             # The above will overwrite the iodepth to be used for the command,
             # while still retaining a total_iodepth value if one is passed. We can then
