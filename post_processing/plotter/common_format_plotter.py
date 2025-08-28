@@ -208,8 +208,11 @@ class CommonFormatPlotter(ABC):
     def _save_plot(self, plotter: ModuleType, file_path: str) -> None:
         """
         save the plot to disk as a png file
+
+        The bbox_inches="tight" option makes sure that the legend is included
+        in the plot and not cut off
         """
-        plotter.savefig(file_path, format=f"{PLOT_FILE_EXTENSION}")
+        plotter.savefig(file_path, format=f"{PLOT_FILE_EXTENSION}", bbox_inches="tight")
 
     def _clear_plot(self, plotter: ModuleType) -> None:
         """

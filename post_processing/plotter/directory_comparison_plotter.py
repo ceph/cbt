@@ -54,7 +54,7 @@ class DirectoryComparisonPlotter(CommonFormatPlotter):
             self._set_axis(plotter=plotter)
 
             # make sure we add the legend to the plot
-            plotter.legend()  # pyright: ignore[reportUnknownMemberType]
+            plotter.legend(bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2)  # pyright: ignore[reportUnknownMemberType]
 
             self._save_plot(plotter=plotter, file_path=output_file_path)
             self._clear_plot(plotter=plotter)
