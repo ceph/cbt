@@ -24,15 +24,18 @@ class SimplePlotter(CommonFormatPlotter):
     curve plot that includes standard deviation error bars.
     """
 
-    def __init__(self, archive_directory: str) -> None:
+    def __init__(self, archive_directory: str, plot_error_bars: bool) -> None:
         # A Path object for the directory where the data files are stored
         self._path: Path = Path(f"{archive_directory}/visualisation")
+        self._plot_error_bars: bool = plot_error_bars
 
     def draw_and_save(self) -> None:
         for file_path in self._path.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}"):
             file_data: COMMON_FORMAT_FILE_DATA_TYPE = read_intermediate_file(f"{file_path}")
             output_file_path: str = self._generate_output_file_name(files=[file_path])
-            self._add_single_file_data_with_errorbars(plotter=plotter, file_data=file_data)
+            self._add_single_file_data_with_optional_errorbars(
+                plotter=plotter, file_data=file_data, plot_error_bars=self._plot_error_bars
+            )
             self._add_title(plotter=plotter, source_files=[file_path])
             self._set_axis(plotter=plotter)
             self._save_plot(plotter=plotter, file_path=output_file_path)
@@ -40,4 +43,4 @@ class SimplePlotter(CommonFormatPlotter):
 
     def _generate_output_file_name(self, files: list[Path]) -> str:
         # we know we will only ever be passed a single file name
-        return f"{str(files[0])[:-len(DATA_FILE_EXTENSION)]}{PLOT_FILE_EXTENSION}"
+        return f"{str(files[0])[: -len(DATA_FILE_EXTENSION)]}{PLOT_FILE_EXTENSION}"

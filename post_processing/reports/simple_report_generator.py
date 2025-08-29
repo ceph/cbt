@@ -129,7 +129,7 @@ class SimpleReportGenerator(ReportGenerator):
 
             # If there are no plotfiles in the directory then we should create them
             if len(plot_files) == 0:
-                plotter = SimplePlotter(str(directory.parent))
+                plotter = SimplePlotter(str(directory.parent), self._plot_error_bars)
                 plotter.draw_and_save()
                 plot_files.extend(list(directory.glob(f"*{PLOT_FILE_EXTENSION_WITH_DOT}")))
 

@@ -32,6 +32,9 @@ Input:
                                     This requires pandoc to be installed,
                                     and be on the path.
 
+        --no_error_bars         [Optional] Do not draw error bars on the plots
+                                    included in the report
+
 Examples:
 
     Generate a markdown report file for the results in '/tmp/squid_main' directory
@@ -130,6 +133,13 @@ def main() -> int:
         help="The filename root of all the CBT output json files",
     )
 
+    parser.add_argument(
+        "--no_error_bars",
+        action="store_true",
+        required=False,
+        help="Do not generate error bars for the plots",
+    )
+
     arguments: Namespace = parser.parse_args()
 
     # will only create the output directory if it does not already exist
@@ -138,9 +148,11 @@ def main() -> int:
 
     try:
         generate_intermediate_files(arguments)
-        # sleep(10)
+
         report_generator = SimpleReportGenerator(
-            archive_directories=arguments.archive, output_directory=arguments.output_directory
+            archive_directories=arguments.archive,
+            output_directory=arguments.output_directory,
+            no_error_bars=arguments.no_error_bars,
         )
         report_generator.create_report()
 
