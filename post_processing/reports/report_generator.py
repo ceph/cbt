@@ -37,9 +37,11 @@ class ReportGenerator(ABC):
     # tex header file location
     BASE_HEADER_FILE_PATH: str = "include/performance_report.tex"
 
-    def __init__(self, archive_directories: str, output_directory: str, no_error_bars: bool = False) -> None:
+    def __init__(
+        self, archive_directories: str, output_directory: str, no_error_bars: bool = False, force_refresh: bool = False
+    ) -> None:
         self._plot_error_bars: bool = not no_error_bars
-        print(f"CHDEBUG: self._plot_error_bars is {self._plot_error_bars}")
+        self._force_refresh: bool = force_refresh
 
         self._archive_directories: list[Path] = []
         self._data_directories: list[Path] = []
