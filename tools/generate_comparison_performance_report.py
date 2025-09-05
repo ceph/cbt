@@ -2,8 +2,10 @@
 """
 A script to automatically generate a report from a set of performance run data
 in the common intermediate format described in CBT PR 319.
-The archive should contain the 'visualisation' sub directory where all
-the .json and plot files reside.
+
+If the specified archive directories have not yet been converted into the common
+intermediate format (described in CBT PR319) that will be done as part of
+creating the report.
 
 tools/fio_common_output_wrapper.py will generate the .json files and the SimplePlotter
 module in CBT PR 321 can be used to generate the plot files
@@ -15,6 +17,7 @@ Usage:
                 --results_file_root="ch_json_result"
                 --output_directory=<full_path_to_directory_to_store_report>
                 --create_pdf
+                --force_refresh
 
 
 Input:
@@ -36,6 +39,9 @@ Input:
                                     file.
                                     This requires pandoc to be installed,
                                     and be on the path.
+
+        --force_refresh         [Optional] Generate the intermediate and plot files
+                                    from the raw data, even if they already exist
 
 Examples:
 
@@ -81,10 +87,8 @@ def generate_intermediate_files(arguments: Namespace) -> None:
     for directory in directories_of_interest:
         output_directory: str = f"{directory}/visualisation/"
 
-        if not os.path.exists(output_directory) or not os.listdir(output_directory):
+        if not os.path.exists(output_directory) or not os.listdir(output_directory) or arguments.force_refresh:
             # directory doesn't exist so we need o post-process the CBT results files first
-            os.makedirs(output_directory, exist_ok=True)
-
             log.debug("Creating directory %s" % output_directory)
             os.makedirs(output_directory, exist_ok=True)
 
@@ -155,6 +159,13 @@ def main() -> int:
         help="The filename root of all the CBT output json files",
     )
 
+    parser.add_argument(
+        "--force_refresh",
+        action="store_true",
+        required=False,
+        help="Regenerate the intermediate files and plots, even if they exist",
+    )
+
     arguments: Namespace = parser.parse_args()
 
     # will only create the output directory if it does not already exist
@@ -166,6 +177,7 @@ def main() -> int:
         report_generator = ComparisonReportGenerator(
             archive_directories=f"{arguments.baseline},{arguments.archives}",
             output_directory=arguments.output_directory,
+            force_refresh=arguments.force_refresh,
         )
         report_generator.create_report()
 

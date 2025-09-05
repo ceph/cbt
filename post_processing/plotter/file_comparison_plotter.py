@@ -57,8 +57,8 @@ class FileComparisonPlotter(CommonFormatPlotter):
 
             self._add_single_file_data(plotter=plotter, file_data=file_data, label=label)
 
-        # make sure we add the legend to the plot
-        plotter.legend()  # pyright: ignore[reportUnknownMemberType]
+        # make sure we add the legend to the plot, below the chart
+        plotter.legend(bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2)  # pyright: ignore[reportUnknownMemberType]
 
         self._add_title(plotter=plotter, source_files=self._comparison_files)
         self._set_axis(plotter=plotter)

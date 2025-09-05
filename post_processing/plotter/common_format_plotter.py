@@ -139,8 +139,8 @@ class CommonFormatPlotter(ABC):
 
         return sorted_plot_data
 
-    def _add_single_file_data_with_errorbars(
-        self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE
+    def _add_single_file_data_with_optional_errorbars(
+        self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE, plot_error_bars: bool
     ) -> None:
         """
         Add the data from a single file to a plot. Include error bars. Each point
@@ -154,6 +154,7 @@ class CommonFormatPlotter(ABC):
         x_data: list[Union[int, float]] = []
         y_data: list[Union[int, float]] = []
         error_bars: list[float] = []
+        capsize: int = 0
 
         for _, data in sorted_plot_data.items():
             # for blocksize less than 64K we want to use the bandwidth to plot the graphs,
@@ -169,9 +170,14 @@ class CommonFormatPlotter(ABC):
                 # The stored values are in ns, we want to convert to ms
             y_data.append(float(data["latency"]) / (1000 * 1000))
             plotter.ylabel("Latency (ms)")
-            error_bars.append(float(data["std_deviation"]) / (1000 * 1000))
 
-        plotter.errorbar(x_data, y_data, error_bars, capsize=3, ecolor="red")
+            if plot_error_bars:
+                error_bars.append(float(data["std_deviation"]) / (1000 * 1000))
+                capsize = 3
+            else:
+                error_bars.append(0)
+
+        plotter.errorbar(x_data, y_data, error_bars, capsize=capsize, ecolor="red")
 
     def _add_single_file_data(self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE, label: str) -> None:
         """
@@ -208,8 +214,11 @@ class CommonFormatPlotter(ABC):
     def _save_plot(self, plotter: ModuleType, file_path: str) -> None:
         """
         save the plot to disk as a png file
+
+        The bbox_inches="tight" option makes sure that the legend is included
+        in the plot and not cut off
         """
-        plotter.savefig(file_path, format=f"{PLOT_FILE_EXTENSION}")
+        plotter.savefig(file_path, format=f"{PLOT_FILE_EXTENSION}", bbox_inches="tight")
 
     def _clear_plot(self, plotter: ModuleType) -> None:
         """

@@ -13,6 +13,8 @@ Usage:
                                         --output_directory=<full_path_to_directory_to_store_report>
                                         --results_file_root="ch_json_result"
                                         --create_pdf
+                                        --no_error_bars
+                                        --force_refresh
 
 
 Input:
@@ -32,10 +34,16 @@ Input:
                                     This requires pandoc to be installed,
                                     and be on the path.
 
+        --no_error_bars         [Optional] Do not draw error bars on the plots
+                                    included in the report
+
+        --force_refresh         [Optional] Generate the intermediate and plot files
+                                    from the raw data, even if they already exist
+
 Examples:
 
     Generate a markdown report file for the results in '/tmp/squid_main' directory
-    ans sabve it in the '/tmp/main_results' directory:
+    ans save it in the '/tmp/main_results' directory:
 
     generate_performance_report.py  --archive=/tmp/squid_main
                                     --output_directory =/tmp/main_results
@@ -64,10 +72,8 @@ def generate_intermediate_files(arguments: Namespace) -> None:
     """ """
     output_directory: str = f"{arguments.archive}/visualisation/"
 
-    if not os.path.exists(output_directory) or not os.listdir(output_directory):
-        # directory doesn't exist so we need o post-process the CBT results files first
-        os.makedirs(output_directory, exist_ok=True)
-
+    if not os.path.exists(output_directory) or not os.listdir(output_directory) or arguments.force_refresh:
+        # directory doesn't exist so we need to post-process the CBT results files first
         log.debug("Creating directory %s" % output_directory)
         os.makedirs(output_directory, exist_ok=True)
 
@@ -130,6 +136,20 @@ def main() -> int:
         help="The filename root of all the CBT output json files",
     )
 
+    parser.add_argument(
+        "--no_error_bars",
+        action="store_true",
+        required=False,
+        help="Do not generate error bars for the plots",
+    )
+
+    parser.add_argument(
+        "--force_refresh",
+        action="store_true",
+        required=False,
+        help="Regenerate the intermediate files and plots, even if they exist",
+    )
+
     arguments: Namespace = parser.parse_args()
 
     # will only create the output directory if it does not already exist
@@ -138,9 +158,12 @@ def main() -> int:
 
     try:
         generate_intermediate_files(arguments)
-        # sleep(10)
+
         report_generator = SimpleReportGenerator(
-            archive_directories=arguments.archive, output_directory=arguments.output_directory
+            archive_directories=arguments.archive,
+            output_directory=arguments.output_directory,
+            no_error_bars=arguments.no_error_bars,
+            force_refresh=arguments.force_refresh,
         )
         report_generator.create_report()
 
