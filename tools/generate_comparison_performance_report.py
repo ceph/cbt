@@ -163,7 +163,7 @@ def main() -> int:
         "--force_refresh",
         action="store_true",
         required=False,
-        help="Regenerate the inetrmediate files and plots, even if they exist",
+        help="Regenerate the intermediate files and plots, even if they exist",
     )
 
     arguments: Namespace = parser.parse_args()
