@@ -46,7 +46,7 @@ Input:
 Examples:
 
     Generate a markdown report file for the results in '/tmp/squid_main' directory
-    ans sabve it in the '/tmp/main_results' directory:
+    and save it in the '/tmp/main_results' directory:
 
     generate_comparison_performance_report.py --baseline=/tmp/squid_main
                                     --archives=/tmp/my_build
@@ -60,61 +60,21 @@ Examples:
                                     --create_pdf
 """
 
-import os
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser
 from logging import Logger, getLogger
 
-from post_processing.formatter.common_output_formatter import CommonOutputFormatter
 from post_processing.log_configuration import setup_logging
-from post_processing.reports.comparison_report_generator import ComparisonReportGenerator
+from post_processing.report import Report, ReportOptions, parse_namespace_to_options
 
 setup_logging()
 
 log: Logger = getLogger("reports")
 
 
-def generate_intermediate_files(arguments: Namespace) -> None:
-    """
-    If the raw fio results have not yet been post-processed then we need to do
-    that now before trying to produce te report
-    """
-
-    directories_of_interest: list[str] = [f"{arguments.baseline}"]
-
-    for directory in f"{arguments.archives}".split(","):
-        directories_of_interest.append(directory)
-
-    for directory in directories_of_interest:
-        output_directory: str = f"{directory}/visualisation/"
-
-        if not os.path.exists(output_directory) or not os.listdir(output_directory) or arguments.force_refresh:
-            # directory doesn't exist so we need o post-process the CBT results files first
-            log.debug("Creating directory %s" % output_directory)
-            os.makedirs(output_directory, exist_ok=True)
-
-            log.info("Generating intermediate files for %s in directory %s" % (directory, output_directory))
-            formatter: CommonOutputFormatter = CommonOutputFormatter(
-                archive_directory=directory, filename_root=arguments.results_file_root
-            )
-
-            try:
-                formatter.convert_all_files()
-                formatter.write_output_file()
-            except Exception as e:
-                log.error(
-                    "Encountered an error parsing results in directory %s with name %s"
-                    % (directory, arguments.results_file_root)
-                )
-                log.exception(e)
-                raise e
-
-
 def main() -> int:
     """
     Main routine for the script
     """
-
-    result: int = 0
 
     description: str = "Produces a performance report in markdown format \n"
     description += "from the json and png files stored in the visualisation\n"
@@ -166,29 +126,16 @@ def main() -> int:
         help="Regenerate the intermediate files and plots, even if they exist",
     )
 
-    arguments: Namespace = parser.parse_args()
+    report_options: ReportOptions = parse_namespace_to_options(arguments=parser.parse_args(), comparison_report=True)
 
-    # will only create the output directory if it does not already exist
-    log.info("Creating directory %s to contain the reports" % arguments.output_directory)
-    os.makedirs(f"{arguments.output_directory}", exist_ok=True)
+    report: Report = Report(options=report_options)
 
     try:
-        generate_intermediate_files(arguments)
-        report_generator = ComparisonReportGenerator(
-            archive_directories=f"{arguments.baseline},{arguments.archives}",
-            output_directory=arguments.output_directory,
-            force_refresh=arguments.force_refresh,
-        )
-        report_generator.create_report()
-
-        if arguments.create_pdf:
-            report_generator.save_as_pdf()
-
+        report.generate()
     except Exception:
-        log.exception("Encountered an error creating the report")
-        result = 1
+        log.exception("FAILED: Encountered an error plotting results")
 
-    return result
+    return report.result_code
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ Input:
 Examples:
 
     Generate a markdown report file for the results in '/tmp/squid_main' directory
-    ans save it in the '/tmp/main_results' directory:
+    and save it in the '/tmp/main_results' directory:
 
     generate_performance_report.py  --archive=/tmp/squid_main
                                     --output_directory =/tmp/main_results
@@ -55,51 +55,21 @@ Examples:
                                     --create_pdf
 """
 
-import os
-from argparse import ArgumentParser, Namespace
+from argparse import ArgumentParser
 from logging import Logger, getLogger
 
-from post_processing.formatter.common_output_formatter import CommonOutputFormatter
 from post_processing.log_configuration import setup_logging
-from post_processing.reports.simple_report_generator import SimpleReportGenerator
+from post_processing.report import Report, ReportOptions, parse_namespace_to_options
 
 setup_logging()
 
 log: Logger = getLogger("reports")
 
 
-def generate_intermediate_files(arguments: Namespace) -> None:
-    """ """
-    output_directory: str = f"{arguments.archive}/visualisation/"
-
-    if not os.path.exists(output_directory) or not os.listdir(output_directory) or arguments.force_refresh:
-        # directory doesn't exist so we need to post-process the CBT results files first
-        log.debug("Creating directory %s" % output_directory)
-        os.makedirs(output_directory, exist_ok=True)
-
-        log.info("Generating intermediate files for %s in directory %s" % (arguments.archive, output_directory))
-        formatter: CommonOutputFormatter = CommonOutputFormatter(
-            archive_directory=arguments.archive, filename_root=arguments.results_file_root
-        )
-
-        try:
-            formatter.convert_all_files()
-            formatter.write_output_file()
-        except Exception as e:
-            log.error(
-                "Encountered an error parsing results in directory %s with name %s"
-                % (arguments.archive, arguments.results_file_root)
-            )
-            log.exception(e)
-            raise e
-
-
 def main() -> int:
     """
     Main routine for the script
     """
-
-    result: int = 0
 
     description: str = "Produces a performance report in markdown format \n"
     description += "from the json and png files stored in the visualisation\n"
@@ -150,31 +120,16 @@ def main() -> int:
         help="Regenerate the intermediate files and plots, even if they exist",
     )
 
-    arguments: Namespace = parser.parse_args()
+    report_options: ReportOptions = parse_namespace_to_options(arguments=parser.parse_args())
 
-    # will only create the output directory if it does not already exist
-    log.info("Attempting to create directory %s" % arguments.output_directory)
-    os.makedirs(f"{arguments.output_directory}", exist_ok=True)
-
+    report: Report = Report(report_options)
     try:
-        generate_intermediate_files(arguments)
-
-        report_generator = SimpleReportGenerator(
-            archive_directories=arguments.archive,
-            output_directory=arguments.output_directory,
-            no_error_bars=arguments.no_error_bars,
-            force_refresh=arguments.force_refresh,
-        )
-        report_generator.create_report()
-
-        if arguments.create_pdf:
-            report_generator.save_as_pdf()
+        report.generate()
 
     except Exception:
-        log.exception("Encountered an error plotting results")
-        result = 1
+        log.exception("FAILED: Encountered an error plotting results")
 
-    return result
+    return report.result_code
 
 
 if __name__ == "__main__":
