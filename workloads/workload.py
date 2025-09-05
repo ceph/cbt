@@ -4,14 +4,12 @@ run by any benchmark
 """
 
 from logging import Logger, getLogger
-from typing import Generator, Optional, Union
+from typing import Generator, Optional
 
 from command.command import Command
 from command.rbd_fio_command import RbdFioCommand
 from common import all_configs  # pyright: ignore[reportUnknownVariableType]
-
-WORKLOAD_TYPE = dict[str, Union[str, list[str]]]  # pylint: disable=["invalid-name"]
-WORKLOAD_YAML_TYPE = dict[str, WORKLOAD_TYPE]  # pylint: disable=["invalid-name"]
+from workloads.workload_types import WorkloadType
 
 log: Logger = getLogger("cbt")
 
@@ -25,12 +23,12 @@ class Workload:
     yaml
     """
 
-    def __init__(self, name: str, options: WORKLOAD_TYPE, base_run_directory: str) -> None:
+    def __init__(self, name: str, options: WorkloadType, base_run_directory: str) -> None:
         self._name: str = name
         self._base_run_directory: str = base_run_directory
         self._commands: dict[int, list[Command]] = {}
         self._parent_benchmark_type: Optional[str] = None
-        self._all_options: WORKLOAD_TYPE = options.copy()
+        self._all_options: WorkloadType = options.copy()
         self._executable_path: str
         self._script: str = f"{options.get('pre_workload_script', '')}"
 
@@ -75,8 +73,7 @@ class Workload:
             for command in command_list:
                 unique_output_directories.add(command.get_output_directory())
 
-        for directory in unique_output_directories:
-            yield directory
+        yield from unique_output_directories
 
     def get_name(self) -> str:
         """
@@ -116,7 +113,7 @@ class Workload:
         """
         self._parent_benchmark_type = parent_benchmark_type
 
-    def add_global_options(self, global_options: WORKLOAD_TYPE) -> None:
+    def add_global_options(self, global_options: WorkloadType) -> None:
         """
         Set any options for the workload that are not included in the
         'workloads' section of the configuration yaml
@@ -187,8 +184,8 @@ class Workload:
         """
         if iodepth_key == "total_iodepth":
             return self._calculate_iodepth_per_target_from_total_iodepth(number_of_targets, iodepth)
-        else:
-            return self._set_iodepth_for_every_target(number_of_targets, iodepth)
+
+        return self._set_iodepth_for_every_target(number_of_targets, iodepth)
 
     def _calculate_iodepth_per_target_from_total_iodepth(
         self, number_of_targets: int, total_desired_iodepth: int
