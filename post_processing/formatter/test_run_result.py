@@ -82,6 +82,13 @@ class TestRunResult:
         """
         convert the contents of a single output file from the benchmark into the
         JSON format we want for writing the graphs
+
+        The operation specified in ['global options']['rw'] can be of the format
+        <operation>
+        or
+        <operation:blocksize>
+
+        so it must be trimmed o get the actual name (read, write etc) for the operation perfomend
         """
 
         with open(str(file_path), "r", encoding="utf8") as file:
@@ -89,7 +96,7 @@ class TestRunResult:
             iodepth: str = self._get_iodepth(f"{data['global options']['iodepth']}", str(file_path))
 
             blocksize: str = get_blocksize(f"{data['global options']['bs']}")
-            operation: str = f"{data['global options']['rw']}"
+            operation: str = f"{data['global options']['rw']}".split(":")[0]
             global_details: IODEPTH_DETAILS_TYPE = self._get_global_options(data["global options"])
             blocksize_details: INTERNAL_BLOCKSIZE_DATA_TYPE = {blocksize: {}}
             iodepth_details: dict[str, IODEPTH_DETAILS_TYPE] = {iodepth: global_details}
