@@ -38,7 +38,11 @@ class ReportGenerator(ABC):
     BASE_HEADER_FILE_PATH: str = "include/performance_report.tex"
 
     def __init__(
-        self, archive_directories: str, output_directory: str, no_error_bars: bool = False, force_refresh: bool = False
+        self,
+        archive_directories: list[str],
+        output_directory: str,
+        no_error_bars: bool = False,
+        force_refresh: bool = False,
     ) -> None:
         self._plot_error_bars: bool = not no_error_bars
         self._force_refresh: bool = force_refresh
@@ -48,7 +52,7 @@ class ReportGenerator(ABC):
         self._build_strings: list[str] = []
         self._data_files: dict[str, list[Path]] = {}
 
-        for archive_directory in archive_directories.split(","):
+        for archive_directory in archive_directories:
             archive_path: Path = Path(archive_directory)
             self._archive_directories.append(archive_path)
             data_directory: Path = Path(f"{archive_directory}/visualisation")

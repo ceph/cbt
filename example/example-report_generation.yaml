@@ -1,0 +1,89 @@
+cluster:
+  user: 'perf'
+  head: "incerta01"
+  clients: ["incerta01"]
+  osds: ["incerta02"]
+  mons:
+    incerta01:
+      a: "10.0.10.101:6789"
+  mgrs:
+    incerta01:
+      a: ~
+  mdss:
+    incerta01:
+      a: ~
+  osds_per_node: 1 
+  fs: 'xfs'
+  mkfs_opts: '-f -i size=2048'
+  mount_opts: '-o inode64,noatime,logbsize=256k'
+  conf_file: '/home/perf/ceph_tests/ceph.conf.64.async'
+  iterations: 1
+  use_existing: False
+  clusterid: "ceph"
+  tmp_dir: "/tmp/cbt"
+  ceph-osd_cmd: "env -i TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728 /usr/local/bin/ceph-osd"
+  ceph-mon_cmd: "/usr/local/bin/ceph-mon"
+  ceph-run_cmd: "/usr/local/bin/ceph-run"
+  rados_cmd: "/usr/local/bin/rados"
+  ceph_cmd: "/usr/local/bin/ceph"
+  ceph-fuse_cmd: "/usr/local/bin/ceph-fuse"
+  rbd_cmd: "/usr/local/bin/rbd"
+  rbd-nbd_cmd: "/usr/local/bin/rbd-nbd"  
+  rbd-fuse_cmd: "/usr/local/bin/rbd-fuse"
+  ceph-mgr_cmd: "/usr/local/bin/ceph-mgr"
+  ceph-mds_cmd: "/usr/local/bin/ceph-mds"
+  osd_valgrind: "massif"
+  pool_profiles:
+    replication:
+      pg_size: 256
+      pgp_size: 256
+      replication: 1 
+    ec21:
+      pg_size: 2048 
+      pgp_size: 2048
+      replication: 'erasure'
+      erasure_profile: 'ec21'
+  erasure_profiles:
+    ec21:
+      erasure_k: 2
+      erasure_m: 1
+  cephfs_pools:
+    cephfs_data: replication
+    cephfs_metadata: replication
+
+client_endpoints:
+  fiotest:
+    driver: 'librbd'
+#    driver: 'rbd-kernel'
+#    driver: 'rbd-nbd'
+#    driver: 'rbd-fuse'
+#    driver: 'rbd-tcmu'
+#    driver: 'cephfs-kernel'
+#    driver: 'cephfs-fuse'
+    endpoints_per_client: 1
+    endpoint_size: 524288
+    pool_profile: replication
+
+benchmarks:
+  fio:
+    client_endpoints: 'fiotest'
+    time: 300
+    time_based: True
+    norandommap: True
+    size: 262144 
+    mode: ['read', 'write', 'randread','randwrite']
+    rwmixread: 50
+    op_size: [4194304, 131072, 4096]
+    procs_per_endpoint: [1]
+    iodepth: [32]
+    osd_ra: [4096]
+    cmd_path: '/home/perf/src/fio/fio'
+    log_avg_msec: 100
+
+report:
+    force_refresh: True
+    create_pdf: False
+    output_directory: "/home/perf/reports/"
+    results_file_root: "output"
+
+
