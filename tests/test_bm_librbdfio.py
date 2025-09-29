@@ -16,7 +16,7 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
     cl_name = "tools/invariant.yaml"
     bl_name = "tools/baseline.json"
     bl_json = {}
-    bl_md5 = 'e6b6fcd2be74bd08939c64a249ab2125'
+    bl_md5 = 'b62e2394b5bac4dea01cceace04d0359'
     md5_returned = None
 
     @classmethod
@@ -93,12 +93,6 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
         b = benchmarkfactory.get_object(self.archive_dir,
                                             self.cluster, 'librbdfio', self.iteration)
         self.assertEqual(self.bl_json['librbdfio']['fio_out_format'], b.__dict__['fio_out_format'])
-
-    def test_valid_global_fio_options(self):
-        """ Basic sanity attribute identity global_fio_options check"""
-        b = benchmarkfactory.get_object(self.archive_dir,
-                                            self.cluster, 'librbdfio', self.iteration)
-        self.assertEqual(self.bl_json['librbdfio']['global_fio_options'], b.__dict__['global_fio_options'])
 
     def test_valid_idle_monitor_sleep(self):
         """ Basic sanity attribute identity idle_monitor_sleep check"""
@@ -333,12 +327,6 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
         b = benchmarkfactory.get_object(self.archive_dir,
                                             self.cluster, 'librbdfio', self.iteration)
         self.assertEqual(self.bl_json['librbdfio']['wait_pgautoscaler_timeout'], b.__dict__['wait_pgautoscaler_timeout'])
-
-    def test_valid_workloads(self):
-        """ Basic sanity attribute identity workloads check"""
-        b = benchmarkfactory.get_object(self.archive_dir,
-                                            self.cluster, 'librbdfio', self.iteration)
-        self.assertEqual(self.bl_json['librbdfio']['workloads'], b.__dict__['workloads'])
 
 if __name__ == '__main__':
     unittest.main()

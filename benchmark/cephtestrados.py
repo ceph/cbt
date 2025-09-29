@@ -47,7 +47,7 @@ class CephTestRados(Benchmark):
             self.weights['write'] = self.weights['write'] / 2
             self.weights['write_excl'] = self.weights['write']
 
-        self.run_dir = '%s/osd_ra-%08d/object_size-%08d' % (self.run_dir, int(self.osd_ra), int(self.variables['object_size']))
+        self.run_dir = '%sobject_size-%08d' % (self.run_dir, int(self.variables['object_size']))
         self.out_dir = '%s/osd_ra-%08d/object_size-%08d' % (self.archive_dir, int(self.osd_ra), int(self.variables['object_size']))
         self.pool_profile = config.get('pool_profile', 'default')
         self.cmd_path = config.get('cmd_path', '/usr/bin/ceph_test_rados')
