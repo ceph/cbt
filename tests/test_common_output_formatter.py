@@ -3,10 +3,11 @@ Unit tests for the CommonOutputFormatter class
 """
 
 import unittest
+from pathlib import Path
 from typing import Dict, List, Union
 
-from post_processing.formatter.common_output_formatter import CommonOutputFormatter
 from post_processing.formatter.benchmark_run_result import BenchmarkRunResult
+from post_processing.formatter.common_output_formatter import CommonOutputFormatter
 
 
 # pyright: ignore[reportPrivateUsage]
@@ -52,7 +53,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
     def setUp(self) -> None:
         print("setting up tests")
         self.formatter = CommonOutputFormatter("/tmp")
-        self.test_run_results = BenchmarkRunResult("/tmp", "unit_tests", "output")
+        self.test_run_results = BenchmarkRunResult(Path("/tmp"), "output")
 
     def test_do_nothing(self) -> None:
         """

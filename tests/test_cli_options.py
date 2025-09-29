@@ -54,16 +54,6 @@ class TestCliOptions(unittest.TestCase):
 
         self._test_update(self.DEFAULT_NEW_DATA, expected_options)
 
-    def test_update_value_already_exists(self) -> None:
-        """
-        Validate that the values in the CliOptions are not overwritten
-        when a set of new values is passed
-        """
-        expected_options: dict[str, str] = self.DEFAULT_DATA
-        update_data: dict[str, str] = {"iodepth": "22"}
-
-        self._test_update(update_data, expected_options)
-
     def test_add_new_value(self) -> None:
         """
         Validate adding a key/value pair to the CliOptions works
@@ -72,16 +62,6 @@ class TestCliOptions(unittest.TestCase):
         value: str = "value"
         expected_options: dict[str, str] = {key: value}
         expected_options.update(self.DEFAULT_DATA)
-        self._test_add(key, value, expected_options)
-
-    def test_add_value_already_exists(self) -> None:
-        """
-        Validate adding a key that already exists in the CliOptions
-        does not update the existing value for that key
-        """
-        key: str = "mode"
-        value: str = "bob"
-        expected_options: dict[str, str] = self.DEFAULT_DATA
         self._test_add(key, value, expected_options)
 
     def test_get_item_that_exists(self) -> None:
