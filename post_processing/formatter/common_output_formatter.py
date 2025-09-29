@@ -40,12 +40,10 @@ from logging import Logger, getLogger
 from pathlib import Path
 from typing import Optional
 
-from common import pdsh  # make_remote_dir  # pyright: ignore[reportUnknownVariableType]
-from post_processing.formatter.test_run_result import TestRunResult
-from post_processing.types import (
-    COMMON_FORMAT_FILE_DATA_TYPE,
-    INTERNAL_FORMATTED_OUTPUT_TYPE,
-)
+# pylint: disable=[no-name-in-module]
+from common import pdsh  # pyright: ignore[reportUnknownVariableType]
+from post_processing.formatter.benchmark_run_result import BenchmarkRunResult
+from post_processing.types import CommonFormatDataType, InternalFormattedOutputType
 
 log: Logger = getLogger("formatter")
 
@@ -67,13 +65,11 @@ class CommonOutputFormatter:
         self._directory: str = archive_directory
         self._filename_root: str = filename_root if filename_root else self.DEFAULT_OUTPUT_FILE_PART
 
-        self._formatted_output: INTERNAL_FORMATTED_OUTPUT_TYPE = {}
+        self._formatted_output: InternalFormattedOutputType = {}
         self._all_test_run_ids: set[str] = set()
         # Note that we use a set here as it does not allow duplicate entries,
         # and we do not care about ordering. It would be possible to use a List
         # and manually check for duplictaes, but that seems more untidy
-        # TODO: This is the whole archive directory - what happens if I want
-        # to specify a single run? How full do these get?
 
         self._path: Path
         self._file_list: list[Path] = []
@@ -83,18 +79,20 @@ class CommonOutputFormatter:
         Convert all files in a given directory to our internal format and then
         write out the intermediate file that can then be used to produce a graph
         """
-        log.info("Converting all files with name %s in directory %s" % (self._directory, self._filename_root))
+        log.info("Converting all files with name %s in directory %s", self._directory, self._filename_root)
         self._find_all_results_files_in_directory()
 
         self._find_all_testrun_ids()
-        for id in self._all_test_run_ids:
-            log.debug("Looking at test run with id %s" % id)
+        for testrun_id in self._all_test_run_ids:
+            log.debug("Looking at test run with id %s", testrun_id)
 
             # Actually find the test run ID directory
-            testrun_directories: list[Path] = list(self._path.glob(f"**/{id}"))
+            testrun_directories: list[Path] = list(self._path.glob(f"**/{testrun_id}"))
             if len(testrun_directories) > 1:
-                log.debug("We have more than one directory for test run %s so using the compatibility method" % id)
-                results: TestRunResult = TestRunResult(Path(self._directory), self._filename_root)
+                log.debug(
+                    "We have more than one directory for test run %s so using the compatibility method", testrun_id
+                )
+                results: BenchmarkRunResult = BenchmarkRunResult(Path(self._directory), self._filename_root)
 
                 results.process()
                 self._formatted_output.update(results.get())
@@ -105,28 +103,29 @@ class CommonOutputFormatter:
                 for io_pattern_directory in [
                     directory for directory in testrun_directory_path.iterdir() if directory.is_dir()
                 ]:
-                    log.debug("Looking at results for directory %s" % io_pattern_directory)
-                    results: TestRunResult = TestRunResult(
+                    log.debug("Looking at results for directory %s", io_pattern_directory)
+                    results: BenchmarkRunResult = BenchmarkRunResult(
                         directory=io_pattern_directory, file_name_root=self._filename_root
                     )
                     results.process()
-                    processed_results: INTERNAL_FORMATTED_OUTPUT_TYPE = results.get()
-                    for run_type in processed_results.keys():
-                        if run_type in self._formatted_output.keys():
-                            self._formatted_output[run_type].update(processed_results[run_type])
+                    processed_results: InternalFormattedOutputType = results.get()
+                    for run_type, run_data in processed_results.items():
+                        if self._formatted_output.get(run_type, None):
+                            # if run_type in self._formatted_output.keys():
+                            self._formatted_output[run_type].update(run_data)
                         else:
                             self._formatted_output.update(results.get())
 
         # get the max bandwidth and associated latency for each test run
-        for operation in self._formatted_output.keys():
-            for blocksize in self._formatted_output[operation].keys():
+        for _, operation_data in self._formatted_output.items():
+            for _, blocksize_data in operation_data.items():
                 max_bandwidth, max_bandwidth_latency, max_iops, max_iops_latency = (
-                    self._find_maximum_bandwidth_and_iops_with_latency(self._formatted_output[operation][blocksize])
+                    self._find_maximum_bandwidth_and_iops_with_latency(blocksize_data)
                 )
-                self._formatted_output[operation][blocksize]["maximum_bandwidth"] = max_bandwidth
-                self._formatted_output[operation][blocksize]["latency_at_max_bandwidth"] = max_bandwidth_latency
-                self._formatted_output[operation][blocksize]["maximum_iops"] = max_iops
-                self._formatted_output[operation][blocksize]["latency_at_max_iops"] = max_iops_latency
+                blocksize_data["maximum_bandwidth"] = max_bandwidth
+                blocksize_data["latency_at_max_bandwidth"] = max_bandwidth_latency
+                blocksize_data["maximum_iops"] = max_iops
+                blocksize_data["latency_at_max_iops"] = max_iops_latency
 
     def write_output_file(self) -> None:
         """
@@ -134,37 +133,31 @@ class CommonOutputFormatter:
         """
 
         destination_directory: str = f"{self._directory}/visualisation/"
-        log.info("writing new format files to %s" % destination_directory)
+        log.info("writing new format files to %s", destination_directory)
 
         if not Path(destination_directory).is_dir():
             pdsh("localhost", f"mkdir -p {destination_directory}").communicate()  # type: ignore[no-untyped-call]
-            # make_remote_dir(destination_directory)  # type: ignore[no-untyped-call]
 
-        for operation_type in self._formatted_output.keys():
-            for blocksize in self._formatted_output[operation_type].keys():
+        for operation_type, operation_data in self._formatted_output.items():
+            for blocksize, blocksize_data in operation_data.items():
                 destination_filename: str = f"{self._directory}/visualisation/{blocksize}_{operation_type}.json"
                 log.info("Writing formatted results to destination file %s", destination_filename)
                 with open(destination_filename, "w", encoding="utf8") as output:
-                    json.dump(self._formatted_output[operation_type][blocksize], output, indent=4, sort_keys=True)
+                    json.dump(blocksize_data, output, indent=4, sort_keys=True)
 
     def _find_all_results_files_in_directory(self) -> None:
         """
         find the files of interest in the archive directory we have been given
         """
-        log.debug(
-            "Finding all %s* files from %s"
-            % (
-                self._filename_root,
-                self._directory,
-            )
-        )
+        log.debug("Finding all %s* files from %s", self._filename_root, self._directory)
+
         self._path = Path(self._directory)
         # this gives a generator where each contained object is a Path of format:
         # <self._directory>/results/<iteration>/<run_id>/json_output.<vol_id>
         self._file_list = [
             path
             for path in self._path.glob(f"**/{self._filename_root}.*")
-            if re.search(f"{self._filename_root}.\d+$", f"{path}")  # pyright: ignore[reportInvalidStringEscapeSequence]
+            if re.search(rf"{self._filename_root}.\d+$", f"{path}")
         ]
 
     def _find_all_testrun_ids(self) -> None:
@@ -192,16 +185,16 @@ class CommonOutputFormatter:
             # file path, and we want only one. We choose to always take the fist one.
             # If there are none then just return the directory name above the file
             if len(potential_ids) > 0:
-                id: str = potential_ids[0]
+                testrun_id: str = potential_ids[0]
             else:
                 # if we get no matches then just use the directory directly above
                 # the output file
-                id = file_path.parts[-2]
+                testrun_id = file_path.parts[-2]
 
-            self._all_test_run_ids.add(id)
+            self._all_test_run_ids.add(testrun_id)
 
     def _find_maximum_bandwidth_and_iops_with_latency(
-        self, test_run_data: COMMON_FORMAT_FILE_DATA_TYPE
+        self, test_run_data: CommonFormatDataType
     ) -> tuple[str, str, str, str]:
         """
         find the maximum bandwith and associated latency and the maximum iops

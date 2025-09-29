@@ -7,7 +7,7 @@ import os
 from logging import Logger, getLogger
 from typing import Any
 
-HANDLER_TYPE = dict[str, dict[str, str]]
+from post_processing.types import HandlerType
 
 LOGFILE_LOCATION: str = os.getenv("CBT_PP_LOGFILE_LOCATION", "/tmp")
 LOGFILE_NAME_BASE: str = f"{LOGFILE_LOCATION}/cbt/post_processing"
@@ -15,10 +15,12 @@ LOGFILE_EXTENSION: str = ".log"
 
 LOGGERS: list[str] = ["formatter", "plotter", "reports"]
 
-LOGGING_CONFIGURATION_TYPE = dict[str, Any]
-
 
 def setup_logging() -> None:
+    """
+    Set up the logging for the post processing. This should be called before
+    trying to post-process any results
+    """
     os.makedirs(f"{LOGFILE_LOCATION}/cbt/", exist_ok=True)
     logging.config.dictConfig(_get_configuration())
     log: Logger = getLogger("formatter")
@@ -26,8 +28,8 @@ def setup_logging() -> None:
     log.info("=== Starting Post Processing of CBT results ===")
 
 
-def _get_handlers_configuration() -> HANDLER_TYPE:
-    handlers: HANDLER_TYPE = {
+def _get_handlers_configuration() -> HandlerType:
+    handlers: HandlerType = {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "console",
@@ -88,7 +90,7 @@ def _get_configuration() -> dict[str, Any]:
         }
         logging_config["loggers"][logger_name] = new_logger
 
-    handler_entry: HANDLER_TYPE = _get_handlers_configuration()
+    handler_entry: HandlerType = _get_handlers_configuration()
     logging_config["handlers"] = handler_entry
 
     return logging_config

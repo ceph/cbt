@@ -4,16 +4,19 @@ A file to contain common type definitions for use in the post-processing
 
 from typing import Union
 
+# Log setup types
+HandlerType = dict[str, dict[str, str]]
+
 # FIO json file data types
-JOBS_DATA_TYPE = list[dict[str, Union[str, dict[str, Union[int, float, dict[str, Union[int, float]]]]]]]
+JobsDataType = list[dict[str, Union[str, dict[str, Union[int, float, dict[str, Union[int, float]]]]]]]
 
 # Common formatter data types
-IODEPTH_DETAILS_TYPE = dict[str, str]
-COMMON_FORMAT_FILE_DATA_TYPE = dict[str, Union[str, IODEPTH_DETAILS_TYPE]]
+IodepthDataType = dict[str, str]
+CommonFormatDataType = dict[str, Union[str, IodepthDataType]]
 
 # Common formatter internal data types
-INTERNAL_BLOCKSIZE_DATA_TYPE = dict[str, COMMON_FORMAT_FILE_DATA_TYPE]
-INTERNAL_FORMATTED_OUTPUT_TYPE = dict[str, INTERNAL_BLOCKSIZE_DATA_TYPE]
+InternalBlocksizeDataType = dict[str, CommonFormatDataType]
+InternalFormattedOutputType = dict[str, InternalBlocksizeDataType]
 
 # Plotter types
-PLOT_DATA_TYPE = dict[str, dict[str, str]]
+PlotDataType = dict[str, dict[str, str]]

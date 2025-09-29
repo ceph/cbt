@@ -6,7 +6,7 @@ import unittest
 from typing import Dict, List, Union
 
 from post_processing.formatter.common_output_formatter import CommonOutputFormatter
-from post_processing.formatter.test_run_result import TestRunResult
+from post_processing.formatter.benchmark_run_result import BenchmarkRunResult
 
 
 # pyright: ignore[reportPrivateUsage]
@@ -52,7 +52,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
     def setUp(self) -> None:
         print("setting up tests")
         self.formatter = CommonOutputFormatter("/tmp")
-        self.test_run_results = TestRunResult("/tmp", "unit_tests", "output")
+        self.test_run_results = BenchmarkRunResult("/tmp", "unit_tests", "output")
 
     def test_do_nothing(self) -> None:
         """

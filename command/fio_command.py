@@ -10,7 +10,7 @@ options that are specific to a particular I/O engine e.g. rbd a subclass
 should be created that parses these options
 """
 
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from typing import Optional
 
@@ -20,7 +20,7 @@ from command.command import Command
 log: Logger = getLogger("cbt")
 
 
-class FioCommand(Command, metaclass=ABCMeta):
+class FioCommand(Command, ABC):
     """
     The FIO command class. This class represents a single FIO command
     line that can be run on a local or remote client system.

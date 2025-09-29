@@ -33,6 +33,15 @@ log: Logger = getLogger("reports")
 
 
 class ComparisonReportGenerator(ReportGenerator):
+    """
+    The class responsible for generating a comparison report. That is a single report that
+    compares one or more sets of test data, and creates plots that have data from multiple
+    runs on a single plot
+
+    This can either be a comparison of two idividual files, or multiple test run directories
+    containing several individual FIO runs
+    """
+
     def _generate_report_title(self) -> str:
         title: str = f"Comparitive Performance Report for {' vs '.join(self._build_strings)}"
         return title
@@ -65,11 +74,11 @@ class ComparisonReportGenerator(ReportGenerator):
 
         # Create the correct sections and add a table for each section to the report
 
-        for section in image_tables.keys():
+        for section, data in image_tables.items():
             # We don't want to display a section if it doesn't contain any plots
-            if len(image_tables[section]) > len(empty_table_header):
+            if len(data) > len(empty_table_header):
                 self._report.new_header(level=2, title=section)
-                table_images = image_tables[section]
+                table_images = data
 
                 # We need to calculate the rumber of rows, but new_table() requires the
                 # exact number of items to fill the table, so we may need to add a dummy
@@ -94,12 +103,12 @@ class ComparisonReportGenerator(ReportGenerator):
         (table_header, table_justfication_string) = self._generate_table_headers()
         self._generate_table_rows(data_tables)
 
-        for operation in data_tables.keys():
-            if data_tables[operation]:
+        for operation, data in data_tables.items():
+            if data:
                 self._report.new_line(text=f"|{operation}|{table_header}")
                 self._report.new_line(text=table_justfication_string)
 
-            for line in data_tables[operation]:
+            for line in data:
                 self._report.new_line(text=line)
             self._report.new_line()
 
@@ -237,7 +246,11 @@ class ComparisonReportGenerator(ReportGenerator):
                     latency_percentage_difference: str = calculate_percent_difference_to_baseline(
                         baseline=baseline_latency_ms, comparison=latency_ms
                     )
-                    data_string += f"{max_throughput}@{latency_ms}ms|{throughput_percentage_difference}|{latency_percentage_difference}|"
+                    data_string += (
+                        f"{max_throughput}@{latency_ms}ms|"
+                        + f"{throughput_percentage_difference}|"
+                        + f"{latency_percentage_difference}|"
+                    )
                 else:
                     data_string += f"{max_throughput.split(' ')[0]}@{latency_ms}|{throughput_percentage_difference}|"
 

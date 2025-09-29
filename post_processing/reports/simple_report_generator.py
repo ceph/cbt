@@ -31,6 +31,12 @@ log: Logger = getLogger("reports")
 
 
 class SimpleReportGenerator(ReportGenerator):
+    """
+    The class responsible for generating a report from a single FIO run
+
+    Typically this is run using a Workload.
+    """
+
     def _generate_report_title(self) -> str:
         title: str = f"Performance Report for {''.join(self._build_strings)}"
         return title
@@ -60,9 +66,11 @@ class SimpleReportGenerator(ReportGenerator):
         for _, operation in TITLE_CONVERSION.items():
             data_tables[operation] = []
 
-        for file_name in self._data_files.keys():
-            for file_path in self._data_files[file_name]:
-                log.debug("Looking at file %s" % file_path)
+        for _, file_data in self._data_files.items():
+            for file_path in file_data:
+                # for file_name in self._data_files.keys():
+                #    for file_path in self._data_files[file_name]:
+                log.debug("Looking at file %s", file_path)
                 (max_throughput, latency_ms) = get_latency_throughput_from_file(file_path)
 
                 (_, _, operation) = get_blocksize_percentage_operation_from_file_name(file_path.stem)
@@ -70,8 +78,9 @@ class SimpleReportGenerator(ReportGenerator):
 
                 data_tables[operation].append(data)
 
-        for operation in data_tables.keys():
-            for line in data_tables[operation]:
+        # for operation in data_tables.keys():
+        for _, operation_data in data_tables.items():
+            for line in operation_data:
                 self._report.new_line(text=line)
 
     def _add_plots(self) -> None:
@@ -97,11 +106,12 @@ class SimpleReportGenerator(ReportGenerator):
 
         # Create the correct sections and add a table for each section to the report
 
-        for section in image_tables.keys():
+        # for section in image_tables.keys():
+        for section_name, section_data in image_tables.items():
             # We don't want to display a section if it doesn't contain any plots
-            if len(image_tables[section]) > len(empty_table_header):
-                self._report.new_header(level=2, title=section)
-                table_images = image_tables[section]
+            if len(section_data) > len(empty_table_header):
+                self._report.new_header(level=2, title=section_name)
+                table_images = section_data
 
                 # We need to calculate the rumber of rows, but new_table() requires the
                 # exact number of items to fill the table, so we may need to add a dummy
