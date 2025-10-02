@@ -25,6 +25,7 @@ from post_processing.common import (
 log: Logger = getLogger("reports")
 
 
+# pylint: disable=too-many-instance-attributes
 class ReportGenerator(ABC):
     """
     The base class for all classes responsible for generating a markdown and
@@ -279,13 +280,12 @@ class ReportGenerator(ABC):
 
         tex_output_path: Path = Path(f"{self._output_directory}/perf_report.tex")
 
-        # TODO: What do we want to actually do here????
         build_string: str = " vs ".join(self._build_strings)
 
         try:
-            tex_contents: str = base_header_file.read_text()
+            tex_contents: str = base_header_file.read_text(encoding="utf-8")
             tex_contents = tex_contents.replace("BUILD", build_string)
-            tex_output_path.write_text(tex_contents)
+            tex_output_path.write_text(tex_contents, encoding="utf-8")
         except FileNotFoundError:
             log.error("Unable to read from %s", base_header_file)
         except PermissionError:

@@ -9,11 +9,8 @@ from typing import Optional, Union
 import monitoring
 from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
-from workloads.workload import WORKLOAD_TYPE, WORKLOAD_YAML_TYPE, Workload
-
-BENCHMARK_CONFIGURATION_TYPE = dict[  # pylint: disable = ["invalid-name"]
-    str, dict[str, Union[str, list[str], dict[str, dict[str, Union[str, list[int]]]], dict[str, str]]]
-]
+from workloads.workload import Workload
+from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, WorkloadYamlType
 
 log: Logger = getLogger("cbt")
 
@@ -30,17 +27,17 @@ class Workloads:
     before attemting to use the run() method
     """
 
-    def __init__(self, benchmark_configuration: BENCHMARK_CONFIGURATION_TYPE, base_run_directory: str) -> None:
-        self._benchmark_configuration: BENCHMARK_CONFIGURATION_TYPE = benchmark_configuration
+    def __init__(self, benchmark_configuration: BenchmarkConfigurationType, base_run_directory: str) -> None:
+        self._benchmark_configuration: BenchmarkConfigurationType = benchmark_configuration
         self._base_run_directory: str = base_run_directory
 
-        self._global_options: WORKLOAD_TYPE = self._get_global_options_from_configuration(benchmark_configuration)
+        self._global_options: WorkloadType = self._get_global_options_from_configuration(benchmark_configuration)
 
         self._benchmark_type: str = ""
         self._executable: str = ""
         self._workloads: list[Workload] = []
 
-        workloads_configuration: WORKLOAD_YAML_TYPE = benchmark_configuration.get("workloads", {})  # type: ignore[assignment]
+        workloads_configuration: WorkloadYamlType = self._benchmark_configuration.get("workloads", {})
         self._create_configurations(workloads_configuration)
 
     def exist(self) -> bool:
@@ -136,7 +133,7 @@ class Workloads:
         """
         return self._base_run_directory
 
-    def _create_configurations(self, workload_json: WORKLOAD_YAML_TYPE) -> None:
+    def _create_configurations(self, workload_json: WorkloadYamlType) -> None:
         """
         Get the options needed to construct the benchmark command to run the test
         """
@@ -147,15 +144,15 @@ class Workloads:
 
             self._workloads.append(workload)
 
-    def _get_global_options_from_configuration(self, configuration: BENCHMARK_CONFIGURATION_TYPE) -> WORKLOAD_TYPE:
+    def _get_global_options_from_configuration(self, configuration: BenchmarkConfigurationType) -> WorkloadType:
         """
         Get any configuration options from the test plan .yaml that are not workload
         specific
         """
-        global_options: WORKLOAD_TYPE = {}
+        global_options: WorkloadType = {}
 
         for option_name, value in configuration.items():
-            if option_name == "workloads" or option_name == "prefill":
+            if option_name in ("workloads", "prefill"):
                 # prefill is not an option for workloads as it is used in the Benchmark prefill()
                 # method.
                 # workloads we also want to ignore as these will be dealt with at a later date

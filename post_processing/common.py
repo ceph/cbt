@@ -7,8 +7,11 @@ import json
 import re
 from datetime import datetime
 from logging import Logger, getLogger
+from math import sqrt
 from pathlib import Path
 from typing import Any, Optional, Union
+
+from post_processing.types import CommonFormatDataType
 
 log: Logger = getLogger("cbt")
 
@@ -22,10 +25,6 @@ TITLE_CONVERSION: dict[str, str] = {
     "readwrite": "Sequential Read/Write",
     "randrw": "Random Read/Write",
 }
-
-# Define the data types in common use:
-COMMON_FORMAT_DATA_TYPE = dict[str, Union[str, dict[str, str]]]
-PLOT_DATA_TYPE = dict[str, dict[str, str]]
 
 # Common file extensions
 PLOT_FILE_EXTENSION: str = "png"
@@ -58,11 +57,11 @@ def get_blocksize_percentage_operation_from_file_name(file_name: str) -> tuple[s
     return (blocksize, read_percent, operation)
 
 
-def read_intermediate_file(file_path: str) -> COMMON_FORMAT_DATA_TYPE:
+def read_intermediate_file(file_path: str) -> CommonFormatDataType:
     """
     Read the json data from the common intermediate file and store it for processing.
     """
-    data: COMMON_FORMAT_DATA_TYPE = {}
+    data: CommonFormatDataType = {}
     # We know the file encoding as we wrote it ourselves as part of
     # common_output_format.py, so it is safe to specify here
 
@@ -83,7 +82,7 @@ def get_latency_throughput_from_file(file_path: Path) -> tuple[str, str]:
     maximum throughput in either iops or MB/s, and the latency in ms
     recorded for that throughput
     """
-    data: COMMON_FORMAT_DATA_TYPE = read_intermediate_file(file_path=f"{file_path}")
+    data: CommonFormatDataType = read_intermediate_file(file_path=f"{file_path}")
 
     # The blocksize will be the same for every data point in the file.
     # We can therefore read the blocksize from the first data point
@@ -222,7 +221,7 @@ def recursive_search(data_to_search: dict[str, Any], search_key: str) -> Optiona
 
     for key, value in data_to_search.items():
         if key == search_key:
-            log.debug("Returning %s for key %s from %s", (value, key, data_to_search))
+            log.debug("Returning %s for key %s from %s", value, key, data_to_search)
             return f"{value}"
         if isinstance(value, list):
             for item in value:  # pyright: ignore[reportUnknownVariableType]
@@ -239,7 +238,38 @@ def get_blocksize(blocksize_value: str) -> str:
     return a blocksize value without the units
     """
     blocksize: str = blocksize_value
-    if re.search("\D$", blocksize):  # pyright: ignore[reportInvalidStringEscapeSequence]
+    if re.search(r"\D$", blocksize):
         blocksize = blocksize[:-1]
 
     return blocksize
+
+
+def sum_standard_deviation_values(
+    std_deviations: list[float],
+    operations: list[int],
+    latencies: list[float],
+    total_ios: int,
+    combined_latency: float,
+) -> float:
+    """
+    Sum the standard deviations from a number of test runs
+
+    For each run we need to calculate:
+    weighted_stddev = sum ((num_ops - 1) * std_dev^2 + num_ops1 * mean_latency1^2)
+
+    sqrt( (weighted_stddev - (total_ios)*combined_latency^2) / total_ios - 1)
+    """
+    weighted_stddev: float = 0
+
+    # For standard deviation this is more complex. For each job we need to calculate:
+    #    (num_ops - 1) * std_dev^2 + num_ops1 * mean_latency1^2
+    for index, stddev in enumerate(std_deviations):
+        weighted_stddev += (operations[index] - 1) * stddev * stddev + operations[index] * (
+            latencies[index] * latencies[index]
+        )
+
+    latency_standard_deviation: float = sqrt(
+        (weighted_stddev - total_ios * combined_latency * combined_latency) / (total_ios - 1)
+    )
+
+    return latency_standard_deviation

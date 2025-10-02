@@ -15,11 +15,12 @@ from post_processing.common import (
     read_intermediate_file,
 )
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
-from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE
+from post_processing.types import CommonFormatDataType
 
 log: Logger = getLogger("plotter")
 
 
+# pylint: disable=[too-few-public-methods]
 class DirectoryComparisonPlotter(CommonFormatPlotter):
     """
     Read the intermediate data files in the common json format and produce a
@@ -42,7 +43,7 @@ class DirectoryComparisonPlotter(CommonFormatPlotter):
         for file_name in common_file_names:
             output_file_path: str = self._generate_output_file_name(files=[Path(file_name)])
             for directory in self._comparison_directories:
-                file_data: COMMON_FORMAT_FILE_DATA_TYPE = read_intermediate_file(f"{directory}/{file_name}")
+                file_data: CommonFormatDataType = read_intermediate_file(f"{directory}/{file_name}")
                 # we choose the last directory name for the label to apply to the data
                 self._add_single_file_data(
                     plotter=plotter,
@@ -54,7 +55,9 @@ class DirectoryComparisonPlotter(CommonFormatPlotter):
             self._set_axis(plotter=plotter)
 
             # make sure we add the legend to the plot
-            plotter.legend(bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2)  # pyright: ignore[reportUnknownMemberType]
+            plotter.legend(  # pyright: ignore[reportUnknownMemberType]
+                bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2
+            )
 
             self._save_plot(plotter=plotter, file_path=output_file_path)
             self._clear_plot(plotter=plotter)

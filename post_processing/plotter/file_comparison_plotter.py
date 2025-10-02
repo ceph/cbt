@@ -17,7 +17,7 @@ from post_processing.common import (
     read_intermediate_file,
 )
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
-from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE
+from post_processing.types import CommonFormatDataType
 
 log: Logger = getLogger("plotter")
 
@@ -29,7 +29,7 @@ class FileComparisonPlotter(CommonFormatPlotter):
     as they seem to make the plot harder to read and compare.
     """
 
-    def __init__(self, output_directory: str, files: list[str], labels: Optional[list[str]] = None) -> None:
+    def __init__(self, output_directory: str, files: list[str]) -> None:
         self._output_directory: str = f"{output_directory}"
         self._comparison_files: list[Path] = [Path(file) for file in files]
         self._labels: Optional[list[str]] = None
@@ -39,7 +39,7 @@ class FileComparisonPlotter(CommonFormatPlotter):
 
         for file_path in self._comparison_files:
             index: int = self._comparison_files.index(file_path)
-            file_data: COMMON_FORMAT_FILE_DATA_TYPE = read_intermediate_file(f"{file_path}")
+            file_data: CommonFormatDataType = read_intermediate_file(f"{file_path}")
 
             operation_details: tuple[str, str, str] = get_blocksize_percentage_operation_from_file_name(
                 file_name=file_path.stem
@@ -58,7 +58,9 @@ class FileComparisonPlotter(CommonFormatPlotter):
             self._add_single_file_data(plotter=plotter, file_data=file_data, label=label)
 
         # make sure we add the legend to the plot, below the chart
-        plotter.legend(bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2)  # pyright: ignore[reportUnknownMemberType]
+        plotter.legend(  # pyright: ignore[reportUnknownMemberType]
+            bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2
+        )
 
         self._add_title(plotter=plotter, source_files=self._comparison_files)
         self._set_axis(plotter=plotter)

@@ -6,7 +6,10 @@ intermediate format introduced in PR 319 (https://github.com/ceph/cbt/pull/319) 
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from pathlib import Path
-from types import ModuleType
+
+# the ModuleType does exists in the types module, so no idea why pylint is
+# flagging this
+from types import ModuleType  # pylint: disable=[no-name-in-module]
 from typing import Optional, Union
 
 from post_processing.common import (
@@ -14,11 +17,12 @@ from post_processing.common import (
     PLOT_FILE_EXTENSION,
     get_blocksize_percentage_operation_from_file_name,
 )
-from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE, PLOT_DATA_TYPE
+from post_processing.types import CommonFormatDataType, PlotDataType
 
 log: Logger = getLogger("plotter")
 
 
+# pylint: disable=too-few-public-methods
 class CommonFormatPlotter(ABC):
     """
     The base class for plotting results curves
@@ -122,13 +126,13 @@ class CommonFormatPlotter(ABC):
         plotter.xlim(0, maximum_x)
         plotter.ylim(0, maximum_y)
 
-    def _sort_plot_data(self, unsorted_data: COMMON_FORMAT_FILE_DATA_TYPE) -> PLOT_DATA_TYPE:
+    def _sort_plot_data(self, unsorted_data: CommonFormatDataType) -> PlotDataType:
         """
         Sort the data read from the file by queue depth
         """
         keys: list[str] = [key for key in unsorted_data.keys() if isinstance(unsorted_data[key], dict)]
-        plot_data: PLOT_DATA_TYPE = {}
-        sorted_plot_data: PLOT_DATA_TYPE = {}
+        plot_data: PlotDataType = {}
+        sorted_plot_data: PlotDataType = {}
         for key, data in unsorted_data.items():
             if isinstance(data, dict):
                 plot_data[key] = data
@@ -140,7 +144,7 @@ class CommonFormatPlotter(ABC):
         return sorted_plot_data
 
     def _add_single_file_data_with_optional_errorbars(
-        self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE, plot_error_bars: bool
+        self, plotter: ModuleType, file_data: CommonFormatDataType, plot_error_bars: bool
     ) -> None:
         """
         Add the data from a single file to a plot. Include error bars. Each point
@@ -149,7 +153,7 @@ class CommonFormatPlotter(ABC):
         The plot will have red error bars with a blue plot line
         """
 
-        sorted_plot_data: PLOT_DATA_TYPE = self._sort_plot_data(file_data)
+        sorted_plot_data: PlotDataType = self._sort_plot_data(file_data)
 
         x_data: list[Union[int, float]] = []
         y_data: list[Union[int, float]] = []
@@ -179,14 +183,14 @@ class CommonFormatPlotter(ABC):
 
         plotter.errorbar(x_data, y_data, error_bars, capsize=capsize, ecolor="red")
 
-    def _add_single_file_data(self, plotter: ModuleType, file_data: COMMON_FORMAT_FILE_DATA_TYPE, label: str) -> None:
+    def _add_single_file_data(self, plotter: ModuleType, file_data: CommonFormatDataType, label: str) -> None:
         """
         Add the data from a single file to a plot.
 
         This will be a line of colour with data points marked by a small cross,
         and no error bars.
         """
-        sorted_plot_data: PLOT_DATA_TYPE = self._sort_plot_data(file_data)
+        sorted_plot_data: PlotDataType = self._sort_plot_data(file_data)
 
         x_data: list[Union[int, float]] = []
         y_data: list[Union[int, float]] = []

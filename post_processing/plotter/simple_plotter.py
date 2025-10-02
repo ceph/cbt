@@ -15,9 +15,10 @@ from post_processing.common import (
     read_intermediate_file,
 )
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
-from post_processing.types import COMMON_FORMAT_FILE_DATA_TYPE
+from post_processing.types import CommonFormatDataType
 
 
+# pylint: disable=too-few-public-methods
 class SimplePlotter(CommonFormatPlotter):
     """
     Read the intermediate data file in the common json format and produce a hockey-stick
@@ -31,7 +32,7 @@ class SimplePlotter(CommonFormatPlotter):
 
     def draw_and_save(self) -> None:
         for file_path in self._path.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}"):
-            file_data: COMMON_FORMAT_FILE_DATA_TYPE = read_intermediate_file(f"{file_path}")
+            file_data: CommonFormatDataType = read_intermediate_file(f"{file_path}")
             output_file_path: str = self._generate_output_file_name(files=[file_path])
             self._add_single_file_data_with_optional_errorbars(
                 plotter=plotter, file_data=file_data, plot_error_bars=self._plot_error_bars

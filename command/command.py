@@ -6,7 +6,7 @@ It will return the full executable string that can be used to run a
 cli command using whatever method the Benchmark chooses
 """
 
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from typing import Optional
 
@@ -15,7 +15,7 @@ from cli_options import CliOptions
 log: Logger = getLogger("cbt")
 
 
-class Command(metaclass=ABCMeta):
+class Command(ABC):
     """
     A class that encapsulates a single CLI command that can be run on a
     system

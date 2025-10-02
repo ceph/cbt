@@ -22,6 +22,10 @@ log: Logger = getLogger("reports")
 
 
 class ReportOptions(NamedTuple):
+    """
+    This class is used to store the options required to create a report.
+    """
+
     archives: list[str]
     output_directory: str
     results_file_root: str
@@ -32,6 +36,9 @@ class ReportOptions(NamedTuple):
 
 
 def parse_namespace_to_options(arguments: Namespace, comparison_report: bool = False) -> ReportOptions:
+    """
+    Parse a namespace as used by argparse into our internal NamedTuple representation
+    """
     no_error_bars: bool = False
     archives: list[str] = []
     output_directory: str = arguments.output_directory
@@ -56,7 +63,15 @@ def parse_namespace_to_options(arguments: Namespace, comparison_report: bool = F
         comparison=comparison_report,
     )
 
+
 class Report:
+    """
+    Represents a report that will be created from a CBT fio run.
+
+    It will perform all the necessary steps to convert the raw data into a
+    report
+    """
+
     def __init__(self, options: ReportOptions) -> None:
         self._options: ReportOptions = options
 
@@ -64,13 +79,17 @@ class Report:
 
     @property
     def result_code(self) -> int:
+        """
+        The return code from creating the reports. This is used when creating
+        reports using the helper scripts
+        """
         return self._result_code
 
     def generate(self) -> None:
         """
         Do all the steps necessary to create the report file
         """
-        log.info("Creating directory %s to contain the reports" % self._options.output_directory)
+        log.info("Creating directory %s to contain the reports", self._options.output_directory)
         os.makedirs(f"{self._options.output_directory}", exist_ok=True)
 
         try:
@@ -97,7 +116,7 @@ class Report:
 
         except Exception as e:
             self._result_code = 1
-            raise (e)
+            raise e
 
     def _generate_intermediate_files(self) -> None:
         """
@@ -111,10 +130,10 @@ class Report:
             if not os.path.exists(output_directory) or not os.listdir(output_directory) or self._options.force_refresh:
                 # Either the directory doesn't exists, or is empty, or the user has told us to regenerate the files
 
-                log.debug("Creating directory %s" % output_directory)
+                log.debug("Creating directory %s", output_directory)
                 os.makedirs(output_directory, exist_ok=True)
 
-                log.info("Generating intermediate files for %s in directory %s" % (directory, output_directory))
+                log.info("Generating intermediate files for %s in directory %s", directory, output_directory)
                 formatter: CommonOutputFormatter = CommonOutputFormatter(
                     archive_directory=directory, filename_root=self._options.results_file_root
                 )
@@ -124,8 +143,9 @@ class Report:
                     formatter.write_output_file()
                 except Exception as e:
                     log.error(
-                        "Encountered an error parsing results in directory %s with name %s"
-                        % (directory, self._options.results_file_root)
+                        "Encountered an error parsing results in directory %s with name %s",
+                        directory,
+                        self._options.results_file_root,
                     )
                     log.exception(e)
                     raise e

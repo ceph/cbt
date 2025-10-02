@@ -1,5 +1,17 @@
 {
     "cephtestrados": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/CephTestRados/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "bools": {
@@ -145,6 +157,18 @@
         }
     },
     "fio": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/Fio/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "bs": null,
@@ -287,7 +311,7 @@
         "random_distribution": null,
         "rate_iops": null,
         "recov_test_type": "blocking",
-        "run_dir": "/tmp/cbt.XYZ/00000000/Fio",
+        "run_dir": "/tmp/cbt.XYZ/00000000/Fio/osd_ra-00000000/",
         "rwmixread": 50,
         "rwmixwrite": 50,
         "size": 4096,
@@ -297,6 +321,18 @@
         "valgrind": null
     },
     "getput": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/Getput/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "auth_urls": [],
@@ -429,7 +465,7 @@
         "out_dir": "/tmp/results/00000000/id-83a653b5/osd_ra-00000000/op_size-04194304/procs-00000001/p/None",
         "pool_profile": "default",
         "procs": 1,
-        "run_dir": "/tmp/cbt.XYZ/00000000/Getput/osd_ra-00000000/op_size-04194304/procs-00000001/p/None",
+        "run_dir": "/tmp/cbt.XYZ/00000000/Getput/osd_ra-00000000//osd_ra-00000000/op_size-04194304/procs-00000001/p/None",
         "runtime": null,
         "subuser": "cbt:swift",
         "test": "p",
@@ -438,6 +474,18 @@
         "valgrind": null
     },
     "hsbench": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/Hsbench/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "bucket_prefix": null,
@@ -572,13 +620,25 @@
         "prefill_modes": "cxip",
         "region": null,
         "report_intervals": null,
-        "run_dir": "/tmp/cbt.XYZ/00000000/Hsbench",
+        "run_dir": "/tmp/cbt.XYZ/00000000/Hsbench/osd_ra-00000000/",
         "size": null,
         "threads": null,
         "tmp_conf": "/tmp/cbt.XYZ/ceph/ceph.conf",
         "valgrind": null
     },
     "kvmrbdfio": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/KvmRbdFio/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "block_device_list": "/dev/vdb",
@@ -727,9 +787,24 @@
         "vol_size": 58982.4
     },
     "librbdfio": {
+        "_iodepth_per_volume": {
+            "0": 16
+        },
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/LibrbdFio/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
-        "base_run_dir": "/tmp/cbt.XYZ/00000000/LibrbdFio",
+        "base_run_dir": "/tmp/cbt.XYZ/00000000/LibrbdFio/osd_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write",
         "cluster": {
             "archive_dir": "/tmp/ceph",
             "auth_urls": [],
@@ -846,7 +921,6 @@
         "data_pool_profile": null,
         "end_fsync": 0,
         "fio_out_format": "json,normal",
-        "global_fio_options": {},
         "idle_monitor_sleep": 60,
         "iodepth": 16,
         "log_avg_msec": null,
@@ -854,7 +928,7 @@
         "log_iops": true,
         "log_lat": true,
         "mode": "write",
-        "names": "--name=cbt-librbdfio-`hostname -f`-file-0 ",
+        "names": "--name=cbt-rbdfio-`hostname -f`-file-0 ",
         "no_sudo": false,
         "norandommap": false,
         "numjobs": 1,
@@ -874,10 +948,10 @@
         "random_distribution": null,
         "rate_iops": null,
         "rbdname": "",
-        "recov_pool_name": "cbt-librbdfio-recov",
+        "recov_pool_name": "cbt-rbdfio-recov",
         "recov_pool_profile": "default",
         "recov_test_type": "blocking",
-        "run_dir": "/tmp/cbt.XYZ/00000000/LibrbdFio/osd_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write",
+        "run_dir": "/tmp/cbt.XYZ/00000000/LibrbdFio/osd_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write/osd_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write",
         "rwmixread": 50,
         "rwmixwrite": 50,
         "time": null,
@@ -888,10 +962,21 @@
         "vol_object_size": 22,
         "vol_size": 65536,
         "volumes_per_client": 1,
-        "wait_pgautoscaler_timeout": -1,
-        "workloads": {}
+        "wait_pgautoscaler_timeout": -1
     },
     "nullbench": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/Nullbench/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": [
             1,
             2,
@@ -1015,10 +1100,22 @@
         "log_lat": true,
         "osd_ra": "0",
         "osd_ra_changed": true,
-        "run_dir": "/tmp/cbt.XYZ/00000000/Nullbench",
+        "run_dir": "/tmp/cbt.XYZ/00000000/Nullbench/osd_ra-00000000/",
         "valgrind": null
     },
     "radosbench": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/Radosbench/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "cluster": {
@@ -1161,6 +1258,18 @@
         "write_time": "300"
     },
     "rawfio": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/RawFio/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "block_device_list": "/dev/vdb",
@@ -1296,7 +1405,7 @@
         "out_dir": "/tmp/results/00000000/id-83a653b5/raw_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write",
         "ramp": "0",
         "rate_iops": null,
-        "run_dir": "/tmp/cbt.XYZ/00000000/RawFio/raw_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write",
+        "run_dir": "/tmp/cbt.XYZ/00000000/RawFio/osd_ra-00000000/raw_ra-00000000/op_size-04194304/concurrent_procs-001/iodepth-016/write",
         "rwmixread": 50,
         "rwmixwrite": 50,
         "startdelay": null,
@@ -1306,6 +1415,18 @@
         "vol_size": 58982.4
     },
     "rbdfio": {
+        "_workloads": {
+            "_base_run_directory": "/tmp/cbt.XYZ/00000000/RbdFio/osd_ra-00000000/",
+            "_benchmark_configuration": {
+                "iteration": 0
+            },
+            "_benchmark_type": "",
+            "_executable": "",
+            "_global_options": {
+                "iteration": "0"
+            },
+            "_workloads": []
+        },
         "acceptable": {},
         "archive_dir": "/tmp/results/00000000/id-83a653b5",
         "client_ra": 128,
@@ -1443,7 +1564,7 @@
         "random_distribution": null,
         "rbdadd_mons": null,
         "rbdadd_options": "share",
-        "run_dir": "/tmp/cbt.XYZ/00000000/RbdFio/rbdfio/osd_ra-00000000/client_ra-00000128/op_size-04194304/concurrent_procs-001/iodepth-016/write",
+        "run_dir": "/tmp/cbt.XYZ/00000000/RbdFio/osd_ra-00000000/rbdfio/client_ra-00000128/op_size-04194304/concurrent_procs-001/iodepth-016/write",
         "rwmixread": 50,
         "rwmixwrite": 50,
         "time": "None",
