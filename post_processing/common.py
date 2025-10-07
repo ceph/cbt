@@ -27,7 +27,7 @@ TITLE_CONVERSION: dict[str, str] = {
 }
 
 # Common file extensions
-PLOT_FILE_EXTENSION: str = "png"
+PLOT_FILE_EXTENSION: str = "svg"
 DATA_FILE_EXTENSION: str = "json"
 PLOT_FILE_EXTENSION_WITH_DOT: str = f".{PLOT_FILE_EXTENSION}"
 DATA_FILE_EXTENSION_WITH_DOT: str = f".{DATA_FILE_EXTENSION}"

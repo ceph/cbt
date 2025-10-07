@@ -217,7 +217,7 @@ class CommonFormatPlotter(ABC):
 
     def _save_plot(self, plotter: ModuleType, file_path: str) -> None:
         """
-        save the plot to disk as a png file
+        save the plot to disk as a svg file
 
         The bbox_inches="tight" option makes sure that the legend is included
         in the plot and not cut off

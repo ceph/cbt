@@ -80,7 +80,7 @@ class ReportGenerator(ABC):
         Read the data files and generate a report from them and the
         """
 
-        # Copy all the png files to a plots subrirectory of the output directory
+        # Copy all the svg files to a plots subrirectory of the output directory
         # specified
         self._create_plots_results_directory()
         self._copy_images()
@@ -208,7 +208,7 @@ class ReportGenerator(ABC):
     def _find_and_sort_plot_files(self) -> list[Path]:
         """
         Find all the plot files in the directory. That is any file that
-        has the .png file extension
+        has the .svg file extension
         """
         return self._find_and_sort_file_paths(
             paths=[self._plots_directory], search_pattern=f"*{PLOT_FILE_EXTENSION_WITH_DOT}"

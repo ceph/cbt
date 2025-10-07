@@ -167,11 +167,11 @@ class ComparisonReportGenerator(ReportGenerator):
     def _find_and_sort_plot_files(self) -> list[Path]:
         """
         Find all the plot files in the directory. That is any file that
-        has the .png file extension
+        has the .svg file extension
 
         This overrides the one in the ReportGenerator as the comparison plot
         files have a different naming convention:
-            Comparison_<blocksize>B_<read%>_<write%>_<operation>.png
+            Comparison_<blocksize>B_<read%>_<write%>_<operation>.svg
         """
         return self._find_and_sort_file_paths(
             paths=[self._plots_directory], search_pattern=f"*{PLOT_FILE_EXTENSION_WITH_DOT}", index=1
