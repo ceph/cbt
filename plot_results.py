@@ -10,6 +10,8 @@ from typing import Dict, List, Union
 
 import matplotlib.pyplot as plotter
 
+from post_processing.common import PLOT_FILE_EXTENSION
+
 log: Logger = getLogger("cbt")
 
 
@@ -42,7 +44,7 @@ class PlotResults:
 
         for file_path in self._path.glob("*.json"):
             file_data: Dict[str, Union[str, Dict[str, str]]] = self._read_intermediate_file(f"{file_path}")
-            output_file: str = f"{str(file_path)[:-4]}png"
+            output_file: str = f"{str(file_path)[:-4]}{PLOT_FILE_EXTENSION}"
             plot_title: str = self._generate_plot_title(file_path.parts[-1])
 
             keys: List[str] = [key for key in file_data.keys() if isinstance(file_data[key], dict)]
@@ -80,7 +82,7 @@ class PlotResults:
 
                 plotter.title(plot_title)  # pyright: ignore[reportUnknownMemberType]
                 plotter.errorbar(x_axis, y_axis, error_bars, capsize=3, ecolor="red")  # pyright: ignore[reportUnknownMemberType]
-                plotter.savefig(output_file, format="png")  # pyright: ignore[reportUnknownMemberType]
+                plotter.savefig(output_file, format=f"{PLOT_FILE_EXTENSION}")  # pyright: ignore[reportUnknownMemberType]
                 # Now we have saved the file, clear the plot for the next file
                 plotter.clf()
 

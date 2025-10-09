@@ -36,4 +36,5 @@ For Red Hat based OSes this can be achieved by running `yum install texlive`
 [Pandoc](https://pandoc.org/), which can be installed on most Linux distributions using the included package manager.
 For Red Hat based OSes use `yum install pandoc`
 
-The minimum pandoc level tested is `2.14.0.3` which is available for RHEL 9
+The minimum pandoc level fully tested is `2.14.0.3` which is available for RHEL 9.
+Previous versions of pandoc have been shown to be error prone.

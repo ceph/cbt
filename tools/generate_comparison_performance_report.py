@@ -77,7 +77,7 @@ def main() -> int:
     """
 
     description: str = "Produces a performance report in markdown format \n"
-    description += "from the json and png files stored in the visualisation\n"
+    description += "from the json and plot files stored in the visualisation\n"
     description += "subdirectory of the directory given by --archive\n"
     description += "The resulting report(s) are saved in the specified output directory.\n"
     description += "The json files must be in the correct format, as described by CBT PR 319\n"

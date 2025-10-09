@@ -18,6 +18,7 @@ class Benchmark(object):
         self.acceptable = config.pop('acceptable', {})
         self.config = config
         self.cluster = cluster
+        self._base_archive_directory = archive_dir
         hashable = json.dumps(sorted(self.config.items())).encode()
         digest = hashlib.sha1(hashable).hexdigest()[:8]
         self.archive_dir = os.path.join(archive_dir,
