@@ -9,6 +9,7 @@ from datetime import datetime
 from logging import Logger, getLogger
 from math import sqrt
 from pathlib import Path
+from re import Pattern
 from typing import Any, Optional, Union
 
 from post_processing.post_processing_types import CommonFormatDataType
@@ -31,6 +32,24 @@ PLOT_FILE_EXTENSION: str = "svg"
 DATA_FILE_EXTENSION: str = "json"
 PLOT_FILE_EXTENSION_WITH_DOT: str = f".{PLOT_FILE_EXTENSION}"
 DATA_FILE_EXTENSION_WITH_DOT: str = f".{DATA_FILE_EXTENSION}"
+
+# Regex patterns for stripping confidential data
+_IPV4_PATTERN: Pattern[str] = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
+_IPV6_PATTERN: Pattern[str] = re.compile(
+    r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|"
+    r"\s::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}|"
+    r"\b[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}|"
+    r"\b[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}|"
+    r"\b(?:[0-9a-fA-F]{1,4}:){0,2}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,3}[0-9a-fA-F]{1,4}|"
+    r"\b(?:[0-9a-fA-F]{1,4}:){0,3}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,2}[0-9a-fA-F]{1,4}|"
+    r"\b(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:)?[0-9a-fA-F]{1,4}|"
+    r"\b(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}|"
+    r"\b(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}::"
+)
+_HOSTNAME_PATTERN: Pattern[str] = re.compile(
+    r"(?:^|\s)([a-z0-9-]{1,61}\.(?:[a-z0-9-]{1,61}\.){0,6}[a-z0-9-]{1,61})(?=\s|$|[,:\[\]\"'])",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def get_blocksize_percentage_operation_from_file_name(file_name: str) -> tuple[str, str, str]:
@@ -114,10 +133,10 @@ def get_latency_throughput_from_file(file_path: Path) -> tuple[str, str]:
 def get_resource_details_from_file(file_path: Path) -> tuple[str, str]:
     """
     Return the max CPU and max memory value from an intermediate file.
-    
+
     Args:
         file_path: Path to the intermediate format data file
-    
+
     Returns:
         A tuple of (max_cpu, max_memory) as formatted strings
     """
@@ -144,43 +163,25 @@ def strip_confidential_data_from_yaml(yaml_data: str) -> str:
 
     Currently handles hostnames, IPv4 addresses and IPv6 addresses
     """
-    filtered_text: str = yaml_data
+    # Replace all IPv4 addresses
+    filtered_text: str = _IPV4_PATTERN.sub("--- IP Address ---", yaml_data)
 
-    ip_v4_pattern = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
-    ip_v6_pattern = re.compile(
-        r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|\s::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}|$"
-        + r"\b[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}|$"
-        + r"\b[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}|$"
-        + r"\b(?:[0-9a-fA-F]{1,4}:){0,2}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,3}[0-9a-fA-F]{1,4}|$"
-        + r"\b(?:[0-9a-fA-F]{1,4}:){0,3}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:){0,2}[0-9a-fA-F]{1,4}|$"
-        + r"\b(?:[0-9a-fA-F]{1,4}:){0,4}[0-9a-fA-F]{1,4}::(?:[0-9a-fA-F]{1,4}:)?[0-9a-fA-F]{1,4}|$"
-        + r"\b(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}::[0-9a-fA-F]{1,4}|$"
-        + r"\b(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}::$"
-    )
-    hostname_pattern = re.compile(r"\s(?:[a-z0-9-]{1,61}\.){1,7}[a-z0-9-]{1,61}", re.IGNORECASE)
+    # Replace all IPv6 addresses
+    filtered_text = _IPV6_PATTERN.sub("--- IP Address ---", filtered_text)
 
-    ip_addresses_to_replace: list[str] = ip_v4_pattern.findall(yaml_data)
-    ip_addresses_to_replace.extend(ip_v6_pattern.findall(yaml_data))
+    # Replace hostnames with numbered identifiers using a callback
+    hostname_map: dict[str, str] = {}
 
-    unique_ip_addresses_to_replace: list[str] = []
-    for item in ip_addresses_to_replace:
-        if item.strip() not in unique_ip_addresses_to_replace:
-            unique_ip_addresses_to_replace.append(item.strip())
+    def replace_hostname(match: re.Match[str]) -> str:
+        # Group 1 contains the hostname, group 0 includes leading whitespace
+        hostname = match.group(1)
+        if hostname not in hostname_map:
+            hostname_map[hostname] = f"--- server{len(hostname_map) + 1} ---"
+        # Preserve any leading whitespace from the original match
+        leading = match.group(0)[: match.start(1) - match.start(0)]
+        return leading + hostname_map[hostname]
 
-    for item in unique_ip_addresses_to_replace:
-        filtered_text = filtered_text.replace(item, "--- IP Address --")
-
-    hostnames_to_replace: list[str] = hostname_pattern.findall(yaml_data)
-
-    unique_host_names_to_replace: list[str] = []
-    for item in hostnames_to_replace:
-        if item.strip() not in unique_host_names_to_replace:
-            unique_host_names_to_replace.append(item.strip())
-
-    count: int = 1
-    for value in unique_host_names_to_replace:
-        filtered_text = filtered_text.replace(value.strip(), f"--- server{count} ---")
-        count += 1
+    filtered_text = _HOSTNAME_PATTERN.sub(replace_hostname, filtered_text)
 
     return filtered_text
 
@@ -243,9 +244,13 @@ def recursive_search(data_to_search: dict[str, Any], search_key: str) -> Optiona
         if isinstance(value, list):
             for item in value:  # pyright: ignore[reportUnknownVariableType]
                 if isinstance(item, dict):
-                    return recursive_search(item, search_key)  # pyright: ignore[reportUnknownArgumentType]
+                    result = recursive_search(item, search_key)  # pyright: ignore[reportUnknownArgumentType]
+                    if result is not None:
+                        return result
         if isinstance(value, dict):
-            return recursive_search(value, search_key)  # pyright: ignore[reportUnknownArgumentType]
+            result = recursive_search(value, search_key)  # pyright: ignore[reportUnknownArgumentType]
+            if result is not None:
+                return result
 
     return None
 
@@ -253,13 +258,13 @@ def recursive_search(data_to_search: dict[str, Any], search_key: str) -> Optiona
 def get_blocksize(blocksize_value: str) -> str:
     """
     Extract the numeric blocksize value from a string, removing any unit suffix.
-    
+
     Args:
         blocksize_value: Blocksize string that may include a unit suffix (e.g., "4K", "1024")
-    
+
     Returns:
         The numeric blocksize value as a string without units
-        
+
     Example:
         >>> get_blocksize("4K")
         "4"

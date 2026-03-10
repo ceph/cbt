@@ -26,6 +26,8 @@ class BenchmarkResult(ABC):
     def __init__(self, file_path: Path) -> None:
         self._resource_file_path: Path = file_path
         self._data: dict[str, Any] = self._read_results_from_file()
+        if not self._data:
+            raise ValueError(f"File {file_path} is empty")
 
         self._global_options: dict[str, str] = self._get_global_options(self._data["global options"])
         self._iodepth = self._get_iodepth(f"{self._data['global options']['iodepth']}")
@@ -39,17 +41,10 @@ class BenchmarkResult(ABC):
     def source(self) -> str:
         """
         Get the source/type identifier for the benchmark tool.
-        
+
         Returns:
             A string identifier for the benchmark source (e.g., "fio", "cosbench")
         """
-
-    # @abstractmethod
-    # def _parse(self, data: dict[str, Any]) -> None:
-    #    """
-    #    Read the resource usage data from the read data and return the
-    #    relevant resource usage statistics
-    #    """
 
     @abstractmethod
     def _get_global_options(self, fio_global_options: dict[str, str]) -> dict[str, str]:

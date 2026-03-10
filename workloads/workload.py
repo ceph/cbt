@@ -3,8 +3,9 @@ The workload class that encapsulates a single workload that can be
 run by any benchmark
 """
 
+from collections.abc import Generator
 from logging import Logger, getLogger
-from typing import Generator, Optional
+from typing import Optional
 
 from command.command import Command
 from command.rbd_fio_command import RbdFioCommand
