@@ -15,7 +15,7 @@ from post_processing.common import (
     file_is_precondition,
     find_common_data_file_names,
     get_blocksize,
-    get_blocksize_percentage_operation_from_file_name,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
     get_latency_throughput_from_file,
     get_resource_details_from_file,
@@ -31,25 +31,32 @@ class TestCommonFunctions(unittest.TestCase):
     """Test cases for common.py utility functions"""
 
     def test_get_blocksize_percentage_operation_from_file_name_simple(self) -> None:
-        """Test parsing simple filename format: BLOCKSIZE_OPERATION"""
-        blocksize, read_percent, operation = get_blocksize_percentage_operation_from_file_name("4096_read")
+        """Test parsing simple filename format: BLOCKSIZE_NUMJOBS_OPERATION"""
+        blocksize, read_percent, operation, number_of_jobs = get_blocksize_percentage_operation_numjobs_from_file_name("4096_1_read")
         self.assertEqual(blocksize, "4K")
         self.assertEqual(read_percent, "")
         self.assertEqual(operation, "Sequential Read")
+        self.assertEqual(number_of_jobs, "1")
 
     def test_get_blocksize_percentage_operation_from_file_name_with_percentage(self) -> None:
-        """Test parsing filename with read/write percentage: BLOCKSIZE_READ_WRITE_OPERATION"""
-        blocksize, read_percent, operation = get_blocksize_percentage_operation_from_file_name("4096_70_30_randrw")
+        """Test parsing filename with read/write percentage: BLOCKSIZE_NUMJOBS_READ_WRITE_OPERATION"""
+        blocksize, read_percent, operation, number_of_jobs = get_blocksize_percentage_operation_numjobs_from_file_name(
+            "4096_1_70_30_randrw"
+        )
         self.assertEqual(blocksize, "4K")
         self.assertEqual(read_percent, "70/30 ")
         self.assertEqual(operation, "Random Read/Write")
+        self.assertEqual(number_of_jobs, "1")
 
     def test_get_blocksize_percentage_operation_from_file_name_randwrite(self) -> None:
         """Test parsing randwrite operation"""
-        blocksize, read_percent, operation = get_blocksize_percentage_operation_from_file_name("8192_randwrite")
+        blocksize, read_percent, operation, number_of_jobs = get_blocksize_percentage_operation_numjobs_from_file_name(
+            "8192_2_randwrite"
+        )
         self.assertEqual(blocksize, "8K")
         self.assertEqual(read_percent, "")
         self.assertEqual(operation, "Random Write")
+        self.assertEqual(number_of_jobs, "2")
 
     def test_read_intermediate_file_success(self) -> None:
         """Test successfully reading an intermediate JSON file"""

@@ -12,6 +12,7 @@ from post_processing.common import file_is_empty, file_is_precondition
 from post_processing.post_processing_types import (
     InternalBlocksizeDataType,
     InternalFormattedOutputType,
+    InternalNumJobsDataType,
     IodepthDataType,
 )
 
@@ -58,7 +59,7 @@ class RunResult(ABC):
     def type(self) -> str:
         """
         Returns the benchmark type.
-        
+
         Returns:
             The benchmark type identifier (e.g., "rbdfio", "fio")
         """
@@ -107,11 +108,11 @@ class RunResult(ABC):
     def _convert_file(self, file_path: Path) -> None:
         """
         Convert an individual benchmark result file to the common intermediate format.
-        
+
         This method reads the benchmark output file, extracts IO and resource usage
         statistics, and stores them in the internal data structure organized by
         operation type, blocksize, and IO depth.
-        
+
         Args:
             file_path: Path to the benchmark result file to process
         """
@@ -123,21 +124,24 @@ class RunResult(ABC):
         iodepth = io.iodepth
         blocksize: str = io.blocksize
         operation: str = io.operation
+        number_of_jobs: str = io.number_of_jobs
         global_details: dict[str, str] = io.global_options
 
         blocksize_details: InternalBlocksizeDataType = {blocksize: {}}
         iodepth_details: dict[str, dict[str, str]] = {iodepth: global_details}
+        numjobs_details: InternalNumJobsDataType = {number_of_jobs: blocksize_details}
 
         io_details: IodepthDataType = {}
 
         if self._processed_data.get(operation, None):
-            if self._processed_data[operation].get(blocksize, None):
-                if self._processed_data[operation][blocksize].get(iodepth, None):
-                    # we already have data here, so use it
-                    log.debug("We have details for iodepth %s so using them", iodepth)
-                    io_details = self._sum_io_details(
-                        self._processed_data[operation][blocksize][iodepth], io.io_details
-                    )
+            if self._processed_data[operation].get(number_of_jobs, None):
+                if self._processed_data[operation][number_of_jobs].get(blocksize, None):
+                    if self._processed_data[operation][number_of_jobs][blocksize].get(iodepth, None):
+                        # we already have data here, so use it
+                        log.debug("We have details for iodepth %s so using them", iodepth)
+                        io_details = self._sum_io_details(
+                            self._processed_data[operation][number_of_jobs][blocksize][iodepth], io.io_details
+                        )
 
         if not io_details:
             io_details = io.io_details
@@ -145,11 +149,15 @@ class RunResult(ABC):
         iodepth_details[iodepth].update(io_details)
         iodepth_details[iodepth].update(resource.get())
         blocksize_details[blocksize].update(iodepth_details)
+        numjobs_details[number_of_jobs].update(blocksize_details)
 
         if self._processed_data.get(operation, None):
-            if self._processed_data[operation].get(blocksize, None):
-                self._processed_data[operation][blocksize].update(iodepth_details)
+            if self._processed_data[operation].get(number_of_jobs, None):
+                if self._processed_data[operation][number_of_jobs].get(blocksize, None):
+                    self._processed_data[operation][number_of_jobs][blocksize].update(iodepth_details)
+                else:
+                    self._processed_data[operation][number_of_jobs].update(blocksize_details)
             else:
-                self._processed_data[operation].update(blocksize_details)
+                self._processed_data[operation].update(numjobs_details)
         else:
-            self._processed_data.update({operation: blocksize_details})
+            self._processed_data.update({operation: numjobs_details})

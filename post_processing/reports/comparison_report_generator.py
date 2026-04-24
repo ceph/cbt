@@ -21,7 +21,7 @@ from post_processing.common import (
     PLOT_FILE_EXTENSION_WITH_DOT,
     TITLE_CONVERSION,
     calculate_percent_difference_to_baseline,
-    get_blocksize_percentage_operation_from_file_name,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
     get_latency_throughput_from_file,
     strip_confidential_data_from_yaml,
@@ -58,7 +58,8 @@ class ComparisonReportGenerator(ReportGenerator):
             # The comparison plot files have a different name format:
             #     Comparison_<blocksize>_<percent>_<operation>
             # so we need o split the Comparison_ from the front before calling the common method
-            (blocksize, percent, operation) = get_blocksize_percentage_operation_from_file_name(
+            # TODO: CH do we need numjobs here?
+            (blocksize, percent, operation, _) = get_blocksize_percentage_operation_numjobs_from_file_name(
                 image_file.stem[len("Comparison_") :]
             )
             title: str = f"{blocksize} {percent} {operation}"
@@ -227,7 +228,10 @@ class ComparisonReportGenerator(ReportGenerator):
         Generate the data for all the rows in the table
         """
         for file_name, file_paths in self._data_files.items():
-            (blocksize, percentage, operation) = get_blocksize_percentage_operation_from_file_name(file_name)
+            (blocksize, percentage, operation, number_of_jobs) = (
+                get_blocksize_percentage_operation_numjobs_from_file_name(file_name)
+            )
+            #TODO: CH need numjobs here somehow
             data_string: str = f"|[{blocksize}"
             if percentage:
                 data_string += f"_{percentage}"

@@ -157,11 +157,16 @@ class ReportGenerator(ABC):
 
         For a simple report this ill be of the format:
 
-        | workload_name | Maximum Throughput |    Latency (ms)|
-        | <name>        |       <iops_or_bw> |    <latency_ms>|
+            | workload_name | Number of Jobs | Maximum Throughput |    Latency (ms)|
+            | <name>        | <numjobs>      | <iops_or_bw>       |    <latency_ms>|
 
-        for a comparison report the format is:
-        TODO: fill this in
+        for a comparison report for 2 runs the format is:
+            | <operation_type> | <baseline_workload_name>       | <workload_name>       | %change throughput>  | %change latency   |
+            | <blocksize>      | <baseline_througput>@<latency> | <througput>@<latency> | <%change_throughput> | <%change_latency> |
+
+        for a comparison report for more than 2 runs the format is:
+            | <operation_type> | <baseline_workload_name> | <workload_1_name>     | %change   | <workload_2_name>     | %change   |
+            | <blocksize>      | <througput>@<latency>    | <througput>@<latency> | <%change> | <througput>@<latency> | <%change> |
         """
 
     @abstractmethod
@@ -222,7 +227,13 @@ class ReportGenerator(ABC):
         producing the summary table
         """
         unique_file_names: list[str] = find_common_data_file_names(self._data_directories)
-        sorted_data_file_names: list[str] = sorted(unique_file_names, key=lambda a: int(a.split("_")[0][:-1]))
+        sorted_data_file_names: list[str] = sorted(
+            unique_file_names,
+            key=lambda file_name: (
+                int(file_name.split("_")[0]),
+                int(file_name.split("_")[1]),
+            ),
+        )
 
         sorted_data_files: dict[str, list[Path]] = {}
         for file_name in sorted_data_file_names:

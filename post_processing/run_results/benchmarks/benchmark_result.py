@@ -28,6 +28,7 @@ class BenchmarkResult(ABC):
         self._data: dict[str, Any] = self._read_results_from_file()
         if not self._data:
             raise ValueError(f"File {file_path} is empty")
+        self._number_of_jobs: str = ""
 
         self._global_options: dict[str, str] = self._get_global_options(self._data["global options"])
         self._iodepth = self._get_iodepth(f"{self._data['global options']['iodepth']}")
@@ -92,6 +93,10 @@ class BenchmarkResult(ABC):
     @property
     def io_details(self) -> IodepthDataType:
         return self._io_details
+
+    @property
+    def number_of_jobs(self) -> str:
+        return self._number_of_jobs
 
     def _read_results_from_file(self) -> dict[str, Any]:
         """

@@ -52,28 +52,33 @@ _HOSTNAME_PATTERN: Pattern[str] = re.compile(
 )
 
 
-def get_blocksize_percentage_operation_from_file_name(file_name: str) -> tuple[str, str, str]:
+def get_blocksize_percentage_operation_numjobs_from_file_name(file_name: str) -> tuple[str, str, str, str]:
     """
         Return the blocksize , operation and read/write percentage from the
     filename
 
     The filename is in one of 2 formats:
-        BLOCKSIZE_OPERATION.json
-        BLOCKSIZE_READ_WRITE_OPERATION.json
+        BLOCKSIZE_NUMJOBS_OPERATION.json
+        BLOCKSIZE_NUMJOBS_READ_WRITE_OPERATION.json
     """
     file_parts: list[str] = file_name.split("_")
 
     # The split on _ will mean that the last element [-1] will always be
-    # the operation, and the first part [0] will be the blocksize
+    # the operation, the first part [0] will be the blocksize, and the
+    # second part [1] will be the number of jobs
     operation: str = f"{TITLE_CONVERSION[file_parts[-1]]}"
     blocksize: str = get_blocksize(f"{file_parts[0]}")
     blocksize = f"{int(int(blocksize) / 1024)}K"
+    number_of_jobs: str = file_parts[1]
     read_percent: str = ""
 
-    if len(file_parts) > 2:
-        read_percent = f"{file_parts[1]}/{file_parts[2]} "
+    # If there are more than 3 parts, we have read/write percentages
+    # Format: BLOCKSIZE_NUMJOBS_READ_WRITE_OPERATION
+    # Parts:  [0]       [1]     [2]  [3]    [4]
+    if len(file_parts) > 3:
+        read_percent = f"{file_parts[2]}/{file_parts[3]} "
 
-    return (blocksize, read_percent, operation)
+    return (blocksize, read_percent, operation, number_of_jobs)
 
 
 def read_intermediate_file(file_path: str) -> CommonFormatDataType:

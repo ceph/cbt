@@ -143,7 +143,11 @@ class FioCommand(Command, ABC):
         if total_iodepth was used in the options, otherwise:
         numjobs-<numjobs>/iodepth-<iodepth>
         """
-        output_path: str = f"{self._workload_output_directory}/numjobs-{int(str(self._options['numjobs'])):03d}/"
+        # TODO Need to output the benchmark type in this directory structure,
+        # before the numjobs bit
+        output_path: str = (
+            f"{self._workload_output_directory}/{self.benchmark}/numjobs-{int(str(self._options['numjobs'])):03d}/"
+        )
 
         if self._total_iodepth is not None:
             output_path += f"total_iodepth-{self._total_iodepth}/"

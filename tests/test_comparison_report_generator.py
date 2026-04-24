@@ -34,8 +34,9 @@ class TestComparisonReportGenerator(unittest.TestCase):
         self.vis2.mkdir(parents=True)
 
         # Create matching data files in both
-        (self.vis1 / "4096_read.json").touch()
-        (self.vis2 / "4096_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis1 / "4096_1_read.json").touch()
+        (self.vis2 / "4096_1_read.json").touch()
 
     def tearDown(self) -> None:
         """Clean up test fixtures"""
@@ -86,8 +87,9 @@ class TestComparisonReportGenerator(unittest.TestCase):
     def test_find_and_sort_file_paths_multiple_directories(self) -> None:
         """Test finding files across multiple directories"""
         # Create additional files
-        (self.vis1 / "8192_write.json").touch()
-        (self.vis2 / "8192_write.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis1 / "8192_1_write.json").touch()
+        (self.vis2 / "8192_1_write.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -148,7 +150,8 @@ class TestComparisonReportGenerator(unittest.TestCase):
         archive3 = Path(self.temp_dir) / "comparison2"
         vis3 = archive3 / "visualisation"
         vis3.mkdir(parents=True)
-        (vis3 / "4096_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (vis3 / "4096_1_read.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
