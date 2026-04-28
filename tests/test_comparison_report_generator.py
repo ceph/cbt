@@ -133,6 +133,8 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         header, justification = generator._generate_table_headers()
 
+        # Should include numjobs column
+        self.assertIn("numjobs", header)
         # Should include baseline directory name
         self.assertIn("baseline", header)
         # Should include comparison directory name
@@ -141,9 +143,9 @@ class TestComparisonReportGenerator(unittest.TestCase):
         self.assertIn("%change", header)
         
         # Test justification string for two directories
-        # Format: | :--- | ---: | ---: | ---: | ---: |
-        # (left-aligned first column, right-aligned for baseline, comparison, %change throughput, %change latency)
-        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: |")
+        # Format: | :--- | ---: | ---: | ---: | ---: | ---: |
+        # (left-aligned operation, right-aligned numjobs, baseline, comparison, %change throughput, %change latency)
+        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: |")
 
     def test_generate_table_headers_multiple_directories(self) -> None:
         """Test generating table headers for more than two directories"""
@@ -162,15 +164,17 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         header, justification = generator._generate_table_headers()
 
+        # Should include numjobs column
+        self.assertIn("numjobs", header)
         # Should have all directory names
         self.assertIn("baseline", header)
         self.assertIn("comparison", header)
         self.assertIn("comparison2", header)
         
         # Test justification string for multiple directories (3+ total)
-        # Format: | :--- | ---: | ---: | ---: | ---: | ---: |
-        # (left-aligned first column, right-aligned for baseline, then comparison + %change for each comparison dir)
-        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: |")
+        # Format: | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+        # (left-aligned operation, right-aligned numjobs, baseline, then comparison + %change for each comparison dir)
+        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: | ---: |")
 
     @patch("subprocess.check_output")
     def test_yaml_file_has_more_than_20_differences_true(self, mock_check_output: MagicMock) -> None:

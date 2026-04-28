@@ -50,7 +50,7 @@ class SimpleReportGenerator(ReportGenerator):
         output_file_name: str = f"performance_report_{datetime_string}.{self.MARKDOWN_FILE_EXTENSION}"
         return output_file_name
 
-    def _add_summary_table(self) -> None:
+    def _add_summary_table(self) -> None:  # pylint: disable=[too-many-locals]
         self._report.new_header(level=1, title=f"Summary of results for {''.join(self._build_strings)}")
 
         # We cannot use the mdutils table object here as it can only justify
@@ -97,7 +97,7 @@ class SimpleReportGenerator(ReportGenerator):
             for line in operation_data:
                 self._report.new_line(text=line)
 
-    def _add_plots(self) -> None:
+    def _add_plots(self) -> None:  # pylint: disable=[too-many-locals]
         self._report.new_header(level=1, title="Response Curves")
 
         empty_table_header: list[str] = ["", ""]
@@ -188,14 +188,3 @@ class SimpleReportGenerator(ReportGenerator):
         # This should only ever return a single path as each archive directory
         # should only ever contain a single cbt_config.yaml file
         return yaml_file_path
-
-    def _get_all_number_of_jobs_values(self) -> list[str]:
-        """
-        Get all the possible number_of_jobs values for this set of data
-        """
-        numbers_of_jobs: set[str] = set()
-        for image_file in self._plot_files:
-            (_, _, _, number_of_jobs) = get_blocksize_percentage_operation_numjobs_from_file_name(image_file.stem)
-            numbers_of_jobs.add(number_of_jobs)
-
-        return sorted(numbers_of_jobs)

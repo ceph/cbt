@@ -46,10 +46,9 @@ import json
 import re
 from logging import Logger, getLogger
 from pathlib import Path
-from pprint import pprint
 from typing import Optional
 
-from common import pdsh  # pyright: ignore[reportUnknownVariableType]
+from common import pdsh  # pylint: disable=[no-name-in-module]
 from post_processing.post_processing_types import CommonFormatDataType, InternalFormattedOutputType
 from post_processing.run_results.run_result_factory import get_run_result_from_directory_name
 
@@ -94,7 +93,9 @@ class CommonOutputFormatter:
         Args:
             processed_results: Dictionary of processed results to merge
         """
-        for run_type, run_data in processed_results.items():
+        # We need to do a deep merge of the data here, so we need the nested blocks for the moment
+        # Maybe we can get rid of them in a future re-factor
+        for run_type, run_data in processed_results.items():  # pylint: disable=[too-many-nested-blocks]
             if run_type not in self._formatted_output:
                 self._formatted_output[run_type] = run_data
             else:
@@ -249,7 +250,7 @@ class CommonOutputFormatter:
                 benchmark_type = self._process_single_testrun(testrun_directories[0])
 
             # Track benchmark type for all operations processed in this test run
-            for operation_type in self._formatted_output.keys():
+            for operation_type, _ in self._formatted_output.items():
                 self._benchmark_types[operation_type] = benchmark_type
 
         # Add common metadata fields (benchmark type, number_of_jobs) to the test run data
