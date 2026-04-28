@@ -23,7 +23,7 @@ log: Logger = getLogger(name="formatter")
 class RBDFIO(RunResult):
     """
     Processes RBD FIO benchmark results and converts them to the common intermediate format.
-    
+
     This class handles reading FIO JSON output files from RBD (RADOS Block Device)
     benchmark runs and aggregating results across multiple volumes.
     """
@@ -35,10 +35,10 @@ class RBDFIO(RunResult):
     def _find_files_for_testrun(self, file_name_root: str) -> list[Path]:
         """
         Find all result files for a particular test run matching the file name pattern.
-        
+
         Args:
             file_name_root: The base filename to search for (e.g., "json_output")
-        
+
         Returns:
             List of Path objects for files matching the pattern <file_name_root>.<digit>
         """
@@ -57,11 +57,11 @@ class RBDFIO(RunResult):
         """
         Aggregate IO statistics from multiple volumes by summing values and computing
         weighted averages for latency and standard deviation.
-        
+
         Args:
             existing_values: Previously aggregated IO statistics
             new_values: New IO statistics to add to the aggregate
-        
+
         Returns:
             Combined IO statistics with properly weighted latency and standard deviation
         """

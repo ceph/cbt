@@ -21,7 +21,7 @@ from post_processing.common import (
     PLOT_FILE_EXTENSION_WITH_DOT,
     TITLE_CONVERSION,
     calculate_percent_difference_to_baseline,
-    get_blocksize_percentage_operation_from_file_name,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
     get_latency_throughput_from_file,
     strip_confidential_data_from_yaml,
@@ -46,48 +46,52 @@ class ComparisonReportGenerator(ReportGenerator):
         title: str = f"Comparitive Performance Report for {' vs '.join(self._build_strings)}"
         return title
 
-    def _add_plots(self) -> None:
+    def _add_plots(self) -> None:  # pylint: disable=[too-many-locals]
         self._report.new_header(level=1, title="Response Curves")
         empty_table_header: list[str] = ["", ""]
-        image_tables: dict[str, list[str]] = {}
 
-        for _, operation in TITLE_CONVERSION.items():
-            image_tables[operation] = empty_table_header.copy()
+        for number_of_jobs in self._get_all_number_of_jobs_values():
+            self._report.new_header(level=2, title=f"Number of Jobs {number_of_jobs}")
+            image_tables: dict[str, list[str]] = {}
 
-        for image_file in self._plot_files:
-            # The comparison plot files have a different name format:
-            #     Comparison_<blocksize>_<percent>_<operation>
-            # so we need o split the Comparison_ from the front before calling the common method
-            (blocksize, percent, operation) = get_blocksize_percentage_operation_from_file_name(
-                image_file.stem[len("Comparison_") :]
-            )
-            title: str = f"{blocksize} {percent} {operation}"
+            for _, operation in TITLE_CONVERSION.items():
+                image_tables[operation] = empty_table_header.copy()
 
-            image_line: str = self._report.new_inline_image(
-                text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
-            )
-            anchor: str = f'<a name="{image_file.stem[len("Comparison_") :].replace("_", "-")}"></a>'
+            for image_file in self._plot_files:
+                # The comparison plot files have a different name format:
+                #     Comparison_<blocksize>_<percent>_<operation>_<numjobs>
+                # so we need to split the Comparison_ from the front before calling the common method
+                (blocksize, percent, operation, numjobs) = get_blocksize_percentage_operation_numjobs_from_file_name(
+                    image_file.stem[len("Comparison_") :]
+                )
+                if numjobs == number_of_jobs:
+                    title: str = f"{blocksize} {percent} {operation}"
 
-            image_line = f"{anchor}{image_line}"
+                    image_line: str = self._report.new_inline_image(
+                        text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
+                    )
+                    anchor: str = f'<a name="{image_file.stem[len("Comparison_") :].replace("_", "-")}"></a>'
 
-            image_tables[operation].append(image_line)
+                    image_line = f"{anchor}{image_line}"
 
-        # Create the correct sections and add a table for each section to the report
+                    image_tables[operation].append(image_line)
 
-        for section, data in image_tables.items():
-            # We don't want to display a section if it doesn't contain any plots
-            if len(data) > len(empty_table_header):
-                self._report.new_header(level=2, title=section)
-                table_images = data
+            # Create the correct sections and add a table for each section to the report
 
-                # We need to calculate the number of rows, but new_table() requires the
-                # exact number of items to fill the table, so we may need to add a dummy
-                # entry at the end
-                number_of_rows: int = len(table_images) // 2
-                if len(table_images) % 2 > 0:
-                    number_of_rows += 1
-                    table_images.append("")
-                self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
+            for section, data in image_tables.items():
+                # We don't want to display a section if it doesn't contain any plots
+                if len(data) > len(empty_table_header):
+                    self._report.new_header(level=3, title=section)
+                    table_images = data
+
+                    # We need to calculate the number of rows, but new_table() requires the
+                    # exact number of items to fill the table, so we may need to add a dummy
+                    # entry at the end
+                    number_of_rows: int = len(table_images) // 2
+                    if len(table_images) % 2 > 0:
+                        number_of_rows += 1
+                        table_images.append("")
+                    self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
 
     def _add_summary_table(self) -> None:
         self._report.new_header(level=1, title=f"Comparison summary for {' vs '.join(self._build_strings)}")
@@ -208,8 +212,8 @@ class ComparisonReportGenerator(ReportGenerator):
         Generate the header lines for the table
         """
         # The first directory is always the baseline, so we want to get it out of the way first
-        table_header: str = f"{self._data_directories.pop(0).parts[-2]}|"
-        table_justfication_string: str = "| :--- | ---: |"
+        table_header: str = f"numjobs|{self._data_directories.pop(0).parts[-2]}|"
+        table_justfication_string: str = "| :--- | ---: | ---: |"
 
         if len(self._data_directories) < 2:
             for directory in self._data_directories:
@@ -222,17 +226,22 @@ class ComparisonReportGenerator(ReportGenerator):
 
         return (table_header, table_justfication_string)
 
-    def _generate_table_rows(self, data_tables: dict[str, list[str]]) -> None:
+    def _generate_table_rows(self, data_tables: dict[str, list[str]]) -> None:  # pylint: disable=[too-many-locals]
         """
         Generate the data for all the rows in the table
         """
         for file_name, file_paths in self._data_files.items():
-            (blocksize, percentage, operation) = get_blocksize_percentage_operation_from_file_name(file_name)
+            (blocksize, percentage, operation, number_of_jobs) = (
+                get_blocksize_percentage_operation_numjobs_from_file_name(file_name)
+            )
+
             data_string: str = f"|[{blocksize}"
             if percentage:
                 data_string += f"_{percentage}"
 
             data_string += f"](#{file_name.replace('_', '-')})|"
+
+            data_string += f"{number_of_jobs}|"
 
             (baseline_max_throughput, baseline_latency_ms) = get_latency_throughput_from_file(file_paths.pop(0))
 

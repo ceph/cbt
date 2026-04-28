@@ -34,8 +34,9 @@ class TestComparisonReportGenerator(unittest.TestCase):
         self.vis2.mkdir(parents=True)
 
         # Create matching data files in both
-        (self.vis1 / "4096_read.json").touch()
-        (self.vis2 / "4096_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis1 / "4096_1_read.json").touch()
+        (self.vis2 / "4096_1_read.json").touch()
 
     def tearDown(self) -> None:
         """Clean up test fixtures"""
@@ -86,8 +87,9 @@ class TestComparisonReportGenerator(unittest.TestCase):
     def test_find_and_sort_file_paths_multiple_directories(self) -> None:
         """Test finding files across multiple directories"""
         # Create additional files
-        (self.vis1 / "8192_write.json").touch()
-        (self.vis2 / "8192_write.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis1 / "8192_1_write.json").touch()
+        (self.vis2 / "8192_1_write.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -131,6 +133,8 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         header, justification = generator._generate_table_headers()
 
+        # Should include numjobs column
+        self.assertIn("numjobs", header)
         # Should include baseline directory name
         self.assertIn("baseline", header)
         # Should include comparison directory name
@@ -139,16 +143,17 @@ class TestComparisonReportGenerator(unittest.TestCase):
         self.assertIn("%change", header)
         
         # Test justification string for two directories
-        # Format: | :--- | ---: | ---: | ---: | ---: |
-        # (left-aligned first column, right-aligned for baseline, comparison, %change throughput, %change latency)
-        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: |")
+        # Format: | :--- | ---: | ---: | ---: | ---: | ---: |
+        # (left-aligned operation, right-aligned numjobs, baseline, comparison, %change throughput, %change latency)
+        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: |")
 
     def test_generate_table_headers_multiple_directories(self) -> None:
         """Test generating table headers for more than two directories"""
         archive3 = Path(self.temp_dir) / "comparison2"
         vis3 = archive3 / "visualisation"
         vis3.mkdir(parents=True)
-        (vis3 / "4096_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (vis3 / "4096_1_read.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -159,15 +164,17 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         header, justification = generator._generate_table_headers()
 
+        # Should include numjobs column
+        self.assertIn("numjobs", header)
         # Should have all directory names
         self.assertIn("baseline", header)
         self.assertIn("comparison", header)
         self.assertIn("comparison2", header)
         
         # Test justification string for multiple directories (3+ total)
-        # Format: | :--- | ---: | ---: | ---: | ---: | ---: |
-        # (left-aligned first column, right-aligned for baseline, then comparison + %change for each comparison dir)
-        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: |")
+        # Format: | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+        # (left-aligned operation, right-aligned numjobs, baseline, then comparison + %change for each comparison dir)
+        self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: | ---: |")
 
     @patch("subprocess.check_output")
     def test_yaml_file_has_more_than_20_differences_true(self, mock_check_output: MagicMock) -> None:

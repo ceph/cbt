@@ -17,13 +17,22 @@ from matplotlib.axes import Axes
 from post_processing.common import (
     DATA_FILE_EXTENSION_WITH_DOT,
     PLOT_FILE_EXTENSION,
-    get_blocksize_percentage_operation_from_file_name,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
 )
 from post_processing.plotter.cpu_plotter import CPUPlotter
 from post_processing.plotter.io_plotter import IOPlotter
+from post_processing.plotter.plot_data_collector import PlotDataCollector
+from post_processing.plotter.plot_data_results import DataPointResult, PlotDataResult
 from post_processing.post_processing_types import CommonFormatDataType, PlotDataType
 
 log: Logger = getLogger("plotter")
+
+# Module-level constants for data conversion and plotting
+BLOCKSIZE_THRESHOLD_KB = 64
+BYTES_TO_MB_DIVISOR = 1024 * 1024  # Using 1024 for MiB
+NANOSECONDS_TO_MS_DIVISOR = 1_000_000
+ERROR_BAR_CAP_SIZE = 3
+KB_CONVERSION_FACTOR = 1024
 
 
 # pylint: disable=too-few-public-methods, too-many-locals
@@ -78,7 +87,9 @@ class CommonFormatPlotter(ABC):
         operations: list[str] = []
 
         for file in file_paths:
-            (blocksize, read_percent, operation) = get_blocksize_percentage_operation_from_file_name(file.stem)
+            (blocksize, read_percent, operation, _) = get_blocksize_percentage_operation_numjobs_from_file_name(
+                file.stem
+            )
             titles.append((blocksize, read_percent, operation))
 
             if blocksize not in blocksizes:
@@ -109,7 +120,7 @@ class CommonFormatPlotter(ABC):
         given a single file name construct a plot title from the blocksize,
         read percent and operation contained in the title
         """
-        (blocksize, read_percent, operation) = get_blocksize_percentage_operation_from_file_name(
+        (blocksize, read_percent, operation, _) = get_blocksize_percentage_operation_numjobs_from_file_name(
             file_name[: -len(DATA_FILE_EXTENSION_WITH_DOT)]
         )
 
@@ -118,7 +129,7 @@ class CommonFormatPlotter(ABC):
     def _set_axis(self, maximum_values: Optional[tuple[int, int]] = None) -> None:
         """
         Set the range for the plot axes starting from 0.
-        
+
         Args:
             maximum_values: Optional tuple of (maximum_x, maximum_y) values.
                            If None, matplotlib will auto-scale the axes.
@@ -151,8 +162,277 @@ class CommonFormatPlotter(ABC):
 
         return sorted_plot_data
 
-    
-    def _add_single_file_data_with_optional_errorbars(
+    def _calculate_blocksize_kb(self, blocksize_bytes: str) -> int:
+        """Convert blocksize from bytes to kilobytes."""
+        return int(int(blocksize_bytes) / KB_CONVERSION_FACTOR)
+
+    def _should_use_bandwidth(self, blocksize_kb: int) -> bool:
+        """Determine if bandwidth should be used instead of IOPS based on blocksize."""
+        return blocksize_kb >= BLOCKSIZE_THRESHOLD_KB
+
+    def _convert_bandwidth_to_mb(self, bandwidth_bytes: str) -> float:
+        """Convert bandwidth from bytes to megabytes."""
+        return float(bandwidth_bytes) / BYTES_TO_MB_DIVISOR
+
+    def _convert_std_dev_to_ms(self, std_dev_ns: str) -> float:
+        """Convert standard deviation from nanoseconds to milliseconds."""
+        return float(std_dev_ns) / NANOSECONDS_TO_MS_DIVISOR
+
+    def _extract_x_axis_data(self, data: dict[str, str]) -> tuple[float, str]:
+        """
+        Extract x-axis data point and label based on blocksize.
+
+        Returns:
+            Tuple of (x_value, x_label) where x_value is either bandwidth or IOPS
+        """
+        blocksize_kb = self._calculate_blocksize_kb(data["blocksize"])
+
+        if self._should_use_bandwidth(blocksize_kb):
+            x_value = self._convert_bandwidth_to_mb(data["bandwidth_bytes"])
+            x_label = "Bandwidth (MB/s)"
+        else:
+            x_value = float(data["iops"])
+            x_label = "IOps"
+
+        return x_value, x_label
+
+    def _validate_cpu_data_availability(self, data: dict[str, str], plot_resource_usage: bool) -> bool:
+        """
+        Check if CPU data is available when resource plotting is requested.
+
+        Returns:
+            True if resource usage should be plotted, False otherwise
+        """
+        if data.get("cpu") is None and plot_resource_usage:
+            log.warning(
+                "Unable to plot CPU usage: CPU data not found in intermediate files. Disabling resource usage plotting."
+            )
+            return False
+        return plot_resource_usage
+
+    def _calculate_error_bar(
+        self, data: dict[str, str], plot_error_bars: bool, resource_plotting_enabled: bool
+    ) -> float:
+        """
+        Calculate error bar value for a data point.
+
+        Args:
+            data: Data dictionary containing std_deviation
+            plot_error_bars: Whether error bars are enabled
+            resource_plotting_enabled: Whether resource plotting is active
+
+        Returns:
+            Error bar value in milliseconds, or 0.0 if not applicable
+        """
+        if plot_error_bars and not resource_plotting_enabled:
+            if "std_deviation" not in data:
+                log.warning("Missing 'std_deviation' field, using 0 for error bar")
+                return 0.0
+            return self._convert_std_dev_to_ms(data["std_deviation"])
+        return 0.0
+
+    def _initialize_plotters(self, main_axes: Axes, label: Optional[str]) -> tuple[IOPlotter, CPUPlotter]:
+        """Initialize and configure IO and CPU plotters."""
+        io_plot_label = label if label else "IO Details"
+
+        cpu_plotter = CPUPlotter(main_axis=main_axes)
+        io_plotter = IOPlotter(main_axis=main_axes)
+        io_plotter.y_label = "Latency (ms)"
+        io_plotter.plot_label = io_plot_label
+
+        return io_plotter, cpu_plotter
+
+    def _validate_input_data(self, sorted_plot_data: PlotDataType) -> None:
+        """
+        Validate input data is not empty.
+
+        Args:
+            sorted_plot_data: The data to validate
+
+        Raises:
+            ValueError: If data is empty
+        """
+        if not sorted_plot_data:
+            raise ValueError("Cannot extract plot data from empty dataset")
+
+    def _process_data_point(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        data: dict[str, str],
+        queue_depth: str,
+        io_plotter: IOPlotter,
+        cpu_plotter: CPUPlotter,
+        plot_error_bars: bool,
+        resource_plotting_enabled: bool,
+    ) -> DataPointResult:
+        """
+        Process a single data point for plotting.
+
+        Args:
+            data: Data dictionary for this point
+            queue_depth: Queue depth identifier for error messages
+            io_plotter: IO plotter to receive latency data
+            cpu_plotter: CPU plotter to receive CPU data
+            plot_error_bars: Whether error bars are enabled
+            resource_plotting_enabled: Whether resource plotting is active
+
+        Returns:
+            DataPointResult with processed values
+
+        Raises:
+            ValueError: If required fields are missing or invalid
+            TypeError: If data types are incorrect
+        """
+        # Validate required fields exist
+        required_fields = ["latency", "blocksize"]
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            raise ValueError(f"Missing required fields for queue depth {queue_depth}: {', '.join(missing_fields)}")
+
+        # Validate latency is numeric
+        latency_value = data["latency"]
+        try:
+            float(latency_value)  # Validate it's convertible to float
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid latency value for queue depth {queue_depth}: {latency_value}") from e
+
+        # Extract x-axis data (may raise ValueError)
+        x_value, x_label = self._extract_x_axis_data(data)
+
+        # Add latency data
+        io_plotter.add_y_data(latency_value)
+
+        # Handle CPU data with proper validation
+        resource_available = resource_plotting_enabled
+        if resource_plotting_enabled:
+            cpu_value = data.get("cpu")
+            if cpu_value is None:
+                resource_available = False
+            else:
+                # Validate CPU value is numeric
+                try:
+                    float(cpu_value)
+                    cpu_plotter.add_y_data(cpu_value)
+                except (ValueError, TypeError):
+                    log.warning(
+                        "Invalid CPU value for queue depth %s: %s. Skipping CPU data.",
+                        queue_depth,
+                        cpu_value,
+                    )
+                    resource_available = False
+
+        # Calculate error bars
+        error_bar = self._calculate_error_bar(data, plot_error_bars, resource_available)
+
+        return DataPointResult(
+            x_value=x_value,
+            x_label=x_label,
+            error_bar=error_bar,
+            resource_available=resource_available,
+        )
+
+    def _extract_plot_data(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        sorted_plot_data: PlotDataType,
+        main_axes: Axes,
+        io_plotter: IOPlotter,
+        cpu_plotter: CPUPlotter,
+        plot_error_bars: bool,
+        plot_resource_usage: bool,
+    ) -> PlotDataResult:
+        """
+        Extract and process data points for plotting.
+
+        Args:
+            sorted_plot_data: Pre-sorted performance data by queue depth
+            main_axes: Matplotlib axes object for plotting
+            io_plotter: IO plotter instance to receive latency data
+            cpu_plotter: CPU plotter instance to receive CPU data
+            plot_error_bars: Whether to include standard deviation error bars
+            plot_resource_usage: Whether to include CPU usage on secondary axis
+
+        Returns:
+            PlotDataResult containing extracted x_data, error_bars, cap_size,
+            updated plot_resource_usage flag, and x_label
+
+        Raises:
+            ValueError: If sorted_plot_data is empty or contains invalid entries
+        """
+        self._validate_input_data(sorted_plot_data)
+
+        # Initialize data collectors
+        data_collector = PlotDataCollector()
+        resource_plotting_enabled = plot_resource_usage
+        x_label: Optional[str] = None
+        cpu_warning_logged = False  # Track if we've already warned about missing CPU data
+
+        for queue_depth, data in sorted_plot_data.items():
+            try:
+                # Process single data point
+                point_result = self._process_data_point(
+                    data=data,
+                    queue_depth=queue_depth,
+                    io_plotter=io_plotter,
+                    cpu_plotter=cpu_plotter,
+                    plot_error_bars=plot_error_bars,
+                    resource_plotting_enabled=resource_plotting_enabled,
+                )
+
+                # Set x-axis label once (from first valid data point)
+                if x_label is None:
+                    x_label = point_result.x_label
+                    main_axes.set_xlabel(x_label)  # pyright: ignore[reportUnknownMemberType]
+
+                # Disable resource plotting if CPU data unavailable (only check once)
+                if resource_plotting_enabled and not point_result.resource_available:
+                    if not cpu_warning_logged:
+                        log.warning(
+                            "Unable to plot CPU usage: CPU data not found in intermediate files. "
+                            "Disabling resource usage plotting."
+                        )
+                        cpu_warning_logged = True
+                    resource_plotting_enabled = False
+
+                # Collect the processed data
+                data_collector.add_point(point_result.x_value, point_result.error_bar)
+
+            except (KeyError, ValueError, TypeError) as e:
+                log.error(
+                    "Failed to process data for queue depth %s: %s. Skipping this data point.",
+                    queue_depth,
+                    e,
+                )
+                continue
+
+        # Validate we extracted at least some data
+        if data_collector.is_empty():
+            raise ValueError("No valid data points could be extracted from dataset")
+
+        # Determine error bar cap size
+        cap_size = ERROR_BAR_CAP_SIZE if (plot_error_bars and not resource_plotting_enabled) else 0
+
+        return PlotDataResult(
+            x_data=data_collector.x_data,
+            error_bars=data_collector.error_bars,
+            cap_size=cap_size,
+            plot_resource_usage=resource_plotting_enabled,
+            x_label=x_label or "Unknown",  # Fallback if no label was set
+        )
+
+    def _render_plots(
+        self,
+        io_plotter: IOPlotter,
+        cpu_plotter: CPUPlotter,
+        plot_result: PlotDataResult,
+    ) -> None:
+        """Render the IO and optional CPU plots."""
+        io_plotter.plot_with_error_bars(
+            x_data=plot_result.x_data, error_data=plot_result.error_bars, cap_size=plot_result.cap_size
+        )
+
+        if plot_result.plot_resource_usage:
+            cpu_plotter.plot(x_data=plot_result.x_data)
+
+    def _add_single_file_data_with_optional_errorbars(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         file_data: CommonFormatDataType,
         main_axes: Axes,
@@ -161,60 +441,31 @@ class CommonFormatPlotter(ABC):
         label: Optional[str] = None,
     ) -> None:
         """
-        Add the data from a single file to a plot. Include error bars. Each point
-        in the plot is the latency vs IOPs or bandwidth for a given queue depth.
+        Add data from a single file to the plot with optional error bars and resource usage.
 
-        The plot will have red error bars with a blue plot line
+        Each point represents latency vs throughput (IOPS or bandwidth) for a given queue depth.
+        Error bars are displayed in red with a blue plot line when enabled.
+
+        Args:
+            file_data: Performance data in common format
+            main_axes: Matplotlib axes object for plotting
+            plot_error_bars: Whether to include standard deviation error bars
+            plot_resource_usage: Whether to include CPU usage on secondary axis
+            label: Custom label for the IO plot line (defaults to "IO Details")
         """
-        io_plot_label: str = label if label else "IO Details"
+        # Initialize plotters
+        io_plotter, cpu_plotter = self._initialize_plotters(main_axes, label)
 
-        cpu_plotter: CPUPlotter = CPUPlotter(main_axis=main_axes)  # io_axis)
-        io_plotter: IOPlotter = IOPlotter(main_axis=main_axes)  # io_axis)
-        io_plotter.y_label = "Latency (ms)"
-        io_plotter.plot_label = io_plot_label
+        # Sort and prepare data
+        sorted_plot_data = self._sort_plot_data(file_data)
 
-        sorted_plot_data: PlotDataType = self._sort_plot_data(file_data)
+        # Extract plot data with validation
+        plot_result = self._extract_plot_data(
+            sorted_plot_data, main_axes, io_plotter, cpu_plotter, plot_error_bars, plot_resource_usage
+        )
 
-        x_data: list[float] = []
-        error_bars: list[float] = []
-        capsize: int = 0
-
-        for _, data in sorted_plot_data.items():
-            # for blocksize less than 64K we want to use the bandwidth to plot the graphs,
-            # otherwise we should use iops.
-            blocksize: int = int(int(data["blocksize"]) / 1024)
-            if blocksize >= 64:
-                # convert bytes to Mb, not Mib, so use 1000s rather than 1024
-                x_data.append(float(data["bandwidth_bytes"]) / (1000 * 1000))
-                main_axes.set_xlabel("Bandwidth (MB/s)")  # pyright: ignore[reportUnknownMemberType]
-            else:
-                x_data.append(float(data["iops"]))
-                main_axes.set_xlabel("IOps")  # pyright: ignore[reportUnknownMemberType]
-                # The stored values are in ns, we want to convert to ms
-
-            io_plotter.add_y_data(data["latency"])
-
-            # If we don't have CPU data in the intermediate files, then there's
-            # no point in trying to plot a CPU line
-            if data.get("cpu", None) is None and plot_resource_usage:
-                log.warning("Unable to plot CPU usage as the CPU data does not exist")
-                plot_resource_usage = False
-
-            if plot_resource_usage:
-                cpu_plotter.add_y_data(data.get("cpu", ""))
-                plot_error_bars = False
-
-            if plot_error_bars:
-                error_bars.append(float(data["std_deviation"]) / (1000 * 1000))
-                capsize = 3
-            else:
-                error_bars.append(0)
-                capsize = 0
-
-        io_plotter.plot_with_error_bars(x_data=x_data, error_data=error_bars, cap_size=capsize)
-
-        if plot_resource_usage:
-            cpu_plotter.plot(x_data=x_data)
+        # Render plots
+        self._render_plots(io_plotter, cpu_plotter, plot_result)
 
     def _save_plot(self, file_path: str) -> None:
         """

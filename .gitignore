@@ -5,3 +5,4 @@
 .devcontainer
 *.toml
 .coverage
+.bob

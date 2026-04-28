@@ -20,7 +20,7 @@ from typing import Optional
 from post_processing.common import (
     PLOT_FILE_EXTENSION_WITH_DOT,
     TITLE_CONVERSION,
-    get_blocksize_percentage_operation_from_file_name,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
     get_latency_throughput_from_file,
     get_resource_details_from_file,
     strip_confidential_data_from_yaml,
@@ -50,7 +50,7 @@ class SimpleReportGenerator(ReportGenerator):
         output_file_name: str = f"performance_report_{datetime_string}.{self.MARKDOWN_FILE_EXTENSION}"
         return output_file_name
 
-    def _add_summary_table(self) -> None:
+    def _add_summary_table(self) -> None:  # pylint: disable=[too-many-locals]
         self._report.new_header(level=1, title=f"Summary of results for {''.join(self._build_strings)}")
 
         # We cannot use the mdutils table object here as it can only justify
@@ -60,8 +60,8 @@ class SimpleReportGenerator(ReportGenerator):
 
         log.info("Generating summary table")
 
-        headers: str = "|Workload Name|Maximum Throughput|Latency (ms)|"
-        alignment: str = "| :--- | ---: | ---: |"
+        headers: str = "|Workload Name|Number of Jobs|Maximum Throughput|Latency (ms)|"
+        alignment: str = "| :--- | :---: | ---: | ---: |"
 
         if self._plot_resources:
             alignment += " ---: |"
@@ -76,15 +76,19 @@ class SimpleReportGenerator(ReportGenerator):
 
         for _, file_data in self._data_files.items():
             for file_path in file_data:
-                # for file_name in self._data_files.keys():
-                #    for file_path in self._data_files[file_name]:
                 log.debug("Looking at file %s", file_path)
                 (max_throughput, latency_ms) = get_latency_throughput_from_file(file_path)
                 (cpu_usage, _) = get_resource_details_from_file(file_path)
                 # Eventually we will return the memory usage here, but for the first pass we'll just grab CPU
 
-                (_, _, operation) = get_blocksize_percentage_operation_from_file_name(file_path.stem)
-                data: str = f"|[{file_path.stem}](#{file_path.stem.replace('_', '-')})|{max_throughput}|{latency_ms}|{cpu_usage}|"
+                (blocksize, percent, operation, number_of_jobs) = (
+                    get_blocksize_percentage_operation_numjobs_from_file_name(file_path.stem)
+                )
+                workload_name: str = f"{blocksize} {percent} {operation}"
+                data: str = (
+                    f"|[{workload_name}](#{file_path.stem.replace('_', '-')})|"
+                    + f"{number_of_jobs}|{max_throughput}|{latency_ms}|{cpu_usage}|"
+                )
 
                 data_tables[operation].append(data)
 
@@ -93,44 +97,51 @@ class SimpleReportGenerator(ReportGenerator):
             for line in operation_data:
                 self._report.new_line(text=line)
 
-    def _add_plots(self) -> None:
+    def _add_plots(self) -> None:  # pylint: disable=[too-many-locals]
         self._report.new_header(level=1, title="Response Curves")
+
         empty_table_header: list[str] = ["", ""]
-        image_tables: dict[str, list[str]] = {}
+        image_tables: dict[str, dict[str, list[str]]] = {}
 
-        for _, operation in TITLE_CONVERSION.items():
-            image_tables[operation] = empty_table_header.copy()
+        for number_of_jobs in self._get_all_number_of_jobs_values():
+            self._report.new_header(level=2, title=f"Number of Jobs {number_of_jobs}")
+            image_tables[number_of_jobs] = {}
+            for _, operation in TITLE_CONVERSION.items():
+                image_tables[number_of_jobs][operation] = empty_table_header.copy()
 
-        for image_file in self._plot_files:
-            (blocksize, percent, operation) = get_blocksize_percentage_operation_from_file_name(image_file.stem)
-            title: str = f"{blocksize}K {percent} {operation}"
+            for image_file in self._plot_files:
+                (blocksize, percent, operation, numjobs) = get_blocksize_percentage_operation_numjobs_from_file_name(
+                    image_file.stem
+                )
+                if numjobs == number_of_jobs:
+                    title: str = f"{blocksize} {percent} {operation}"
 
-            image_line: str = self._report.new_inline_image(
-                text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
-            )
-            anchor: str = f'<a name="{image_file.stem.replace("_", "-")}"></a>'
+                    image_line: str = self._report.new_inline_image(
+                        text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
+                    )
+                    anchor: str = f'<a name="{image_file.stem.replace("_", "-")}"></a>'
 
-            image_line = f"{anchor}{image_line}"
+                    image_line = f"{anchor}{image_line}"
 
-            image_tables[operation].append(image_line)
+                    image_tables[number_of_jobs][operation].append(image_line)
 
-        # Create the correct sections and add a table for each section to the report
+            # Create the correct sections and add a table for each section to the report
 
-        # for section in image_tables.keys():
-        for section_name, section_data in image_tables.items():
-            # We don't want to display a section if it doesn't contain any plots
-            if len(section_data) > len(empty_table_header):
-                self._report.new_header(level=2, title=section_name)
-                table_images = section_data
+            # for section in image_tables.keys():
+            for section_name, section_data in image_tables[number_of_jobs].items():
+                # We don't want to display a section if it doesn't contain any plots
+                if len(section_data) > len(empty_table_header):
+                    self._report.new_header(level=3, title=section_name)
+                    table_images = section_data
 
-                # We need to calculate the number of rows, but new_table() requires the
-                # exact number of items to fill the table, so we may need to add a dummy
-                # entry at the end
-                number_of_rows: int = len(table_images) // 2
-                if len(table_images) % 2 > 0:
-                    number_of_rows += 1
-                    table_images.append("")
-                self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
+                    # We need to calculate the number of rows, but new_table() requires the
+                    # exact number of items to fill the table, so we may need to add a dummy
+                    # entry at the end
+                    number_of_rows: int = len(table_images) // 2
+                    if len(table_images) % 2 > 0:
+                        number_of_rows += 1
+                        table_images.append("")
+                    self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
 
     def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml")

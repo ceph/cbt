@@ -15,7 +15,7 @@ from matplotlib.figure import Figure
 from post_processing.common import (
     DATA_FILE_EXTENSION_WITH_DOT,
     PLOT_FILE_EXTENSION_WITH_DOT,
-    get_blocksize_percentage_operation_from_file_name,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
     read_intermediate_file,
 )
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
@@ -47,7 +47,7 @@ class FileComparisonPlotter(CommonFormatPlotter):
             index: int = self._comparison_files.index(file_path)
             file_data: CommonFormatDataType = read_intermediate_file(f"{file_path}")
 
-            operation_details: tuple[str, str, str] = get_blocksize_percentage_operation_from_file_name(
+            operation_details: tuple[str, str, str, str] = get_blocksize_percentage_operation_numjobs_from_file_name(
                 file_name=file_path.stem
             )
 
