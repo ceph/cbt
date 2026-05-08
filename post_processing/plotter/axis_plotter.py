@@ -19,7 +19,7 @@ class AxisPlotter(ABC):
     def __init__(self, main_axis: Axes) -> None:
         """
         Initialize the AxisPlotter with a matplotlib Axes object.
-        
+
         Args:
             main_axis: The main matplotlib Axes object for this plot
         """

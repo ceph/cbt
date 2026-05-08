@@ -19,6 +19,7 @@ from post_processing.common import (
     DATA_FILE_EXTENSION_WITH_DOT,
     PLOT_FILE_EXTENSION_WITH_DOT,
     find_common_data_file_names,
+    get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
 )
 
@@ -38,7 +39,7 @@ class ReportGenerator(ABC):
     # tex header file location
     BASE_HEADER_FILE_PATH: str = "include/performance_report.tex"
 
-    def __init__(
+    def __init__(  # pylint: disable=[too-many-arguments, too-many-positional-arguments]
         self,
         archive_directories: list[str],
         output_directory: str,
@@ -157,11 +158,22 @@ class ReportGenerator(ABC):
 
         For a simple report this ill be of the format:
 
-        | workload_name | Maximum Throughput |    Latency (ms)|
-        | <name>        |       <iops_or_bw> |    <latency_ms>|
+            | workload_name | Number of Jobs | Maximum Throughput |    Latency (ms)|
+            | <name>        | <numjobs>      | <iops_or_bw>       |    <latency_ms>|
 
-        for a comparison report the format is:
-        TODO: fill this in
+        for a comparison report for 2 runs the format is:
+        | <operation_type> | <baseline_workload_name>       | <workload_name>
+        | %change throughput>  | %change latency   |
+
+        | <blocksize>      | <baseline_througput>@<latency> | <througput>@<latency>
+        | <%change_throughput> | <%change_latency> |
+
+        for a comparison report for more than 2 runs the format is:
+        | <operation_type> | <baseline_workload_name> | <workload_1_name>     | %change
+        | <workload_2_name>     | %change   |
+
+        | <blocksize>      | <througput>@<latency>    | <througput>@<latency> | <%change>
+        | <througput>@<latency> | <%change> |
         """
 
     @abstractmethod
@@ -222,7 +234,13 @@ class ReportGenerator(ABC):
         producing the summary table
         """
         unique_file_names: list[str] = find_common_data_file_names(self._data_directories)
-        sorted_data_file_names: list[str] = sorted(unique_file_names, key=lambda a: int(a.split("_")[0][:-1]))
+        sorted_data_file_names: list[str] = sorted(
+            unique_file_names,
+            key=lambda file_name: (
+                int(file_name.split("_")[0]),
+                int(file_name.split("_")[1]),
+            ),
+        )
 
         sorted_data_files: dict[str, list[Path]] = {}
         for file_name in sorted_data_file_names:
@@ -304,3 +322,23 @@ class ReportGenerator(ABC):
 
         unique_directory_name: str = f"{base_directory_name}.{date_string}"
         return unique_directory_name
+
+    def _get_all_number_of_jobs_values(self) -> list[str]:
+        """
+        Get all the possible number_of_jobs values for this set of data.
+        Works for both simple and comparison plot file naming conventions.
+
+        Simple format: <blocksize>_<percent>_<operation>_<numjobs>.svg
+        Comparison format: Comparison_<blocksize>_<percent>_<operation>_<numjobs>.svg
+        """
+        numbers_of_jobs: set[str] = set()
+        for image_file in self._plot_files:
+            # Handle both naming conventions by stripping "Comparison_" prefix if present
+            stem = image_file.stem
+            if stem.startswith("Comparison_"):
+                stem = stem[len("Comparison_") :]
+
+            (_, _, _, number_of_jobs) = get_blocksize_percentage_operation_numjobs_from_file_name(stem)
+            numbers_of_jobs.add(number_of_jobs)
+
+        return sorted(numbers_of_jobs)

@@ -81,7 +81,7 @@ class Report:
     def generate(self, throw_exception: bool = False) -> None:
         """
         Do all the steps necessary to create the report file.
-        
+
         Args:
             throw_exception: If True, re-raises exceptions after logging them.
                            If False, exceptions are caught and logged but not re-raised.

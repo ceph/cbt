@@ -29,6 +29,10 @@ class RbdFioCommand(FioCommand):
     def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
         super().__init__(options, workload_output_directory)
 
+    @property
+    def benchmark(self) -> str:
+        return "rbdfio"
+
     def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:
         rbd_options: dict[str, str] = self._RBD_DEFAULT_OPTIONS
 

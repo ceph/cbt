@@ -33,6 +33,7 @@ class FIO(BenchmarkResult):
             "runtime_seconds": f"{fio_global_options['runtime']}",
             "blocksize": blocksize,
         }
+        self._number_of_jobs = f"{fio_global_options['numjobs']}"
 
         # if rwmixread exists in the output then so does rwmixwrite
         if fio_global_options.get("rwmixread", None):

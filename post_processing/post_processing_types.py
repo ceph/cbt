@@ -44,8 +44,9 @@ IodepthDataType = dict[str, str]
 CommonFormatDataType = dict[str, Union[str, IodepthDataType]]
 
 # Common formatter internal data types
-InternalBlocksizeDataType = dict[str, CommonFormatDataType]
-InternalFormattedOutputType = dict[str, InternalBlocksizeDataType]
+InternalBlocksizeDataType = dict[str, dict[str, Union[str, IodepthDataType]]]
+InternalNumJobsDataType = dict[str, InternalBlocksizeDataType]
+InternalFormattedOutputType = dict[str, InternalNumJobsDataType]
 
 # Plotter types
 PlotDataType = dict[str, dict[str, str]]

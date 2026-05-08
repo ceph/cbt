@@ -34,7 +34,7 @@ class ResourceResult(ABC):
     def source(self) -> str:
         """
         Get the source identifier for the resource monitoring tool.
-        
+
         Returns:
             A string identifier for the resource monitoring source (e.g., "fio", "collectl")
         """
@@ -55,12 +55,18 @@ class ResourceResult(ABC):
 
     @property
     def cpu(self) -> str:
+        """
+        getter for the CPU value
+        """
         if not self._has_been_parsed:
             self._parse(self._read_results_from_file())
         return self._cpu
 
     @property
     def memory(self) -> str:
+        """
+        getter for the memory value
+        """
         if not self._has_been_parsed:
             self._parse(self._read_results_from_file())
         return self._memory

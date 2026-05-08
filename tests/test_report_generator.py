@@ -27,8 +27,9 @@ class TestReportGenerator(unittest.TestCase):
         self.vis_dir.mkdir(parents=True)
 
         # Create some test data files
-        (self.vis_dir / "4096_read.json").touch()
-        (self.vis_dir / "8192_write.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis_dir / "4096_1_read.json").touch()
+        (self.vis_dir / "8192_1_write.json").touch()
 
     def tearDown(self) -> None:
         """Clean up test fixtures"""
@@ -85,7 +86,8 @@ class TestReportGenerator(unittest.TestCase):
         archive_with_underscores = Path(self.temp_dir) / "test_archive_name"
         vis_dir = archive_with_underscores / "visualisation"
         vis_dir.mkdir(parents=True)
-        (vis_dir / "4096_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (vis_dir / "4096_1_read.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -106,16 +108,17 @@ class TestReportGenerator(unittest.TestCase):
             output_directory=output_dir,
         )
 
-        files = generator._find_files_with_filename("4096_read")
+        files = generator._find_files_with_filename("4096_1_read")
 
         self.assertEqual(len(files), 1)
-        self.assertTrue(str(files[0]).endswith("4096_read.json"))
+        self.assertTrue(str(files[0]).endswith("4096_1_read.json"))
 
     def test_sort_list_of_paths(self) -> None:
         """Test sorting paths by numeric blocksize"""
         # Create files with different blocksizes
-        (self.vis_dir / "16384_read.json").touch()
-        (self.vis_dir / "1024_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis_dir / "16384_1_read.json").touch()
+        (self.vis_dir / "1024_1_read.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -128,8 +131,8 @@ class TestReportGenerator(unittest.TestCase):
         sorted_paths = generator._sort_list_of_paths(paths, index=0)
 
         # Should be sorted by blocksize: 1024, 4096, 8192, 16384
-        self.assertTrue(str(sorted_paths[0]).endswith("1024_read.json"))
-        self.assertTrue(str(sorted_paths[-1]).endswith("16384_read.json"))
+        self.assertTrue(str(sorted_paths[0]).endswith("1024_1_read.json"))
+        self.assertTrue(str(sorted_paths[-1]).endswith("16384_1_read.json"))
 
     def test_generate_plot_directory_name(self) -> None:
         """Test generating unique plot directory name"""

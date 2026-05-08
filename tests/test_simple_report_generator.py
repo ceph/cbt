@@ -27,7 +27,8 @@ class TestSimpleReportGenerator(unittest.TestCase):
         self.vis_dir.mkdir(parents=True)
 
         # Create test data files
-        (self.vis_dir / "4096_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis_dir / "4096_1_read.json").touch()
 
     def tearDown(self) -> None:
         """Clean up test fixtures"""
@@ -85,8 +86,9 @@ class TestSimpleReportGenerator(unittest.TestCase):
     def test_find_and_sort_file_paths(self) -> None:
         """Test finding and sorting file paths"""
         # Create multiple files
-        (self.vis_dir / "8192_write.json").touch()
-        (self.vis_dir / "16384_read.json").touch()
+        # Format: {blocksize}_{numjobs}_{operation}.json
+        (self.vis_dir / "8192_1_write.json").touch()
+        (self.vis_dir / "16384_1_read.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -99,7 +101,7 @@ class TestSimpleReportGenerator(unittest.TestCase):
 
         self.assertEqual(len(paths), 3)
         # Should be sorted by blocksize
-        self.assertTrue(str(paths[0]).endswith("4096_read.json"))
+        self.assertTrue(str(paths[0]).endswith("4096_1_read.json"))
 
 
 # Made with Bob

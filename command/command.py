@@ -56,6 +56,13 @@ class Command(ABC):
         The format is dependent on the specific Command implementation
         """
 
+    @property
+    @abstractmethod
+    def benchmark(self) -> str:
+        """
+        Return the benchmark type for this command type
+        """
+
     def get(self) -> str:
         """
         get the full cli string that can be sent to a system.
