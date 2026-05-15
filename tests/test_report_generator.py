@@ -20,16 +20,24 @@ class TestReportGenerator(unittest.TestCase):
     """Test cases for ReportGenerator base class"""
 
     def setUp(self) -> None:
-        """Set up test fixtures"""
+        """Set up test fixtures with new nested structure"""
         self.temp_dir = tempfile.mkdtemp()
         self.archive_dir = Path(self.temp_dir) / "archive"
+        
+        # Create new nested structure: operation/visualisation/
+        read_vis_dir = self.archive_dir / "read" / "visualisation"
+        write_vis_dir = self.archive_dir / "write" / "visualisation"
+        read_vis_dir.mkdir(parents=True)
+        write_vis_dir.mkdir(parents=True)
+        
+        # Also create top-level visualisation for SVG files
         self.vis_dir = self.archive_dir / "visualisation"
         self.vis_dir.mkdir(parents=True)
 
-        # Create some test data files
+        # Create some test data files in nested structure
         # Format: {blocksize}_{numjobs}_{operation}.json
-        (self.vis_dir / "4096_1_read.json").touch()
-        (self.vis_dir / "8192_1_write.json").touch()
+        (read_vis_dir / "4096_1_read.json").touch()
+        (write_vis_dir / "8192_1_write.json").touch()
 
     def tearDown(self) -> None:
         """Clean up test fixtures"""
@@ -51,7 +59,8 @@ class TestReportGenerator(unittest.TestCase):
         self.assertFalse(generator._force_refresh)
         self.assertFalse(generator._plot_resources)
         self.assertEqual(len(generator._archive_directories), 1)
-        self.assertEqual(len(generator._data_directories), 1)
+        # With new nested structure, we have 2 operation directories (read and write)
+        self.assertEqual(len(generator._data_directories), 2)
 
     def test_initialization_with_no_error_bars(self) -> None:
         """Test initialization with no_error_bars=True"""
@@ -84,10 +93,16 @@ class TestReportGenerator(unittest.TestCase):
     def test_build_strings_replace_underscores(self) -> None:
         """Test that build strings replace underscores with hyphens"""
         archive_with_underscores = Path(self.temp_dir) / "test_archive_name"
-        vis_dir = archive_with_underscores / "visualisation"
-        vis_dir.mkdir(parents=True)
+        
+        # Create new nested structure
+        read_vis_dir = archive_with_underscores / "read" / "visualisation"
+        read_vis_dir.mkdir(parents=True)
         # Format: {blocksize}_{numjobs}_{operation}.json
-        (vis_dir / "4096_1_read.json").touch()
+        (read_vis_dir / "4096_1_read.json").touch()
+        
+        # Also create top-level visualisation for SVG files
+        top_vis_dir = archive_with_underscores / "visualisation"
+        top_vis_dir.mkdir(parents=True)
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -115,10 +130,12 @@ class TestReportGenerator(unittest.TestCase):
 
     def test_sort_list_of_paths(self) -> None:
         """Test sorting paths by numeric blocksize"""
-        # Create files with different blocksizes
+        # Create files with different blocksizes in new nested structure
         # Format: {blocksize}_{numjobs}_{operation}.json
-        (self.vis_dir / "16384_1_read.json").touch()
-        (self.vis_dir / "1024_1_read.json").touch()
+        read_vis_dir = self.archive_dir / "read" / "visualisation"
+        read_vis_dir.mkdir(parents=True, exist_ok=True)
+        (read_vis_dir / "16384_1_read.json").touch()
+        (read_vis_dir / "1024_1_read.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -127,7 +144,7 @@ class TestReportGenerator(unittest.TestCase):
             output_directory=output_dir,
         )
 
-        paths = list(self.vis_dir.glob("*.json"))
+        paths = list(read_vis_dir.glob("*.json"))
         sorted_paths = generator._sort_list_of_paths(paths, index=0)
 
         # Should be sorted by blocksize: 1024, 4096, 8192, 16384
@@ -148,6 +165,24 @@ class TestReportGenerator(unittest.TestCase):
         self.assertTrue(plot_dir_name.startswith(f"{output_dir}/plots."))
         # Should have timestamp appended
         self.assertGreater(len(plot_dir_name), len(f"{output_dir}/plots."))
+
+    def test_force_refresh_allows_legacy_visualisation_directory(self) -> None:
+        """Test that force_refresh bypasses legacy visualisation directory rejection"""
+        legacy_archive = Path(self.temp_dir) / "legacy_archive"
+        legacy_vis_dir = legacy_archive / "visualisation"
+        legacy_vis_dir.mkdir(parents=True)
+        (legacy_vis_dir / "4096_1_read.json").touch()
+
+        output_dir = f"{self.temp_dir}/output"
+
+        generator = SimpleReportGenerator(
+            archive_directories=[str(legacy_archive)],
+            output_directory=output_dir,
+            force_refresh=True,
+        )
+
+        self.assertTrue(generator._force_refresh)
+        self.assertEqual(generator._data_directories, [legacy_vis_dir])
 
     def test_constants(self) -> None:
         """Test ReportGenerator constants"""

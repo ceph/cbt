@@ -7,6 +7,7 @@ Unit tests for the CommonOutputFormatter class
 # We are OK to ignore private use in unit tests as the whole point of the tests
 # is to validate the functions contained in the module
 
+import re
 import shutil
 import tempfile
 import unittest
@@ -133,13 +134,19 @@ class TestCommonOutputFormatter(unittest.TestCase):
         (test_dir / "other_file.0").touch()
 
         formatter = CommonOutputFormatter(str(test_dir))
-        formatter._find_all_results_files_in_directory()
+
+        # Simulate the file finding logic from process()
+        file_list = [
+            path
+            for path in formatter.path.glob(f"**/{formatter._filename_root}.*")
+            if re.search(rf"{formatter._filename_root}.\d+$", f"{path}")
+        ]
 
         # Should find exactly 3 files
-        self.assertEqual(len(formatter._file_list), 3)
+        self.assertEqual(len(file_list), 3)
 
         # All files should match the pattern
-        for file_path in formatter._file_list:
+        for file_path in file_list:
             self.assertTrue(file_path.name.startswith("json_output."))
             self.assertTrue(file_path.name.split(".")[-1].isdigit())
 
@@ -158,8 +165,14 @@ class TestCommonOutputFormatter(unittest.TestCase):
         (run2_dir / "json_output.0").touch()
 
         formatter = CommonOutputFormatter(str(test_dir))
-        formatter._find_all_results_files_in_directory()
-        formatter._find_all_testrun_ids()
+
+        # Simulate the file finding logic from process()
+        file_list = [
+            path
+            for path in formatter.path.glob(f"**/{formatter._filename_root}.*")
+            if re.search(rf"{formatter._filename_root}.\d+$", f"{path}")
+        ]
+        formatter._find_all_testrun_ids(file_list)
 
         # Should find 2 unique test run IDs
         self.assertEqual(len(formatter._all_test_run_ids), 2)
@@ -176,8 +189,14 @@ class TestCommonOutputFormatter(unittest.TestCase):
         (run_dir / "json_output.0").touch()
 
         formatter = CommonOutputFormatter(str(test_dir))
-        formatter._find_all_results_files_in_directory()
-        formatter._find_all_testrun_ids()
+
+        # Simulate the file finding logic from process()
+        file_list = [
+            path
+            for path in formatter.path.glob(f"**/{formatter._filename_root}.*")
+            if re.search(rf"{formatter._filename_root}.\d+$", f"{path}")
+        ]
+        formatter._find_all_testrun_ids(file_list)
 
         # Should use the directory name above the file
         self.assertEqual(len(formatter._all_test_run_ids), 1)

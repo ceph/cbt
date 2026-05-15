@@ -65,7 +65,7 @@ class TestCPUPlotter(unittest.TestCase):
 
     def test_cpu_constants(self) -> None:
         """Test CPU plotter constants"""
-        self.assertEqual(CPU_PLOT_DEFAULT_COLOUR, "#5ca904")
+        self.assertEqual(CPU_PLOT_DEFAULT_COLOUR, "xkcd:leaf green")
         self.assertEqual(CPU_Y_LABEL, "System CPU use (%)")
         self.assertEqual(CPU_PLOT_LABEL, "CPU use")
 

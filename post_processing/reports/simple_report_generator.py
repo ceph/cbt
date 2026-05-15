@@ -92,56 +92,24 @@ class SimpleReportGenerator(ReportGenerator):
 
                 data_tables[operation].append(data)
 
-        # for operation in data_tables.keys():
+        # Add all data rows to the table
         for _, operation_data in data_tables.items():
             for line in operation_data:
                 self._report.new_line(text=line)
 
-    def _add_plots(self) -> None:  # pylint: disable=[too-many-locals]
-        self._report.new_header(level=1, title="Response Curves")
+    def _get_plot_file_stem(self, image_file: Path) -> str:
+        """
+        Get the file stem for a simple report plot file.
 
-        empty_table_header: list[str] = ["", ""]
-        image_tables: dict[str, dict[str, list[str]]] = {}
+        For simple reports, the stem is used as-is without any prefix removal.
 
-        for number_of_jobs in self._get_all_number_of_jobs_values():
-            self._report.new_header(level=2, title=f"Number of Jobs {number_of_jobs}")
-            image_tables[number_of_jobs] = {}
-            for _, operation in TITLE_CONVERSION.items():
-                image_tables[number_of_jobs][operation] = empty_table_header.copy()
+        Args:
+            image_file: Path to the plot file
 
-            for image_file in self._plot_files:
-                (blocksize, percent, operation, numjobs) = get_blocksize_percentage_operation_numjobs_from_file_name(
-                    image_file.stem
-                )
-                if numjobs == number_of_jobs:
-                    title: str = f"{blocksize} {percent} {operation}"
-
-                    image_line: str = self._report.new_inline_image(
-                        text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
-                    )
-                    anchor: str = f'<a name="{image_file.stem.replace("_", "-")}"></a>'
-
-                    image_line = f"{anchor}{image_line}"
-
-                    image_tables[number_of_jobs][operation].append(image_line)
-
-            # Create the correct sections and add a table for each section to the report
-
-            # for section in image_tables.keys():
-            for section_name, section_data in image_tables[number_of_jobs].items():
-                # We don't want to display a section if it doesn't contain any plots
-                if len(section_data) > len(empty_table_header):
-                    self._report.new_header(level=3, title=section_name)
-                    table_images = section_data
-
-                    # We need to calculate the number of rows, but new_table() requires the
-                    # exact number of items to fill the table, so we may need to add a dummy
-                    # entry at the end
-                    number_of_rows: int = len(table_images) // 2
-                    if len(table_images) % 2 > 0:
-                        number_of_rows += 1
-                        table_images.append("")
-                    self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
+        Returns:
+            The file stem without extension
+        """
+        return image_file.stem
 
     def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml")
@@ -156,35 +124,29 @@ class SimpleReportGenerator(ReportGenerator):
     def _copy_images(self) -> None:
         plot_files: list[Path] = []
         for directory in self._data_directories:
-            plot_files.extend(list(directory.glob(f"*{PLOT_FILE_EXTENSION_WITH_DOT}")))
+            # Check for existing plot files in this directory
+            existing_plots = list(directory.glob(f"*{PLOT_FILE_EXTENSION_WITH_DOT}"))
 
-            # If there are no plotfiles in the directory then we should create them
-            if len(plot_files) == 0 or self._force_refresh:
+            # If there are no plot files in the directory or force_refresh is set, create them
+            if len(existing_plots) == 0 or self._force_refresh:
+                log.info("Generating plots for %s", directory.parent)
                 plotter = SimplePlotter(str(directory.parent), self._plot_error_bars, self._plot_resources)
                 plotter.draw_and_save()
+                # Collect the newly generated plot files
                 plot_files.extend(list(directory.glob(f"*{PLOT_FILE_EXTENSION_WITH_DOT}")))
+            else:
+                # Use existing plots
+                plot_files.extend(existing_plots)
 
-        for plot_file in plot_files:
-            subprocess.call(f"cp {plot_file} {self._plots_directory}/", shell=True)
+        # Filter out time-series files (they have _timeseries suffix before the extension)
+        # Simple reports should only include standard hockey-stick plots
+        filtered_plot_files = [plot_file for plot_file in plot_files if "_timeseries" not in plot_file.stem]
+
+        for plot_file in filtered_plot_files:
+            # Use shell=False for security - pass command as list
+            subprocess.call(["/usr/bin/env", "cp", str(plot_file), f"{self._plots_directory}/"])
 
     def _find_and_sort_file_paths(self, paths: list[Path], search_pattern: str, index: Optional[int] = 0) -> list[Path]:
         unsorted_paths: list[Path] = list(paths[0].glob(search_pattern))
         assert index is not None
         return self._sort_list_of_paths(unsorted_paths, index)
-
-    def _find_configuration_yaml_files(self) -> list[Path]:
-        file_paths: list[Path] = [
-            path for path in self._archive_directories[0].parents if f"{path}".endswith("/results")
-        ]
-        # Because this can either be called during a run, or separately afterwards the
-        # archive directory passed may be at a different point in the directory tree.
-        # We therefore need to search both above and below the current directory for
-        # the config yaml
-        if len(file_paths) == 0:
-            file_paths = [path for path in self._archive_directories[0].iterdir() if f"{path}".endswith("/results")]
-
-        yaml_file_path: list[Path] = list(file_paths[0].glob("**/cbt_config.yaml"))
-
-        # This should only ever return a single path as each archive directory
-        # should only ever contain a single cbt_config.yaml file
-        return yaml_file_path

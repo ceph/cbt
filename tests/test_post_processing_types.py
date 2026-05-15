@@ -14,6 +14,7 @@ from post_processing.post_processing_types import (
     JobsDataType,
     PlotDataType,
     ReportOptions,
+    ReportType,
 )
 
 
@@ -67,7 +68,7 @@ class TestReportOptions(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=True,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=True,
         )
 
@@ -77,7 +78,7 @@ class TestReportOptions(unittest.TestCase):
         self.assertTrue(options.create_pdf)
         self.assertFalse(options.force_refresh)
         self.assertTrue(options.no_error_bars)
-        self.assertFalse(options.comparison)
+        self.assertEqual(options.report_type, ReportType.SIMPLE)
         self.assertTrue(options.plot_resources)
 
     def test_report_options_immutable(self) -> None:
@@ -89,7 +90,7 @@ class TestReportOptions(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
@@ -105,7 +106,7 @@ class TestReportOptions(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
@@ -123,13 +124,20 @@ class TestReportOptions(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
-        (archives, output_dir, results_root, create_pdf, force_refresh, no_error_bars, comparison, plot_resources) = (
-            options
-        )
+        (
+            archives,
+            output_dir,
+            results_root,
+            create_pdf,
+            _force_refresh,
+            _no_error_bars,
+            _report_type,
+            _plot_resources,
+        ) = options
 
         self.assertEqual(archives, ["archive1"])
         self.assertEqual(output_dir, "/output")
@@ -145,7 +153,7 @@ class TestReportOptions(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
@@ -165,7 +173,7 @@ class TestReportOptions(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 

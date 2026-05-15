@@ -8,15 +8,15 @@ import json
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from post_processing.common import file_is_empty, get_blocksize
-from post_processing.post_processing_types import IodepthDataType, JobsDataType
+from post_processing.post_processing_types import IodepthDataType, JobsDataType, TimeSeriesFormatType
 
 log: Logger = getLogger("formatter")
 
 
-class BenchmarkResult(ABC):  # pylint: disable=[too-many-instance-attributes]
+class BenchmarkResult(ABC):  # pylint: disable=too-many-instance-attributes
     """
     This is the top level class for a benchmark run result. As each
     benchmark tool produces different output results we will need a
@@ -28,8 +28,8 @@ class BenchmarkResult(ABC):  # pylint: disable=[too-many-instance-attributes]
         self._data: dict[str, Any] = self._read_results_from_file()
         if not self._data:
             raise ValueError(f"File {file_path} is empty")
-        self._number_of_jobs: str = ""
 
+        self._number_of_jobs: str = ""  # Will be set by subclass in _get_global_options
         self._global_options: dict[str, str] = self._get_global_options(self._data["global options"])
         self._iodepth = self._get_iodepth(f"{self._data['global options']['iodepth']}")
         self._io_details: IodepthDataType = self._get_io_details(self._data["jobs"])
@@ -71,14 +71,14 @@ class BenchmarkResult(ABC):  # pylint: disable=[too-many-instance-attributes]
     @property
     def blocksize(self) -> str:
         """
-        Getter for blocksize
+        Return the blocksize for this benchmark run.
         """
         return get_blocksize(f"{self._data['global options']['bs']}")
 
     @property
     def operation(self) -> str:
         """
-        Getter for the operation (read, write, rw etc)
+        Return the operation type for this benchmark run.
         """
         operation: str = f"{self._data['global options']['rw']}"
         if self._global_options.get("percentage_reads", None):
@@ -91,30 +91,52 @@ class BenchmarkResult(ABC):  # pylint: disable=[too-many-instance-attributes]
     @property
     def global_options(self) -> dict[str, str]:
         """
-        Getter for the global options from this run
+        Return the global options for this benchmark run.
         """
         return self._global_options
 
     @property
     def iodepth(self) -> str:
         """
-        Getter for iodepth value
+        Return the IO depth for this benchmark run.
         """
         return self._iodepth
 
     @property
     def io_details(self) -> IodepthDataType:
         """
-        Getter for the I/O details
+        Return the IO details for this benchmark run.
         """
         return self._io_details
 
     @property
     def number_of_jobs(self) -> str:
         """
-        Getter for number of jobs
+        Return the number of jobs for this benchmark run.
         """
         return self._number_of_jobs
+
+    @property
+    def resource_file_path(self) -> Path:
+        """
+        Return the resource file path for this benchmark run.
+        """
+        return self._resource_file_path
+
+    @abstractmethod
+    def get_timeseries_data(self) -> Optional[TimeSeriesFormatType]:
+        """
+        Get time-series data if available for this benchmark.
+
+        Subclasses must implement this method to either:
+        - Return TimeSeriesFormatType with time-indexed metrics if supported
+        - Return None if time-series data is not available for this benchmark
+
+        This forces explicit consideration of time-series support for each benchmark type.
+
+        Returns:
+            TimeSeriesFormatType with time-indexed metrics, or None if not supported
+        """
 
     def _read_results_from_file(self) -> dict[str, Any]:
         """

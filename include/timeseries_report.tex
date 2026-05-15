@@ -1,0 +1,7 @@
+% Additional LaTeX commands for timeseries reports
+% This file is used in addition to performance_report.tex
+% Scale all images to 50% of their natural size for timeseries reports
+\let\oldincludegraphics\includegraphics
+\renewcommand{\includegraphics}[2][]{\oldincludegraphics[#1,scale=0.5]{#2}}
+
+% Made with Bob

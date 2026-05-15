@@ -6,7 +6,7 @@ from logging import Logger, getLogger
 from pathlib import Path
 from typing import Any
 
-from post_processing.run_results.resources.resource_result import ResourceResult
+from post_processing.run_results.resource_result import ResourceResult
 
 log: Logger = getLogger("formatter")
 

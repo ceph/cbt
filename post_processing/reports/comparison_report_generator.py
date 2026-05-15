@@ -42,56 +42,28 @@ class ComparisonReportGenerator(ReportGenerator):
     containing several individual FIO runs
     """
 
+    # No need to override __init__ anymore - base class handles everything
+
     def _generate_report_title(self) -> str:
         title: str = f"Comparitive Performance Report for {' vs '.join(self._build_strings)}"
         return title
 
-    def _add_plots(self) -> None:  # pylint: disable=[too-many-locals]
-        self._report.new_header(level=1, title="Response Curves")
-        empty_table_header: list[str] = ["", ""]
+    def _get_plot_file_stem(self, image_file: Path) -> str:
+        """
+        Get the file stem for a comparison report plot file.
 
-        for number_of_jobs in self._get_all_number_of_jobs_values():
-            self._report.new_header(level=2, title=f"Number of Jobs {number_of_jobs}")
-            image_tables: dict[str, list[str]] = {}
+        For comparison reports, removes the "Comparison_" prefix from the stem.
 
-            for _, operation in TITLE_CONVERSION.items():
-                image_tables[operation] = empty_table_header.copy()
+        Args:
+            image_file: Path to the plot file
 
-            for image_file in self._plot_files:
-                # The comparison plot files have a different name format:
-                #     Comparison_<blocksize>_<percent>_<operation>_<numjobs>
-                # so we need to split the Comparison_ from the front before calling the common method
-                (blocksize, percent, operation, numjobs) = get_blocksize_percentage_operation_numjobs_from_file_name(
-                    image_file.stem[len("Comparison_") :]
-                )
-                if numjobs == number_of_jobs:
-                    title: str = f"{blocksize} {percent} {operation}"
-
-                    image_line: str = self._report.new_inline_image(
-                        text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
-                    )
-                    anchor: str = f'<a name="{image_file.stem[len("Comparison_") :].replace("_", "-")}"></a>'
-
-                    image_line = f"{anchor}{image_line}"
-
-                    image_tables[operation].append(image_line)
-
-            # Create the correct sections and add a table for each section to the report
-
-            for section, data in image_tables.items():
-                # We don't want to display a section if it doesn't contain any plots
-                if len(data) > len(empty_table_header):
-                    self._report.new_header(level=3, title=section)
-                    table_images = data
-
-                    # We need to calculate the number of rows, but new_table() requires the
-                    # exact number of items to fill the table, so we may need to add a dummy
-                    # entry at the end
-                    number_of_rows: int = len(table_images) // 2
-                    if len(table_images) % 2 > 0:
-                        number_of_rows += 1
-                        table_images.append("")
-                    self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
+        Returns:
+            The file stem without the "Comparison_" prefix
+        """
+        stem = image_file.stem
+        if stem.startswith("Comparison_"):
+            return stem[len("Comparison_") :]
+        return stem
 
     def _add_summary_table(self) -> None:
         self._report.new_header(level=1, title=f"Comparison summary for {' vs '.join(self._build_strings)}")
@@ -111,10 +83,9 @@ class ComparisonReportGenerator(ReportGenerator):
             if data:
                 self._report.new_line(text=f"|{operation}|{table_header}")
                 self._report.new_line(text=table_justfication_string)
-
-            for line in data:
-                self._report.new_line(text=line)
-            self._report.new_line()
+                for line in data:
+                    self._report.new_line(text=line)
+                self._report.new_line()
 
     def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml files")
@@ -166,33 +137,21 @@ class ComparisonReportGenerator(ReportGenerator):
 
     def _find_and_sort_plot_files(self) -> list[Path]:
         """
-        Find all the plot files in the directory. That is any file that
-        has the .svg file extension
+        Find all the comparison plot files in the directory.
 
         This overrides the one in the ReportGenerator as the comparison plot
         files have a different naming convention:
             Comparison_<blocksize>B_<read%>_<write%>_<operation>.svg
+
+        Filters to only include files starting with "Comparison_" to avoid
+        accidentally including simple or time-series plot files.
         """
-        return self._find_and_sort_file_paths(
+        all_plots = self._find_and_sort_file_paths(
             paths=[self._plots_directory], search_pattern=f"*{PLOT_FILE_EXTENSION_WITH_DOT}", index=1
         )
-
-    def _find_configuration_yaml_files(self) -> list[Path]:
-        file_paths: list[Path] = []
-
-        for directory in self._archive_directories:
-            # Because this can either be called during a run, or separately afterwards the
-            # archive directory passed may be at a different point in the directory tree.
-            # We therefore need to search both above and below the current directory for
-            # the config yaml
-            paths: list[Path] = [path for path in directory.parents if f"{path}".endswith("/results")]
-            if len(paths) == 0:
-                paths = [path for path in directory.iterdir() if f"{path}".endswith("/results")]
-
-            for path in paths:
-                file_paths.extend(path.glob("**/cbt_config.yaml"))
-
-        return file_paths
+        # Filter to only include comparison plots (those starting with "Comparison_")
+        comparison_plots = [plot for plot in all_plots if plot.stem.startswith("Comparison_")]
+        return comparison_plots
 
     def _create_comparison_plots(self) -> None:
         """
@@ -211,17 +170,21 @@ class ComparisonReportGenerator(ReportGenerator):
         """
         Generate the header lines for the table
         """
-        # The first directory is always the baseline, so we want to get it out of the way first
-        table_header: str = f"numjobs|{self._data_directories.pop(0).parts[-2]}|"
+        # Use archive directories (not data directories which now contain multiple subdirs per archive)
+        # The first archive is always the baseline
+        archive_dirs = self._archive_directories.copy()
+        baseline_dir = archive_dirs.pop(0)
+
+        table_header: str = f"numjobs|{baseline_dir.parts[-1]}|"
         table_justfication_string: str = "| :--- | ---: | ---: |"
 
-        if len(self._data_directories) < 2:
-            for directory in self._data_directories:
-                table_header += f"{directory.parts[-2]}|%change throughput|%change latency|"
+        if len(archive_dirs) < 2:
+            for directory in archive_dirs:
+                table_header += f"{directory.parts[-1]}|%change throughput|%change latency|"
                 table_justfication_string += " ---: | ---: | ---: |"
         else:
-            for directory in self._data_directories:
-                table_header += f"{directory.parts[-2]}|%change|"
+            for directory in archive_dirs:
+                table_header += f"{directory.parts[-1]}|%change|"
                 table_justfication_string += " ---: | ---: |"
 
         return (table_header, table_justfication_string)
@@ -275,12 +238,28 @@ class ComparisonReportGenerator(ReportGenerator):
         If there are more that 20 differences between base and comparison then
         return True, otherwise False
         """
-        diff_command: str = f"/usr/bin/env diff -wy --suppress-common-lines {base_file!s} {comparison_file!s} | wc -l"
+        # Use shell=False for security - pass command as list
+        diff_command: list[str] = [
+            "/usr/bin/env",
+            "diff",
+            "-wy",
+            "--suppress-common-lines",
+            str(base_file),
+            str(comparison_file),
+        ]
+        wc_command: list[str] = ["/usr/bin/env", "wc", "-l"]
 
         output: bytes
         try:
-            output = subprocess.check_output(diff_command, shell=True)
-        except subprocess.CalledProcessError:
+            # Use two subprocess calls with pipe to avoid shell=True
+            with subprocess.Popen(diff_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as diff_process:
+                with subprocess.Popen(
+                    wc_command, stdin=diff_process.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                ) as wc_process:
+                    if diff_process.stdout:
+                        diff_process.stdout.close()  # Allow diff_process to receive SIGPIPE if wc_process exits
+                    output, _ = wc_process.communicate()
+        except (subprocess.CalledProcessError, OSError):
             return False
 
         output_as_string: str = output.decode().strip()

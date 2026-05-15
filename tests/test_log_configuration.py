@@ -1,6 +1,7 @@
 """
 Unit tests for the post_processing/log_configuration.py module
 """
+
 # pyright: strict, reportPrivateUsage=false
 #
 # We are OK to ignore private use in unit tests as the whole point of the tests
@@ -130,14 +131,8 @@ class TestLogConfiguration(unittest.TestCase):
 
     @patch("post_processing.log_configuration.os.makedirs")
     @patch("post_processing.log_configuration.logging.config.dictConfig")
-    @patch("post_processing.log_configuration.getLogger")
-    def test_setup_logging(
-        self, mock_get_logger: MagicMock, mock_dict_config: MagicMock, mock_makedirs: MagicMock
-    ) -> None:
+    def test_setup_logging(self, mock_dict_config: MagicMock, mock_makedirs: MagicMock) -> None:
         """Test setup_logging function"""
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
-
         setup_logging()
 
         # Should create log directory
@@ -147,14 +142,6 @@ class TestLogConfiguration(unittest.TestCase):
 
         # Should configure logging
         mock_dict_config.assert_called_once()
-
-        # Should get formatter logger
-        mock_get_logger.assert_called_once_with("formatter")
-
-        # Should log startup message
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
-        self.assertIn("Starting Post Processing", call_args)
 
     @patch.dict(os.environ, {"CBT_PP_LOGFILE_LOCATION": "/custom/path"})
     def test_logfile_location_from_env(self) -> None:

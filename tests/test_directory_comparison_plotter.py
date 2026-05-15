@@ -2,6 +2,7 @@
 Unit tests for the DirectoryComparisonPlotter class
 """
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -44,9 +45,9 @@ class TestDirectoryComparisonPlotter(unittest.TestCase):
         plotter = DirectoryComparisonPlotter(output_directory=str(self.output_dir), directories=directories)
 
         assert plotter._output_directory == str(self.output_dir)
-        assert len(plotter._comparison_directories) == 2
-        assert plotter._comparison_directories[0] == self.vis_dir1
-        assert plotter._comparison_directories[1] == self.vis_dir2
+        assert len(plotter._archive_directories) == 2
+        assert plotter._archive_directories[0] == self.dir1
+        assert plotter._archive_directories[1] == self.dir2
 
     def test_generate_output_file_name(self) -> None:
         """Test generating output file name"""
@@ -134,6 +135,12 @@ class TestDirectoryComparisonPlotter(unittest.TestCase):
         mock_find_common: MagicMock,
     ) -> None:
         """Test draw_and_save with multiple common files"""
+        # Create the JSON files BEFORE instantiating plotter so find_hockey_stick_visualisation_directories finds them
+        (self.vis_dir1 / "4096_100_read_1.json").touch()
+        (self.vis_dir1 / "8192_100_write_1.json").touch()
+        (self.vis_dir2 / "4096_100_read_1.json").touch()
+        (self.vis_dir2 / "8192_100_write_1.json").touch()
+
         directories = [str(self.dir1), str(self.dir2)]
         plotter = DirectoryComparisonPlotter(output_directory=str(self.output_dir), directories=directories)
 
@@ -281,20 +288,29 @@ class TestDirectoryComparisonPlotter(unittest.TestCase):
 
     def test_uses_directory_name_as_label(self) -> None:
         """Test that directory names are used as labels in the plot"""
-        # Create directories with meaningful names
+        # Create directories with meaningful names using new nested structure
         baseline_dir = Path(self.temp_dir) / "baseline"
         optimized_dir = Path(self.temp_dir) / "optimized"
-        baseline_vis = baseline_dir / "visualisation"
-        optimized_vis = optimized_dir / "visualisation"
+        
+        # Create operation-level visualisation directories (new structure)
+        baseline_vis = baseline_dir / "randread" / "visualisation"
+        optimized_vis = optimized_dir / "randread" / "visualisation"
         baseline_vis.mkdir(parents=True)
         optimized_vis.mkdir(parents=True)
+
+        # Create JSON files so directories are found
+        test_data = {"data": [{"x": 1, "y": 100}]}
+        with open(baseline_vis / "test.json", "w") as f:
+            json.dump(test_data, f)
+        with open(optimized_vis / "test.json", "w") as f:
+            json.dump(test_data, f)
 
         directories = [str(baseline_dir), str(optimized_dir)]
         plotter = DirectoryComparisonPlotter(output_directory=str(self.output_dir), directories=directories)
 
-        # Verify the comparison directories are set correctly
-        assert plotter._comparison_directories[0] == baseline_vis
-        assert plotter._comparison_directories[1] == optimized_vis
+        # Verify the archive directories are set correctly
+        assert plotter._archive_directories[0] == baseline_dir
+        assert plotter._archive_directories[1] == optimized_dir
 
 
 # Made with Bob

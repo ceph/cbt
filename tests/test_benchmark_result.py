@@ -12,9 +12,10 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from post_processing.run_results.benchmarks.benchmark_result import BenchmarkResult
+from post_processing.post_processing_types import TimeSeriesFormatType
+from post_processing.run_results.benchmark_result import BenchmarkResult
 
 
 class ConcreteBenchmarkResult(BenchmarkResult):
@@ -25,13 +26,18 @@ class ConcreteBenchmarkResult(BenchmarkResult):
         return "test_benchmark"
 
     def _get_global_options(self, fio_global_options: dict[str, str]) -> dict[str, str]:
-        return {"test_option": "test_value"}
+        self._number_of_jobs = fio_global_options.get("numjobs", "1")
+        return {"test_option": "test_value", "number_of_jobs": self._number_of_jobs}
 
     def _get_io_details(self, all_jobs: list[dict[str, Any]]) -> dict[str, str]:
         return {"test_io": "test_value"}
 
     def _get_iodepth(self, iodepth_value: str) -> str:
         return iodepth_value
+
+    def get_timeseries_data(self) -> Optional[TimeSeriesFormatType]:
+        """Test implementation returns None (no time-series support)"""
+        return None
 
 
 class TestBenchmarkResult(unittest.TestCase):
@@ -137,6 +143,12 @@ class TestBenchmarkResult(unittest.TestCase):
 
         self.assertIsInstance(result.io_details, dict)
         self.assertEqual(result.io_details["test_io"], "test_value")
+
+    def test_number_of_jobs_property(self) -> None:
+        """Test number_of_jobs property"""
+        result = ConcreteBenchmarkResult(self.test_file)
+
+        self.assertEqual(result.number_of_jobs, "1")
 
     def test_read_results_from_empty_file(self) -> None:
         """Test reading from empty file raises KeyError"""

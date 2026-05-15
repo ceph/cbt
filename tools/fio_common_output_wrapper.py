@@ -24,6 +24,7 @@ from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
 
 from post_processing.formatter.common_output_formatter import CommonOutputFormatter
+from post_processing.formatter.time_series_output_formatter import TimeSeriesOutputFormatter
 from post_processing.log_configuration import setup_logging
 
 setup_logging()
@@ -51,21 +52,36 @@ def main() -> int:
     args: Namespace = parser.parse_args()
 
     output_directory: str = f"{args.archive}/visualisation/"
-    log.debug("Creating directory %s" % output_directory)
+    log.debug("Creating directory %s", output_directory)
     os.makedirs(output_directory, exist_ok=True)
 
-    log.info("Generating intermediate files for %s in directory %s" % (args.archive, output_directory))
+    log.info("Generating intermediate files for %s in directory %s", args.archive, output_directory)
+
+    # Process common output format
     formatter: CommonOutputFormatter = CommonOutputFormatter(
         archive_directory=args.archive, filename_root=args.results_file_root
     )
 
     try:
-        formatter.convert_all_files()
-        formatter.write_output_file()
+        formatter.process()
+        # formatter.write_output()
     except Exception as e:
         log.error(
-            "Encountered an error parsing results in directory %s with name %s" % (args.archive, args.results_file_root)
+            "Encountered an error parsing results in directory %s with name %s", args.archive, args.results_file_root
         )
+        log.exception(e)
+        result = 1
+
+    # Process time series format
+    timeseries_formatter: TimeSeriesOutputFormatter = TimeSeriesOutputFormatter(
+        archive_directory=args.archive, filename_root=args.results_file_root
+    )
+
+    try:
+        timeseries_formatter.process()
+        # timeseries_formatter.write_output()
+    except Exception as e:
+        log.error("Encountered an error parsing time-series logs in directory %s", args.archive)
         log.exception(e)
         result = 1
 

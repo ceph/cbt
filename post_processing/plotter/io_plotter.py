@@ -9,7 +9,7 @@ from post_processing.plotter.axis_plotter import AxisPlotter
 
 log: Logger = getLogger("plotter")
 
-IO_PLOT_DEFAULT_COLOUR: str = "#5ca904"
+IO_PLOT_DEFAULT_COLOUR: str = "xkcd:leaf green"  # Leaf green from xkcd color survey
 IO_Y_LABEL: str = "Latency (ms)"
 IO_PLOT_LABEL: str = "IO Details"
 

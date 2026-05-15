@@ -55,18 +55,14 @@ class ResourceResult(ABC):
 
     @property
     def cpu(self) -> str:
-        """
-        getter for the CPU value
-        """
+        """Return the CPU usage as a string."""
         if not self._has_been_parsed:
             self._parse(self._read_results_from_file())
         return self._cpu
 
     @property
     def memory(self) -> str:
-        """
-        getter for the memory value
-        """
+        """Return the memory usage as a string."""
         if not self._has_been_parsed:
             self._parse(self._read_results_from_file())
         return self._memory

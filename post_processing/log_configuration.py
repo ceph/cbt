@@ -4,7 +4,6 @@ The log configuration for CBT post processing
 
 import logging.config
 import os
-from logging import Logger, getLogger
 from typing import Any
 
 from post_processing.post_processing_types import HandlerType
@@ -23,9 +22,6 @@ def setup_logging() -> None:
     """
     os.makedirs(f"{LOGFILE_LOCATION}/cbt/", exist_ok=True)
     logging.config.dictConfig(_get_configuration())
-    log: Logger = getLogger("formatter")
-
-    log.info("=== Starting Post Processing of CBT results ===")
 
 
 def _get_handlers_configuration() -> HandlerType:
