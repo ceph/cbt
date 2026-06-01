@@ -5,6 +5,8 @@ import os
 import socket
 import logging
 
+from yaml.scanner import ScannerError
+
 
 logger = logging.getLogger("cbt")
 
@@ -33,6 +35,8 @@ def initialize(ctx):
     try:
         with open(ctx.config_file) as f:
             config = yaml.safe_load(f)
+    except ScannerError as s:
+        raise argparse.ArgumentTypeError(f"Malformed YAML file was used. Error was:\n {s.problem} in file {s.problem_mark.name}")
     except IOError as e:
         raise argparse.ArgumentTypeError(str(e))
 

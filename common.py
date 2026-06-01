@@ -172,7 +172,9 @@ def get_localnode(nodes):
         return None
     return getLocalhost(nodes_list[0])
 
-def sh(local_node, command, continue_if_error=True):
+def sh(local_node, command, continue_if_error=None):
+    if continue_if_error is None:
+        continue_if_error = settings.common.get("pdsh_continue_on_error", True)
     return CheckedPopenLocal(local_node, join_nostr(command),
                              continue_if_error=continue_if_error, shell=True)
 
