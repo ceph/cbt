@@ -30,7 +30,9 @@ BENCHMARK_TYPE_MAP: dict[str, type[RunResult]] = {
 }
 
 
-def get_run_result_from_directory_name(directory: Path, file_name_root: str) -> RunResult:
+def get_run_result_from_directory_name(
+    directory: Path, file_name_root: str, include_timeseries: bool = False
+) -> RunResult:
     """
     Create the appropriate RunResult subclass based on the directory name.
 
@@ -41,6 +43,7 @@ def get_run_result_from_directory_name(directory: Path, file_name_root: str) -> 
     Args:
         directory: Path to the directory containing benchmark results
         file_name_root: Root name of the result files to process
+        include_timeseries: Whether to process time-series data (default: False)
 
     Returns:
         An instance of the appropriate RunResult subclass
@@ -62,7 +65,9 @@ def get_run_result_from_directory_name(directory: Path, file_name_root: str) -> 
     for benchmark_type, result_class in BENCHMARK_TYPE_MAP.items():
         if benchmark_type in directory_str:
             log.debug("Creating %s result processor for directory %s", result_class.__name__, directory)
-            return result_class(directory=directory, file_name_root=file_name_root)
+            return result_class(
+                directory=directory, file_name_root=file_name_root, include_timeseries=include_timeseries
+            )
 
     raise NotImplementedError(f"Could not determine benchmark type from directory {directory}, ")
 

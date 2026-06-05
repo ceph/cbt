@@ -9,7 +9,7 @@ from post_processing.plotter.axis_plotter import AxisPlotter
 
 log: Logger = getLogger("plotter")
 
-CPU_PLOT_DEFAULT_COLOUR: str = "#5ca904"
+CPU_PLOT_DEFAULT_COLOUR: str = "xkcd:leaf green"  # Leaf green from xkcd color survey
 CPU_Y_LABEL: str = "System CPU use (%)"
 CPU_PLOT_LABEL: str = "CPU use"
 

@@ -11,19 +11,31 @@ import os
 import traceback
 from argparse import Namespace
 from logging import Logger, getLogger
+from pathlib import Path
 
+from post_processing.formatter.base_formatter import BaseFormatter
 from post_processing.formatter.common_output_formatter import CommonOutputFormatter
+from post_processing.formatter.time_series_output_formatter import (
+    TimeSeriesOutputFormatter,
+)
 from post_processing.log_configuration import setup_logging
-from post_processing.post_processing_types import ReportOptions
+from post_processing.post_processing_types import ReportOptions, ReportType
 from post_processing.reports.comparison_report_generator import ComparisonReportGenerator
 from post_processing.reports.report_generator import ReportGenerator
 from post_processing.reports.simple_report_generator import SimpleReportGenerator
+from post_processing.reports.time_series_report_generator import (
+    TimeSeriesReportGenerator,
+)
 
 setup_logging()
 log: Logger = getLogger(name="reports")
 
 
-def parse_namespace_to_options(arguments: Namespace, comparison_report: bool = False) -> ReportOptions:
+def parse_namespace_to_options(
+    arguments: Namespace,
+    comparison_report: bool = False,
+    timeseries_report: bool = False,
+) -> ReportOptions:
     """
     Parse a namespace as used by argparse into our internal NamedTuple representation
     """
@@ -32,11 +44,17 @@ def parse_namespace_to_options(arguments: Namespace, comparison_report: bool = F
     archives: list[str] = []
     output_directory: str = arguments.output_directory
 
-    if comparison_report:
+    # Determine report type
+    if timeseries_report:
+        report_type = ReportType.TIMESERIES
+        archives.append(arguments.archive)
+    elif comparison_report:
+        report_type = ReportType.COMPARISON
         archives.append(arguments.baseline)
         for directory in arguments.archives.split(","):
             archives.append(directory)
     else:
+        report_type = ReportType.SIMPLE
         archives.append(arguments.archive)
 
     if hasattr(arguments, "no_error_bars"):
@@ -52,7 +70,7 @@ def parse_namespace_to_options(arguments: Namespace, comparison_report: bool = F
         results_file_root=arguments.results_file_root,
         force_refresh=arguments.force_refresh,
         no_error_bars=no_error_bars,
-        comparison=comparison_report,
+        report_type=report_type,
         plot_resources=plot_resources,
     )
 
@@ -94,13 +112,20 @@ class Report:
             self._generate_intermediate_files()
             report_generator: ReportGenerator
 
-            if self._options.comparison:
+            if self._options.report_type == ReportType.COMPARISON:
                 report_generator = ComparisonReportGenerator(
                     archive_directories=self._options.archives,
                     output_directory=self._options.output_directory,
                     force_refresh=self._options.force_refresh,
                 )
-            else:
+            elif self._options.report_type == ReportType.TIMESERIES:
+                report_generator = TimeSeriesReportGenerator(
+                    archive_directories=self._options.archives,
+                    output_directory=self._options.output_directory,
+                    force_refresh=self._options.force_refresh,
+                    plot_resources=self._options.plot_resources,
+                )
+            else:  # ReportType.SIMPLE
                 report_generator = SimpleReportGenerator(
                     archive_directories=self._options.archives,
                     output_directory=self._options.output_directory,
@@ -128,6 +153,31 @@ class Report:
             if throw_exception:
                 raise e
 
+    def _archive_has_intermediate_files(self, directory: str) -> bool:
+        """
+        Check whether an archive already contains the intermediate files needed
+        for the selected report type.
+
+        For time-series reports, intermediate files are expected in the new
+        nested operation/visualisation/ structure with *_timeseries.json names.
+
+        For simple/comparison reports, accept both:
+        - new nested operation/visualisation/*.json layout
+        - legacy top-level visualisation/*.json layout
+
+        For non-time-series reports, *_timeseries.json files do not count as
+        hockey-stick intermediate data.
+        """
+        archive_path = Path(directory)
+
+        if self._options.report_type == ReportType.TIMESERIES:
+            return any(archive_path.glob("**/visualisation/*_timeseries.json"))
+
+        return any(
+            not file_path.name.endswith("_timeseries.json")
+            for file_path in archive_path.glob("**/visualisation/*.json")
+        )
+
     def _generate_intermediate_files(self) -> None:
         """
         If the raw fio results have not yet been post-processed then we need to do
@@ -135,22 +185,26 @@ class Report:
         """
 
         for directory in self._options.archives:
-            output_directory: str = f"{directory}/visualisation/"
+            if not self._archive_has_intermediate_files(directory) or self._options.force_refresh:
+                log.debug("Preparing to generate intermediate files for %s", directory)
+                os.makedirs(name=f"{directory}/visualisation/", exist_ok=True)
 
-            if not os.path.exists(output_directory) or not os.listdir(output_directory) or self._options.force_refresh:
-                # Either the directory doesn't exists, or is empty, or the user has told us to regenerate the files
+                log.info("Generating intermediate files for %s", directory)
 
-                log.debug("Creating directory %s", output_directory)
-                os.makedirs(name=output_directory, exist_ok=True)
-
-                log.info("Generating intermediate files for %s in directory %s", directory, output_directory)
-                formatter: CommonOutputFormatter = CommonOutputFormatter(
-                    archive_directory=directory, filename_root=self._options.results_file_root
-                )
+                # Use the appropriate formatter based on report type
+                formatter: BaseFormatter
+                if self._options.report_type == ReportType.TIMESERIES:
+                    formatter = TimeSeriesOutputFormatter(
+                        archive_directory=directory, filename_root=self._options.results_file_root
+                    )
+                else:
+                    formatter = CommonOutputFormatter(
+                        archive_directory=directory, filename_root=self._options.results_file_root
+                    )
 
                 try:
-                    formatter.convert_all_files()
-                    formatter.write_output_file()
+                    # With memory-efficient approach, data is written during process()
+                    formatter.process()
                 except Exception as e:  # pylint: disable=[broad-exception-caught]
                     # Generating the intermediate files can raise a broad range of exceptions from
                     # the different sub-modules called. Therefore we want to catch them all and raise

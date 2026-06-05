@@ -10,7 +10,7 @@ from logging import Logger, getLogger
 from math import sqrt
 from pathlib import Path
 from re import Pattern
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union, cast
 
 from post_processing.post_processing_types import CommonFormatDataType
 
@@ -32,6 +32,9 @@ PLOT_FILE_EXTENSION: str = "svg"
 DATA_FILE_EXTENSION: str = "json"
 PLOT_FILE_EXTENSION_WITH_DOT: str = f".{PLOT_FILE_EXTENSION}"
 DATA_FILE_EXTENSION_WITH_DOT: str = f".{DATA_FILE_EXTENSION}"
+
+# Common conversion factors
+KB_CONVERSION_FACTOR: int = 1024
 
 # Regex patterns for stripping confidential data
 _IPV4_PATTERN: Pattern[str] = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
@@ -100,6 +103,39 @@ def read_intermediate_file(file_path: str) -> CommonFormatDataType:
     return data
 
 
+def _extract_metrics_from_intermediate_file(
+    file_path: Path, metric_keys: list[str], format_function: Optional[list[Callable[[str], str]]] = None
+) -> tuple[str, ...]:
+    """
+    Generic function to extract metrics from an intermediate format file.
+
+    Args:
+        file_path:          Path to the intermediate format data file
+        metric_keys:        List of keys to extract from the data
+        format_function:    Optional list of formatting functions to apply to each metric.
+                                If None, values are returned as-is. List must match length of metric_keys.
+
+    Returns:
+        Tuple of extracted and formatted metric values as strings
+    """
+    data: CommonFormatDataType = read_intermediate_file(file_path=f"{file_path}")
+
+    results: list[str] = []
+    for index, key in enumerate(metric_keys):
+        value = data.get(key, "0")
+        assert isinstance(value, str)
+
+        # Apply formatting function if provided
+        if format_function and index < len(format_function):
+            formatted_value = format_function[index](value)
+        else:
+            formatted_value = value
+
+        results.append(formatted_value)
+
+    return tuple(results)
+
+
 def get_latency_throughput_from_file(file_path: Path) -> tuple[str, str]:
     """
     Reads the data stored in the intermediate file format and returns the
@@ -145,11 +181,21 @@ def get_resource_details_from_file(file_path: Path) -> tuple[str, str]:
     Returns:
         A tuple of (max_cpu, max_memory) as formatted strings
     """
-    data: CommonFormatDataType = read_intermediate_file(file_path=f"{file_path}")
 
-    max_cpu: float = float(f"{data.get('maximum_cpu_usage', '0')}")
-    max_memory: float = float(f"{data.get('maximum_memory_usage', '0')}")
-    return f"{max_cpu:.2f}", f"{max_memory:.2f}"
+    # Use the generic extraction function with formatting
+    def format_cpu(value: str) -> str:
+        return f"{float(value):.2f}"
+
+    def format_memory(value: str) -> str:
+        return f"{float(value):.2f}"
+
+    result = _extract_metrics_from_intermediate_file(
+        file_path=file_path,
+        metric_keys=["maximum_cpu_usage", "maximum_memory_usage"],
+        format_function=[format_cpu, format_memory],
+    )
+    # Cast to the specific tuple type for type safety
+    return cast(tuple[str, str], result)
 
 
 def strip_confidential_data_from_yaml(yaml_data: str) -> str:
@@ -193,17 +239,54 @@ def strip_confidential_data_from_yaml(yaml_data: str) -> str:
 
 def find_common_data_file_names(directories: list[Path]) -> list[str]:
     """
-    Find a list of file names that are common to all directories in
-    a list of directories.
+    Find a list of file names from the provided directories.
+
+    For a single archive (multiple subdirectories from the same parent),
+    returns all unique file names found across all subdirectories.
+    For multiple archives (comparison), returns only files that
+    exist in ALL provided directories.
+
+    Note: Excludes time-series files (*_timeseries.json) as they have
+    a different data structure and are handled by TimeSeriesReportGenerator.
     """
-    common_files: set[str] = set(path.parts[-1] for path in directories[0].glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}"))
+    if not directories:
+        return []
 
-    # first find all the common paths between all the directories
-    for index in range(1, (len(directories))):
-        files: set[str] = set(path.parts[-1] for path in directories[index].glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}"))
-        common_files = common_files.intersection(files)
+    # Collect all file names from all directories, excluding time-series files
+    all_files: set[str] = set()
+    for directory in directories:
+        files = set(
+            path.parts[-1]
+            for path in directory.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}")
+            if not path.stem.endswith("_timeseries")
+        )
+        all_files.update(files)
 
-    return list(common_files)
+    # If we only have one directory, return all files found
+    if len(directories) == 1:
+        return sorted(list(all_files))
+
+    # Check if all directories share a common ancestor (same archive)
+    # by checking if they all have the same great-great-grandparent
+    # (archive_dir/results/00000000/id-xxx/workload/visualisation)
+    try:
+        ancestors = [directory.parents[3] for directory in directories if len(directory.parents) > 3]
+        if ancestors and all(ancestor == ancestors[0] for ancestor in ancestors):
+            # All from same archive - return all unique files
+            return sorted(list(all_files))
+    except (IndexError, AttributeError):
+        pass
+
+    # For multiple archives, check if files exist in ALL directories
+    common_files: set[str] = set()
+    for file_name in all_files:
+        # Check if this file exists in all of the directories
+        found_count = sum(1 for directory in directories if (directory / file_name).exists())
+        # Only include if found in ALL directories
+        if found_count == len(directories):
+            common_files.add(file_name)
+
+    return sorted(list(common_files))
 
 
 def calculate_percent_difference_to_baseline(baseline: str, comparison: str) -> str:
@@ -347,3 +430,138 @@ def sum_mean_values(latencies: list[float], num_ops: list[int], total_ios: int) 
     combined_mean_latency: float = weighted_latency / total_ios
 
     return combined_mean_latency
+
+
+def _find_visualisation_directories_with_filter(
+    archive_directory: Path,
+    filter_function: Callable[[Path], bool],
+    sort_function: Callable[[list[Path]], list[Path]] = lambda paths: sorted(paths, key=str),
+) -> list[Path]:
+    """
+    Generic function to find visualisation directories based on a filter function.
+
+    Args:
+        archive_directory: Root directory to search for visualisation directories
+        filter_function: Function that takes a Path and returns True if it should be included
+        sort_function: Function to sort the resulting paths (default: sort by string representation)
+
+    Returns:
+        List of Path objects for visualisation directories that match the filter
+    """
+    visualisation_directories = []
+
+    # Search for all visualisation directories recursively
+    for visualisation_directory in archive_directory.glob("**/visualisation"):
+        if filter_function(visualisation_directory):
+            visualisation_directories.append(visualisation_directory)
+
+    return sort_function(visualisation_directories)
+
+
+def find_hockey_stick_visualisation_directories(archive_directory: Path) -> list[Path]:
+    """
+    Find visualisation directories containing hockey-stick (common format) JSON data.
+
+    Hockey-stick data is written at the operation level, e.g.:
+    - archive_directory/randread/visualisation/ (new structure)
+    - archive_directory/randwrite/visualisation/ (new structure)
+    - archive_directory/visualisation/ (legacy structure with JSON files)
+    - archive_directory/**/visualisation/ (deeply nested legacy CBT structure)
+
+    Only returns directories that actually contain .json files.
+
+    Args:
+        archive_directory: Root directory to search for visualisation directories
+
+    Returns:
+        List of Path objects for visualisation directories that contain JSON files
+    """
+    # First check for legacy structure: visualisation directly under archive directory
+    legacy_visualisation_directory = archive_directory / "visualisation"
+    if legacy_visualisation_directory.exists() and legacy_visualisation_directory.is_dir():
+        # Only include if there are non-timeseries JSON files
+        json_files = [
+            filename
+            for filename in legacy_visualisation_directory.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}")
+            if not filename.stem.endswith("_timeseries")
+        ]
+        if json_files:
+            # Legacy structure with data - use only this
+            return [legacy_visualisation_directory]
+
+    # Look for new structure: visualisation directories under operation directories
+    # Operation directories are direct children of the archive directory
+    visualisation_directories = []
+    for operation_dir in archive_directory.iterdir():
+        if operation_dir.is_dir() and not operation_dir.name.startswith("."):
+            visualisation_directory = operation_dir / "visualisation"
+            if visualisation_directory.exists() and visualisation_directory.is_dir():
+                # Only include if there are non-timeseries JSON files
+                json_files = [
+                    filename
+                    for filename in visualisation_directory.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}")
+                    if not filename.stem.endswith("_timeseries")
+                ]
+                if json_files:
+                    visualisation_directories.append(visualisation_directory)
+
+    # If we found visualisation directories at top level, return them
+    if visualisation_directories:
+        return sorted(visualisation_directories, key=str)
+
+    # If no visualisation directories found at top level, search recursively
+    # This handles deeply nested CBT structures
+    def has_json_files(visualisation_directory: Path) -> bool:
+        """Filter function: check if directory contains non-timeseries JSON files and is not the legacy dir."""
+        if visualisation_directory == legacy_visualisation_directory:
+            return False
+        # Only count non-timeseries JSON files
+        json_files = [
+            filename
+            for filename in visualisation_directory.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}")
+            if not filename.stem.endswith("_timeseries")
+        ]
+        return len(json_files) > 0
+
+    return _find_visualisation_directories_with_filter(
+        archive_directory=archive_directory,
+        filter_function=has_json_files,
+        sort_function=lambda paths: sorted(paths, key=str),
+    )
+
+
+def find_timeseries_visualisation_directories(archive_directory: Path) -> list[Path]:
+    """
+    Find visualisation directories containing timeseries data.
+
+    Timeseries data is written at the iodepth/total_iodepth level, e.g.:
+    - archive_directory/randread/total_iodepth-256/visualisation/
+    - archive_directory/randread/iodepth-32/visualisation/
+
+    Args:
+        archive_directory: Root directory to search for visualisation directories
+
+    Returns:
+        List of Path objects for iodepth-level visualisation directories
+    """
+
+    def is_iodepth_directory(visualisation_directory: Path) -> bool:
+        """Filter function: check if parent is an iodepth or total_iodepth directory."""
+        parent_name = visualisation_directory.parent.name
+        return parent_name.startswith(("iodepth-", "total_iodepth-"))
+
+    def sort_by_priority(paths: list[Path]) -> list[Path]:
+        """Sort by priority: total_iodepth > iodepth, then by path."""
+
+        def sort_key(path: Path) -> tuple[int, str]:
+            parent_name = path.parent.name
+            if parent_name.startswith("total_iodepth"):
+                return (0, str(path))
+            # iodepth
+            return (1, str(path))
+
+        return sorted(paths, key=sort_key)
+
+    return _find_visualisation_directories_with_filter(
+        archive_directory=archive_directory, filter_function=is_iodepth_directory, sort_function=sort_by_priority
+    )

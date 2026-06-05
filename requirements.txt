@@ -2,3 +2,4 @@ pyyaml
 lxml
 matplotlib
 mdutils
+pandas

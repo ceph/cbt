@@ -87,7 +87,7 @@ class TestIOPlotter(unittest.TestCase):
 
     def test_io_constants(self) -> None:
         """Test IO plotter constants"""
-        self.assertEqual(IO_PLOT_DEFAULT_COLOUR, "#5ca904")
+        self.assertEqual(IO_PLOT_DEFAULT_COLOUR, "xkcd:leaf green")
         self.assertEqual(IO_Y_LABEL, "Latency (ms)")
         self.assertEqual(IO_PLOT_LABEL, "IO Details")
 

@@ -34,7 +34,9 @@ class TestSimplePlotter(unittest.TestCase):
         """Test SimplePlotter initialization"""
         plotter = SimplePlotter(archive_directory=str(self.archive_dir), plot_error_bars=True, plot_resources=False)
 
-        self.assertEqual(plotter._path, self.vis_dir)
+        # Check that archive directory and SVG output path are set correctly
+        self.assertEqual(plotter._archive_directory, self.archive_dir)
+        self.assertEqual(plotter._svg_output_path, self.vis_dir)
         self.assertTrue(plotter._plot_error_bars)
         self.assertFalse(plotter._plot_resources)
 
@@ -46,13 +48,15 @@ class TestSimplePlotter(unittest.TestCase):
         self.assertTrue(plotter._plot_resources)
 
     def test_generate_output_file_name(self) -> None:
-        """Test generating output file name"""
+        """Test generating output file name - SVGs are saved to top-level visualisation directory"""
         plotter = SimplePlotter(archive_directory=str(self.archive_dir), plot_error_bars=True, plot_resources=False)
 
         input_file = Path("/path/to/4096_read.json")
         output_name = plotter._generate_output_file_name([input_file])
 
-        self.assertEqual(output_name, "/path/to/4096_read.svg")
+        # SVG files are now saved to archive_directory/visualisation/ regardless of JSON location
+        expected_output = str(self.archive_dir / "visualisation" / "4096_read.svg")
+        self.assertEqual(output_name, expected_output)
 
     @patch("post_processing.plotter.simple_plotter.read_intermediate_file")
     @patch("matplotlib.pyplot.subplots")

@@ -23,12 +23,13 @@ class TestComparisonReportGenerator(unittest.TestCase):
         """Set up test fixtures"""
         self.temp_dir = tempfile.mkdtemp()
 
-        # Create two archive directories for comparison
+        # Create two archive directories for comparison using new nested structure
         self.archive1 = Path(self.temp_dir) / "baseline"
         self.archive2 = Path(self.temp_dir) / "comparison"
 
-        self.vis1 = self.archive1 / "visualisation"
-        self.vis2 = self.archive2 / "visualisation"
+        # Use new nested structure: operation/visualisation/
+        self.vis1 = self.archive1 / "read" / "visualisation"
+        self.vis2 = self.archive2 / "read" / "visualisation"
 
         self.vis1.mkdir(parents=True)
         self.vis2.mkdir(parents=True)
@@ -86,10 +87,16 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
     def test_find_and_sort_file_paths_multiple_directories(self) -> None:
         """Test finding files across multiple directories"""
+        # Create additional operation directories with visualisation subdirectories
+        vis1_write = self.archive1 / "write" / "visualisation"
+        vis2_write = self.archive2 / "write" / "visualisation"
+        vis1_write.mkdir(parents=True)
+        vis2_write.mkdir(parents=True)
+        
         # Create additional files
         # Format: {blocksize}_{numjobs}_{operation}.json
-        (self.vis1 / "8192_1_write.json").touch()
-        (self.vis2 / "8192_1_write.json").touch()
+        (vis1_write / "8192_1_write.json").touch()
+        (vis2_write / "8192_1_write.json").touch()
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -98,9 +105,10 @@ class TestComparisonReportGenerator(unittest.TestCase):
             output_directory=output_dir,
         )
 
-        paths = generator._find_and_sort_file_paths(paths=[self.vis1, self.vis2], search_pattern="*.json", index=0)
+        # Now we have 2 visualisation directories per archive (read and write)
+        paths = generator._find_and_sort_file_paths(paths=[self.vis1, self.vis2, vis1_write, vis2_write], search_pattern="*.json", index=0)
 
-        # Should find files from both directories
+        # Should find files from all directories
         self.assertEqual(len(paths), 4)
 
     @patch("post_processing.reports.comparison_report_generator.DirectoryComparisonPlotter")
@@ -135,9 +143,8 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         # Should include numjobs column
         self.assertIn("numjobs", header)
-        # Should include baseline directory name
+        # Should have archive directory names
         self.assertIn("baseline", header)
-        # Should include comparison directory name
         self.assertIn("comparison", header)
         # Should have percentage change columns
         self.assertIn("%change", header)
@@ -150,7 +157,8 @@ class TestComparisonReportGenerator(unittest.TestCase):
     def test_generate_table_headers_multiple_directories(self) -> None:
         """Test generating table headers for more than two directories"""
         archive3 = Path(self.temp_dir) / "comparison2"
-        vis3 = archive3 / "visualisation"
+        # Use new nested structure
+        vis3 = archive3 / "read" / "visualisation"
         vis3.mkdir(parents=True)
         # Format: {blocksize}_{numjobs}_{operation}.json
         (vis3 / "4096_1_read.json").touch()
@@ -166,7 +174,7 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         # Should include numjobs column
         self.assertIn("numjobs", header)
-        # Should have all directory names
+        # Should have all archive directory names
         self.assertIn("baseline", header)
         self.assertIn("comparison", header)
         self.assertIn("comparison2", header)
@@ -176,11 +184,23 @@ class TestComparisonReportGenerator(unittest.TestCase):
         # (left-aligned operation, right-aligned numjobs, baseline, then comparison + %change for each comparison dir)
         self.assertEqual(justification, "| :--- | ---: | ---: | ---: | ---: | ---: | ---: |")
 
-    @patch("subprocess.check_output")
-    def test_yaml_file_has_more_than_20_differences_true(self, mock_check_output: MagicMock) -> None:
+    @patch("subprocess.Popen")
+    def test_yaml_file_has_more_than_20_differences_true(self, mock_popen: MagicMock) -> None:
         """Test detecting significant differences between yaml files"""
-        # Mock diff output showing 25 differences
-        mock_check_output.return_value = b"25\n"
+        # Mock the wc process to return 25 differences
+        mock_wc_process = MagicMock()
+        mock_wc_process.communicate.return_value = (b"25\n", b"")
+        mock_wc_process.__enter__ = MagicMock(return_value=mock_wc_process)
+        mock_wc_process.__exit__ = MagicMock(return_value=False)
+        
+        # Mock the diff process
+        mock_diff_process = MagicMock()
+        mock_diff_process.stdout = MagicMock()
+        mock_diff_process.__enter__ = MagicMock(return_value=mock_diff_process)
+        mock_diff_process.__exit__ = MagicMock(return_value=False)
+        
+        # Configure Popen to return diff process first, then wc process
+        mock_popen.side_effect = [mock_diff_process, mock_wc_process]
 
         output_dir = f"{self.temp_dir}/output"
 
@@ -198,11 +218,23 @@ class TestComparisonReportGenerator(unittest.TestCase):
 
         self.assertTrue(result)
 
-    @patch("subprocess.check_output")
-    def test_yaml_file_has_more_than_20_differences_false(self, mock_check_output: MagicMock) -> None:
+    @patch("subprocess.Popen")
+    def test_yaml_file_has_more_than_20_differences_false(self, mock_popen: MagicMock) -> None:
         """Test detecting minor differences between yaml files"""
-        # Mock diff output showing 10 differences
-        mock_check_output.return_value = b"10\n"
+        # Mock the wc process to return 10 differences
+        mock_wc_process = MagicMock()
+        mock_wc_process.communicate.return_value = (b"10\n", b"")
+        mock_wc_process.__enter__ = MagicMock(return_value=mock_wc_process)
+        mock_wc_process.__exit__ = MagicMock(return_value=False)
+        
+        # Mock the diff process
+        mock_diff_process = MagicMock()
+        mock_diff_process.stdout = MagicMock()
+        mock_diff_process.__enter__ = MagicMock(return_value=mock_diff_process)
+        mock_diff_process.__exit__ = MagicMock(return_value=False)
+        
+        # Configure Popen to return diff process first, then wc process
+        mock_popen.side_effect = [mock_diff_process, mock_wc_process]
 
         output_dir = f"{self.temp_dir}/output"
 

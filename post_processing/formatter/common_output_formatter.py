@@ -44,18 +44,15 @@ and the details for read operations
 
 import json
 import re
-from logging import Logger, getLogger
 from pathlib import Path
 from typing import Optional
 
-from common import pdsh  # pylint: disable=[no-name-in-module]
+from post_processing.formatter.base_formatter import BaseFormatter
 from post_processing.post_processing_types import CommonFormatDataType, InternalFormattedOutputType
 from post_processing.run_results.run_result_factory import get_run_result_from_directory_name
 
-log: Logger = getLogger(name="formatter")
 
-
-class CommonOutputFormatter:
+class CommonOutputFormatter(BaseFormatter):
     """
     This class contains all the common code for converting an output file in
     json format to the format we want to use to draw iops and latency
@@ -69,17 +66,10 @@ class CommonOutputFormatter:
     DEFAULT_OUTPUT_FILE_PART: str = "json_output"
 
     def __init__(self, archive_directory: str, filename_root: Optional[str] = None) -> None:
-        self._directory: str = archive_directory
+        super().__init__(archive_directory)
         self._filename_root: str = filename_root if filename_root else self.DEFAULT_OUTPUT_FILE_PART
 
         self._formatted_output: InternalFormattedOutputType = {}
-        self._all_test_run_ids: set[str] = set()
-        # Note that we use a set here as it does not allow duplicate entries,
-        # and we do not care about ordering. It would be possible to use a List
-        # and manually check for duplicates, but that seems more untidy
-
-        self._path: Path = Path(self._directory)
-        self._file_list: list[Path] = []
         self._benchmark_types: dict[str, str] = {}  # Track benchmark type per operation
 
     def _merge_results(self, processed_results: InternalFormattedOutputType) -> None:
@@ -112,23 +102,6 @@ class CommonOutputFormatter:
                                 # Update existing blocksize data
                                 self._formatted_output[run_type][numjobs][blocksize].update(blocksize_data)
 
-    def _get_testrun_directories(self, testrun_id: str) -> list[Path]:
-        """
-        Get the directories for a specific test run ID.
-
-        When calling from CBT itself, the archive dir already includes the testrun
-        directory, so we handle this case by checking if 'id-' is in the path.
-
-        Args:
-            testrun_id: The test run identifier to find directories for
-
-        Returns:
-            List of Path objects for directories matching the test run ID
-        """
-        if "id-" in f"{self._path}":
-            return [self._path]
-        return list(self._path.glob(f"**/{testrun_id}"))
-
     def _process_compatibility_mode(self) -> str:
         """
         Process test run using compatibility method for legacy directory structures.
@@ -152,7 +125,7 @@ class CommonOutputFormatter:
         Process a single test run directory and all its IO pattern subdirectories.
 
         This method iterates through all subdirectories in the test run directory,
-        processes each one, and merges the results into the formatted output.
+        processes each one, and writes results immediately to reduce memory usage.
 
         Args:
             testrun_directory: Path to the test run directory
@@ -170,7 +143,7 @@ class CommonOutputFormatter:
             and not f"{directory.name}".startswith(".")
             and "visualisation" not in f"{directory.name}"
         ]:
-            log.debug("Looking at results for directory %s", io_pattern_directory)
+            self.log.debug("Looking at results for directory %s", io_pattern_directory)
             # Use factory method to get the correct results type based on directory name
             results = get_run_result_from_directory_name(
                 directory=io_pattern_directory, file_name_root=self._filename_root
@@ -178,7 +151,11 @@ class CommonOutputFormatter:
 
             results.process()
             processed_results = results.get()
-            self._merge_results(processed_results)
+
+            # Memory-efficient approach: write results for this operation immediately
+            # instead of accumulating everything
+            self._write_operation_results(io_pattern_directory, processed_results, results.type)
+
             benchmark_type = results.type
 
         return benchmark_type
@@ -215,6 +192,8 @@ class CommonOutputFormatter:
         for operation_type, operation_data in self._formatted_output.items():
             for _, numjobs_data in operation_data.items():
                 for _, blocksize_data in numjobs_data.items():
+                    # Cast to CommonFormatDataType since blocksize_data contains both
+                    # string metadata and dict iodepth entries
                     max_bandwidth, max_bandwidth_latency, max_iops, max_iops_latency = (
                         self._find_maximum_bandwidth_and_iops_with_latency(blocksize_data)
                     )
@@ -227,104 +206,97 @@ class CommonOutputFormatter:
                     blocksize_data["maximum_memory_usage"] = max_memory
                     blocksize_data["benchmark"] = self._benchmark_types.get(operation_type, "unknown")
 
-    def convert_all_files(self) -> None:
+    def _write_operation_results(  # pylint: disable=too-many-locals
+        self, operation_directory: Path, processed_results: InternalFormattedOutputType, benchmark_type: str
+    ) -> None:
         """
+        Write results for a single operation directory immediately to reduce memory usage.
+
+        Args:
+            operation_directory: Path to the operation directory (e.g., 256krandomwrite.../rbdfio/)
+            processed_results: Processed results for this operation
+            benchmark_type: Type of benchmark (e.g., "rbdfio", "fio")
+        """
+        if not processed_results:
+            return
+
+        # Create visualisation directory at operation level
+        output_dir = operation_directory / "visualisation"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        self.log.info("Writing hockey-stick data to %s", output_dir)
+
+        # Process each operation type in the results
+        for operation_type, operation_data in processed_results.items():
+            # Track benchmark type
+            self._benchmark_types[operation_type] = benchmark_type
+
+            for number_of_jobs, numjobs_data in operation_data.items():
+                for blocksize, blocksize_data in numjobs_data.items():
+                    # Add metadata
+                    blocksize_data["benchmark"] = benchmark_type
+                    blocksize_data["number_of_jobs"] = number_of_jobs
+
+                    # Add peak metrics
+                    max_bandwidth, max_bandwidth_latency, max_iops, max_iops_latency = (
+                        self._find_maximum_bandwidth_and_iops_with_latency(blocksize_data)
+                    )
+                    max_cpu, max_memory = self._find_max_resource_usage(blocksize_data)
+                    blocksize_data["maximum_bandwidth"] = max_bandwidth
+                    blocksize_data["latency_at_max_bandwidth"] = max_bandwidth_latency
+                    blocksize_data["maximum_iops"] = max_iops
+                    blocksize_data["latency_at_max_iops"] = max_iops_latency
+                    blocksize_data["maximum_cpu_usage"] = max_cpu
+                    blocksize_data["maximum_memory_usage"] = max_memory
+
+                    # Write file
+                    filename = output_dir / f"{blocksize}_{number_of_jobs}_{operation_type}.json"
+                    self.log.debug("Writing hockey-stick data to %s", filename)
+
+                    try:
+                        with filename.open("w", encoding="utf8") as f:
+                            json.dump(blocksize_data, f, indent=4, sort_keys=True)
+                    except OSError as e:
+                        self.log.error("Failed to write hockey-stick file %s: %s", filename, e)
+
+    def process(self) -> None:
+        """
+        Process input data and convert to intermediate format.
+
         Convert all files in a given directory to our internal format and then
-        write out the intermediate file that can then be used to produce a graph
+        prepare the intermediate data that can be used to produce a graph.
+
+        Note: With memory-efficient mode, results are written immediately during
+        processing rather than accumulated in memory.
         """
-        log.info("Converting all files with name %s in directory %s", self._filename_root, self._directory)
-        self._find_all_results_files_in_directory()
-        self._find_all_testrun_ids()
+        self.log.info("Converting all files with name %s in directory %s", self._filename_root, self._directory)
+
+        # Find all result files
+        self.log.debug("Finding all %s* files from %s", self._filename_root, self._directory)
+        file_list = [
+            path
+            for path in self.path.glob(f"**/{self._filename_root}.*")
+            if re.search(rf"{self._filename_root}.\d+$", f"{path}")
+        ]
+
+        self._find_all_testrun_ids(file_list)
 
         for testrun_id in self._all_test_run_ids:
-            log.debug("Looking at test run with id %s", testrun_id)
+            self.log.debug("Looking at test run with id %s", testrun_id)
 
             testrun_directories = self._get_testrun_directories(testrun_id)
 
             if len(testrun_directories) > 1:
-                log.debug(
+                self.log.debug(
                     "We have more than one directory for test run %s so using the compatibility method", testrun_id
                 )
-                benchmark_type = self._process_compatibility_mode()
+                self._process_compatibility_mode()
+                # For compatibility mode, still need to add metadata and write
+                self._add_common_metadata()
+                self._add_peak_metrics()
             else:
-                benchmark_type = self._process_single_testrun(testrun_directories[0])
-
-            # Track benchmark type for all operations processed in this test run
-            for operation_type, _ in self._formatted_output.items():
-                self._benchmark_types[operation_type] = benchmark_type
-
-        # Add common metadata fields (benchmark type, number_of_jobs) to the test run data
-        self._add_common_metadata()
-        # Add the maximum values (max bandwidth, IOPS, resource usage) to the test run data
-        self._add_peak_metrics()
-
-    def write_output_file(self) -> None:
-        """
-        Write the formatted output to the output file in JSON format
-        """
-
-        destination_directory: str = f"{self._directory}/visualisation/"
-        log.info("writing new format files to %s", destination_directory)
-
-        if not Path(destination_directory).is_dir():
-            pdsh("localhost", f"mkdir -p {destination_directory}").communicate()  # type: ignore[no-untyped-call]
-
-        for operation_type, operation_data in self._formatted_output.items():
-            for number_of_jobs, numbjob_data in operation_data.items():
-                for blocksize, blocksize_data in numbjob_data.items():
-                    destination_filename: str = (
-                        f"{self._directory}/visualisation/{blocksize}_{number_of_jobs}_{operation_type}.json"
-                    )
-                    log.info("Writing formatted results to destination file %s", destination_filename)
-                    with open(destination_filename, "w", encoding="utf8") as output:
-                        json.dump(blocksize_data, output, indent=4, sort_keys=True)
-
-    def _find_all_results_files_in_directory(self) -> None:
-        """
-        find the files of interest in the archive directory we have been given
-        """
-        log.debug("Finding all %s* files from %s", self._filename_root, self._directory)
-
-        # this gives a generator where each contained object is a Path of format:
-        # <self._directory>/results/<iteration>/<run_id>/json_output.<vol_id>
-        self._file_list = [
-            path
-            for path in self._path.glob(f"**/{self._filename_root}.*")
-            if re.search(rf"{self._filename_root}.\d+$", f"{path}")
-        ]
-
-    def _find_all_testrun_ids(self) -> None:
-        """
-        Find all the unique test run IDs in the output directory. We will need
-        these to allow us to collect the data we require from a test run
-
-        Note: This may only work for fio output runs in cbt, and we will need
-        separate sub-classes for each benchmark type to be able to find and
-        parse the required data
-        """
-
-        for file_path in self._file_list:
-            # We know the format of the output dir is something like
-            # <archive_dir>/00000000/id-ab40819c/<job_specific_details>/output.x
-            #
-            # We know that the output files reside in the directory structure with the
-            # test run ID, so splitting up the path gives the filename as the
-            # last element (-1) and the test run id directory somewhere higher up
-            # the directory structure.
-            # This should allow us to get test run IDs when any point in the
-            # archive directory tree is passed as the archive directory
-            potential_ids: list[str] = [part for part in file_path.parts if "id-" in part]
-            # There is a possibility that there could be more than one id-xxxxxx string in the
-            # file path, and we want only one. We choose to always take the fist one.
-            # If there are none then just return the directory name above the file
-            if len(potential_ids) > 0:
-                testrun_id: str = potential_ids[0]
-            else:
-                # if we get no matches then just use the directory directly above
-                # the output file
-                testrun_id = file_path.parts[-2]
-
-            self._all_test_run_ids.add(testrun_id)
+                # Memory-efficient mode: results written during _process_single_testrun
+                self._process_single_testrun(testrun_directories[0])
 
     def _find_maximum_bandwidth_and_iops_with_latency(
         self, test_run_data: CommonFormatDataType

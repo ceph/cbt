@@ -7,6 +7,7 @@ Unit tests for the post_processing/report.py module
 # We are OK to ignore private use in unit tests as the whole point of the tests
 # is to validate the functions contained in the module
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -14,7 +15,7 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from post_processing.post_processing_types import ReportOptions
+from post_processing.post_processing_types import ReportOptions, ReportType
 from post_processing.report import Report, parse_namespace_to_options
 
 
@@ -39,7 +40,7 @@ class TestParseNamespaceToOptions(unittest.TestCase):
         self.assertTrue(options.create_pdf)
         self.assertFalse(options.force_refresh)
         self.assertFalse(options.no_error_bars)
-        self.assertFalse(options.comparison)
+        self.assertEqual(options.report_type, ReportType.SIMPLE)
         self.assertFalse(options.plot_resources)
 
     def test_parse_namespace_comparison_report(self) -> None:
@@ -59,7 +60,7 @@ class TestParseNamespaceToOptions(unittest.TestCase):
         self.assertEqual(options.archives[0], "/path/to/baseline")
         self.assertEqual(options.archives[1], "/path/to/archive1")
         self.assertEqual(options.archives[2], "/path/to/archive2")
-        self.assertTrue(options.comparison)
+        self.assertEqual(options.report_type, ReportType.COMPARISON)
         self.assertTrue(options.force_refresh)
 
     def test_parse_namespace_with_no_error_bars(self) -> None:
@@ -122,7 +123,7 @@ class TestReport(unittest.TestCase):
             create_pdf=False,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
@@ -216,9 +217,9 @@ class TestReport(unittest.TestCase):
         report.generate()
 
         # Should create formatter and convert files
+        # With memory-efficient approach, data is written during process()
         mock_formatter.assert_called_once()
-        mock_formatter_instance.convert_all_files.assert_called_once()
-        mock_formatter_instance.write_output_file.assert_called_once()
+        mock_formatter_instance.process.assert_called_once()
 
     @patch("post_processing.report.os.makedirs")
     @patch("post_processing.report.CommonOutputFormatter")
@@ -237,7 +238,7 @@ class TestReport(unittest.TestCase):
             create_pdf=False,
             force_refresh=False,
             no_error_bars=False,
-            comparison=True,
+            report_type=ReportType.COMPARISON,
             plot_resources=False,
         )
 
@@ -274,7 +275,7 @@ class TestReport(unittest.TestCase):
             create_pdf=True,
             force_refresh=False,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
@@ -369,7 +370,7 @@ class TestReport(unittest.TestCase):
             create_pdf=False,
             force_refresh=True,
             no_error_bars=False,
-            comparison=False,
+            report_type=ReportType.SIMPLE,
             plot_resources=False,
         )
 
@@ -387,9 +388,9 @@ class TestReport(unittest.TestCase):
         report.generate()
 
         # Should still create formatter and regenerate files
+        # With memory-efficient approach, data is written during process()
         mock_formatter.assert_called_once()
-        mock_formatter_instance.convert_all_files.assert_called_once()
-        mock_formatter_instance.write_output_file.assert_called_once()
+        mock_formatter_instance.process.assert_called_once()
 
     @patch("post_processing.report.os.makedirs")
     @patch("post_processing.report.os.path.exists")
@@ -407,14 +408,100 @@ class TestReport(unittest.TestCase):
 
         # Make formatter raise exception
         mock_formatter_instance = MagicMock()
-        mock_formatter_instance.convert_all_files.side_effect = Exception("Conversion error")
+        mock_formatter_instance.process.side_effect = RuntimeError("Conversion error")
         mock_formatter.return_value = mock_formatter_instance
 
         report = Report(self.options)
 
         # Should catch and re-raise exception
-        with self.assertRaises(Exception):
+        with self.assertRaises(RuntimeError):
             report.generate(throw_exception=True)
+
+    @patch("post_processing.report.os.makedirs")
+    @patch("post_processing.report.TimeSeriesOutputFormatter")
+    @patch("post_processing.report.TimeSeriesReportGenerator")
+    def test_generate_timeseries_report_skips_regeneration_with_nested_timeseries_files(
+        self,
+        mock_timeseries_generator: MagicMock,
+        mock_formatter: MagicMock,
+        mock_makedirs: MagicMock,
+    ) -> None:
+        """Test time-series report skips regeneration when nested time-series files exist"""
+        timeseries_options = ReportOptions(
+            archives=[self.temp_dir],
+            output_directory=f"{self.temp_dir}/output",
+            results_file_root="test_results",
+            create_pdf=False,
+            force_refresh=False,
+            no_error_bars=False,
+            report_type=ReportType.TIMESERIES,
+            plot_resources=False,
+        )
+
+        nested_vis_dir = Path(self.temp_dir) / "read" / "visualisation"
+        nested_vis_dir.mkdir(parents=True)
+        with open(nested_vis_dir / "4096_1_read_timeseries.json", "w", encoding="utf-8") as file_handle:
+            json.dump({"metadata": {}, "timeseries": []}, file_handle)
+
+        mock_generator_instance = MagicMock()
+        mock_timeseries_generator.return_value = mock_generator_instance
+
+        report = Report(timeseries_options)
+        report.generate()
+
+        mock_formatter.assert_not_called()
+        mock_timeseries_generator.assert_called_once()
+        mock_generator_instance.create_report.assert_called_once()
+
+    @patch("post_processing.report.os.makedirs")
+    @patch("post_processing.report.CommonOutputFormatter")
+    @patch("post_processing.report.SimpleReportGenerator")
+    def test_generate_simple_report_skips_regeneration_with_nested_hockey_stick_files(
+        self,
+        mock_simple_generator: MagicMock,
+        mock_formatter: MagicMock,
+        mock_makedirs: MagicMock,
+    ) -> None:
+        """Test simple report skips regeneration when nested non-timeseries files exist"""
+        nested_vis_dir = Path(self.temp_dir) / "read" / "visualisation"
+        nested_vis_dir.mkdir(parents=True)
+        with open(nested_vis_dir / "4096_1_read.json", "w", encoding="utf-8") as file_handle:
+            json.dump({"data": []}, file_handle)
+
+        mock_generator_instance = MagicMock()
+        mock_simple_generator.return_value = mock_generator_instance
+
+        report = Report(self.options)
+        report.generate()
+
+        mock_formatter.assert_not_called()
+        mock_simple_generator.assert_called_once()
+        mock_generator_instance.create_report.assert_called_once()
+
+    @patch("post_processing.report.os.makedirs")
+    @patch("post_processing.report.CommonOutputFormatter")
+    @patch("post_processing.report.SimpleReportGenerator")
+    def test_generate_simple_report_skips_regeneration_with_legacy_visualisation_files(
+        self,
+        mock_simple_generator: MagicMock,
+        mock_formatter: MagicMock,
+        mock_makedirs: MagicMock,
+    ) -> None:
+        """Test simple report still skips regeneration with legacy top-level files"""
+        legacy_vis_dir = Path(self.temp_dir) / "visualisation"
+        legacy_vis_dir.mkdir(parents=True)
+        with open(legacy_vis_dir / "4096_1_read.json", "w", encoding="utf-8") as file_handle:
+            json.dump({"data": []}, file_handle)
+
+        mock_generator_instance = MagicMock()
+        mock_simple_generator.return_value = mock_generator_instance
+
+        report = Report(self.options)
+        report.generate()
+
+        mock_formatter.assert_not_called()
+        mock_simple_generator.assert_called_once()
+        mock_generator_instance.create_report.assert_called_once()
 
 
 # Made with Bob
