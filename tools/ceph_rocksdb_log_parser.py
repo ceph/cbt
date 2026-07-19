@@ -66,7 +66,7 @@ class LogData():
                 try:
                     # Nautilus and older format
                     dt = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
-                except: 
+                except Exception:
                     pass
 
             if self.start_dt is None or self.start_dt > dt:

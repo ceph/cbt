@@ -69,7 +69,7 @@ class Cosbench(Benchmark):
             try:
                 key, value = param.split('=')
                 cosconf[key] = value
-            except:
+            except Exception:
                 pass
         logger.debug("%s", cosconf)
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
@@ -271,7 +271,7 @@ class Cosbench(Benchmark):
         wait = True
         try:
             self.runid
-        except:
+        except AttributeError:
             wait = False
         while wait:
             stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info | grep {runid} | awk '{{print $8}}'",
@@ -284,7 +284,7 @@ class Cosbench(Benchmark):
                 status = stdout.split(':')[1]
                 if status.strip() != 'PROCESSING':
                     wait = False
-            except:
+            except Exception:
                 wait = False
             time.sleep(1)
         stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info",
