@@ -90,7 +90,7 @@ def main(argv):
                 b.initialize_endpoints()
                 logger.info(f"Running benchmark %s == iteration %d ==" % (b, iteration))
                 b.run()
-    except:
+    except Exception:
         return_code = 1  # FAIL
         logger.exception("During tests")
 
