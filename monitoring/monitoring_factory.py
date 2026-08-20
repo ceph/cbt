@@ -9,8 +9,10 @@ import settings
 from monitoring.blktrace_monitoring import BlktraceMonitoring
 from monitoring.collectl_monitoring import CollectlMonitoring
 from monitoring.monitoring import Monitoring
-from monitoring.perf_monitoring import OsdPerfMonitoring, PerfMonitoring
-from monitoring.top_monitoring import OsdTopMonitoring, TopMonitoring
+from monitoring.osd_perf_monitoring import OsdPerfMonitoring
+from monitoring.osd_top_monitoring import OsdTopMonitoring
+from monitoring.perf_monitoring import PerfMonitoring
+from monitoring.top_monitoring import TopMonitoring
 
 logger = logging.getLogger("cbt")
 

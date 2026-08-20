@@ -5,6 +5,8 @@
 from typing import Any, Optional
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 from monitoring.blktrace_monitoring import BlktraceMonitoring
 
 
@@ -23,6 +25,7 @@ def _make_monitor(
         patch("monitoring.blktrace_monitoring.common.pdsh"),
     ):
         mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.return_value = user
         mock_settings.cluster.get.side_effect = lambda key, default=None: {
             "osds_per_node": osds_per_node,
             "use_existing": use_existing,
@@ -46,6 +49,8 @@ def test_init_stores_cluster_settings() -> None:
 
 def test_start_creates_directory_and_starts_traces() -> None:
     """start() calls pdsh for mkdir and once per device."""
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/sbin/blktrace\n", "")
     mkdir_runner = MagicMock()
     trace_runner = MagicMock()
 
@@ -55,28 +60,26 @@ def test_start_creates_directory_and_starts_traces() -> None:
         patch("monitoring.blktrace_monitoring.common.pdsh") as mock_pdsh,
     ):
         mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.return_value = "ceph"
         mock_settings.cluster.get.side_effect = lambda key, default=None: {
             "osds_per_node": 2,
             "use_existing": True,
             "user": "ceph",
         }.get(key, default)
-        mock_pdsh.side_effect = [mkdir_runner, trace_runner, trace_runner]
+        mock_pdsh.side_effect = [check_runner, mkdir_runner, trace_runner, trace_runner]
 
         monitor = BlktraceMonitoring({})
         monitor.start("/tmp/output")
 
+    mock_pdsh.assert_any_call("resolved-nodes", "command -v blktrace", continue_if_error=False)
     mock_pdsh.assert_any_call("resolved-nodes", "mkdir -p -m0755 -- /tmp/output/blktrace")
     mkdir_runner.communicate.assert_called_once_with()
 
-    mock_pdsh.assert_any_call(
-        "resolved-nodes",
-        "cd /tmp/output/blktrace;sudo blktrace -o device0 -d /dev/disk/by-partlabel/osd-device-0-data",
-    )
-    mock_pdsh.assert_any_call(
-        "resolved-nodes",
-        "cd /tmp/output/blktrace;sudo blktrace -o device1 -d /dev/disk/by-partlabel/osd-device-1-data",
-    )
-    assert mock_pdsh.call_count == 3  # mkdir + 2 devices
+    trace0 = "cd /tmp/output/blktrace && sudo blktrace -o device0 -d /dev/disk/by-partlabel/osd-device-0-data"
+    trace1 = "cd /tmp/output/blktrace && sudo blktrace -o device1 -d /dev/disk/by-partlabel/osd-device-1-data"
+    mock_pdsh.assert_any_call("resolved-nodes", trace0)
+    mock_pdsh.assert_any_call("resolved-nodes", trace1)
+    assert mock_pdsh.call_count == 4  # check + mkdir + 2 devices
 
 
 def test_stop_issues_pkill() -> None:
@@ -148,13 +151,54 @@ def test_make_movies_issues_seekwatcher_per_device() -> None:
     expected_calls = [
         call(
             "resolved-nodes",
-            "cd /tmp/output/blktrace;/home/ceph/bin/seekwatcher -t device0 -o device0.mpg --movie",
+            "cd /tmp/output/blktrace && /home/ceph/bin/seekwatcher -t device0 -o device0.mpg --movie",
         ),
         call(
             "resolved-nodes",
-            "cd /tmp/output/blktrace;/home/ceph/bin/seekwatcher -t device1 -o device1.mpg --movie",
+            "cd /tmp/output/blktrace && /home/ceph/bin/seekwatcher -t device1 -o device1.mpg --movie",
         ),
     ]
     mock_pdsh.assert_has_calls(expected_calls)
     assert mock_pdsh.call_count == 2
     assert movie_runner.communicate.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Tool availability checks
+# ---------------------------------------------------------------------------
+
+
+def test_blktrace_start_raises_when_blktrace_not_installed() -> None:
+    """BlktraceMonitoring.start() raises RuntimeError when blktrace is not on the nodes."""
+    monitor = _make_monitor()
+    with patch("monitoring.blktrace_monitoring.common.pdsh") as mock_pdsh:
+        mock_pdsh.return_value.communicate.side_effect = Exception("exit 1")
+        with pytest.raises(RuntimeError, match="blktrace"):
+            monitor.start("/tmp/output")
+
+
+def test_blktrace_start_proceeds_when_blktrace_is_installed() -> None:
+    """BlktraceMonitoring.start() continues normally when blktrace is found on the nodes."""
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/sbin/blktrace\n", "")
+    mkdir_runner = MagicMock()
+    trace_runner = MagicMock()
+
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.blktrace_monitoring.settings") as mock_settings,
+        patch("monitoring.blktrace_monitoring.common.pdsh") as mock_bt_pdsh,
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.return_value = "ceph"
+        mock_settings.cluster.get.side_effect = lambda key, default=None: {
+            "osds_per_node": 1,
+            "use_existing": True,
+            "user": "ceph",
+        }.get(key, default)
+        mock_bt_pdsh.side_effect = [check_runner, mkdir_runner, trace_runner]
+
+        monitor = BlktraceMonitoring({})
+        monitor.start("/tmp/output")
+
+    mock_bt_pdsh.assert_any_call("resolved-nodes", "mkdir -p -m0755 -- /tmp/output/blktrace")
