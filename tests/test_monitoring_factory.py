@@ -10,8 +10,10 @@ import pytest
 from monitoring.blktrace_monitoring import BlktraceMonitoring
 from monitoring.collectl_monitoring import CollectlMonitoring
 from monitoring.monitoring_factory import MonitoringFactory
-from monitoring.perf_monitoring import OsdPerfMonitoring, PerfMonitoring
-from monitoring.top_monitoring import OsdTopMonitoring, TopMonitoring
+from monitoring.osd_perf_monitoring import OsdPerfMonitoring
+from monitoring.osd_top_monitoring import OsdTopMonitoring
+from monitoring.perf_monitoring import PerfMonitoring
+from monitoring.top_monitoring import TopMonitoring
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,13 +48,10 @@ def test_get_object_returns_collectl_monitoring() -> None:
 
 def test_get_object_returns_perf_monitoring() -> None:
     """get_object('perf') returns a PerfMonitoring instance."""
-    with (
-        patch("monitoring.monitoring.settings") as mock_base_settings,
-        patch("monitoring.perf_monitoring.settings") as mock_settings,
-    ):
+    with patch("monitoring.monitoring.settings") as mock_base_settings:
         mock_base_settings.getnodes.return_value = "node1"
-        mock_settings.cluster.get.return_value = "dummy"
-        instance = MonitoringFactory.get_object("perf", {})
+        mock_base_settings.cluster.get.return_value = "dummy"
+        instance = MonitoringFactory.get_object("perf", {"args": "record"})
     assert isinstance(instance, PerfMonitoring)
 
 
@@ -63,6 +62,7 @@ def test_get_object_returns_blktrace_monitoring() -> None:
         patch("monitoring.blktrace_monitoring.settings") as mock_settings,
     ):
         mock_base_settings.getnodes.return_value = "node1"
+        mock_base_settings.cluster.get.return_value = "dummy"
         mock_settings.cluster.get.return_value = "dummy"
         instance = MonitoringFactory.get_object("blktrace", {})
     assert isinstance(instance, BlktraceMonitoring)
@@ -70,37 +70,28 @@ def test_get_object_returns_blktrace_monitoring() -> None:
 
 def test_get_object_returns_top_monitoring() -> None:
     """get_object('top') returns a TopMonitoring instance."""
-    with (
-        patch("monitoring.monitoring.settings") as mock_base_settings,
-        patch("monitoring.top_monitoring.settings") as mock_settings,
-    ):
+    with patch("monitoring.monitoring.settings") as mock_base_settings:
         mock_base_settings.getnodes.return_value = "node1"
-        mock_settings.cluster.get.return_value = "dummy"
+        mock_base_settings.cluster.get.return_value = "dummy"
         instance = MonitoringFactory.get_object("top", {})
     assert isinstance(instance, TopMonitoring)
 
 
 def test_get_object_returns_osd_top_monitoring() -> None:
     """get_object('osd_top') returns an OsdTopMonitoring instance."""
-    with (
-        patch("monitoring.monitoring.settings") as mock_base_settings,
-        patch("monitoring.top_monitoring.settings") as mock_settings,
-    ):
+    with patch("monitoring.monitoring.settings") as mock_base_settings:
         mock_base_settings.getnodes.return_value = "node1"
-        mock_settings.cluster.get.return_value = "dummy"
+        mock_base_settings.cluster.get.return_value = "dummy"
         instance = MonitoringFactory.get_object("osd_top", {})
     assert isinstance(instance, OsdTopMonitoring)
 
 
 def test_get_object_returns_osd_perf_monitoring() -> None:
     """get_object('osd_perf') returns an OsdPerfMonitoring instance."""
-    with (
-        patch("monitoring.monitoring.settings") as mock_base_settings,
-        patch("monitoring.perf_monitoring.settings") as mock_settings,
-    ):
+    with patch("monitoring.monitoring.settings") as mock_base_settings:
         mock_base_settings.getnodes.return_value = "node1"
-        mock_settings.cluster.get.return_value = "dummy"
-        instance = MonitoringFactory.get_object("osd_perf", {})
+        mock_base_settings.cluster.get.return_value = "dummy"
+        instance = MonitoringFactory.get_object("osd_perf", {"args": "record"})
     assert isinstance(instance, OsdPerfMonitoring)
 
 
