@@ -48,7 +48,7 @@ class TestBaseFormatter(unittest.TestCase):
         """Test that log property returns a logger"""
         logger = self.formatter.log
         self.assertIsNotNone(logger)
-        self.assertEqual(logger.name, "formatter")
+        self.assertEqual(logger.name, "cbt.formatter")
 
     def test_path_property(self) -> None:
         """Test that path property returns a Path object"""

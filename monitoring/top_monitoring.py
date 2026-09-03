@@ -3,6 +3,7 @@
 import glob
 import logging
 import os
+import re
 from typing import Any, ClassVar, Optional, cast
 
 import common
@@ -10,6 +11,21 @@ import settings
 from monitoring.monitoring import Monitoring
 
 logger = logging.getLogger("cbt")
+
+
+def _estimate_top_duration(args: str) -> Optional[float]:
+    """Estimate how long ``top -b`` will run based on ``-n`` and ``-d`` flags.
+
+    Returns the estimated duration in seconds, or ``None`` if ``-n`` is not
+    present (meaning top will run indefinitely and must be killed to stop).
+    """
+    n_match = re.search(r"-n\s+(\d+)", args)
+    d_match = re.search(r"-d\s+([\d.]+)", args)
+    if not n_match:
+        return None
+    iterations = int(n_match.group(1))
+    delay = float(d_match.group(1)) if d_match else 3.0  # top default delay is 3s
+    return iterations * delay
 
 
 class TopMonitoring(Monitoring):
@@ -46,7 +62,17 @@ class TopMonitoring(Monitoring):
             runner = common.sh(local_node, top_cmd)  # type: ignore[no-untyped-call]
             self._top_runners.append(runner)
         else:
+            duration = _estimate_top_duration(self._args)
+            if duration is not None:
+                logger.info(
+                    "Top monitoring collecting %s samples (estimated ~%.0fs)...",
+                    self._args.split("-n")[1].split()[0].strip(),
+                    duration,
+                )
+            else:
+                logger.info("Top monitoring running (will be killed on stop)...")
             common.pdsh(self._nodes, top_cmd).communicate()  # type: ignore[no-untyped-call]
+            logger.info("Top monitoring collection complete.")
 
     def stop(self, directory: Optional[str]) -> None:
         """Stop top collection and adjust file ownership when needed."""
@@ -112,8 +138,18 @@ class OsdTopMonitoring(TopMonitoring):
                     "OsdTopMonitoring: no PID files matched %s on remote nodes — no top processes started",
                     pid_glob_path,
                 )
+            duration = _estimate_top_duration(self._args)
+            if duration is not None:
+                logger.info(
+                    "OSD top monitoring collecting %s samples per OSD (estimated ~%.0fs)...",
+                    self._args.split("-n")[1].split()[0].strip(),
+                    duration,
+                )
+            else:
+                logger.info("OSD top monitoring running per OSD (will be killed on stop)...")
             top_cmd = top_template.format(top_dir=top_dir, pid="${pid}")
             common.pdsh(  # type: ignore[no-untyped-call]
                 self._nodes,
                 [f"for pid in `cat {pid_glob_path}`;", "do", top_cmd, ";", "done"],
             ).communicate()
+            logger.info("OSD top monitoring collection complete.")

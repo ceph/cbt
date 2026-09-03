@@ -13,7 +13,7 @@ from typing import Any, Optional
 from post_processing.common import file_is_empty, get_blocksize
 from post_processing.post_processing_types import IodepthDataType, JobsDataType, TimeSeriesFormatType
 
-log: Logger = getLogger("formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 class BenchmarkResult(ABC):  # pylint: disable=too-many-instance-attributes

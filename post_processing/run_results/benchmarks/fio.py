@@ -19,7 +19,7 @@ from post_processing.post_processing_types import (
 )
 from post_processing.run_results.benchmark_result import BenchmarkResult
 
-log: Logger = getLogger("formatter")
+log: Logger = getLogger("cbt.formatter")
 
 # Constants for job types to process
 _READ_WRITE_JOBS: frozenset[str] = frozenset(["read", "write"])

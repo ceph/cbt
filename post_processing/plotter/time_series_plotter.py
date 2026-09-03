@@ -27,7 +27,7 @@ from post_processing.plotter.time_series_iops_plotter import TimeSeriesIOPSPlott
 from post_processing.plotter.time_series_latency_plotter import TimeSeriesLatencyPlotter
 from post_processing.post_processing_types import TimeSeriesDataPoint, TimeSeriesFormatType
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 # Plot styling constants
 DEFAULT_FIGURE_SIZE = (12, 3)

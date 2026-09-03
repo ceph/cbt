@@ -11,7 +11,7 @@ from logging import Logger, getLogger
 
 from post_processing.plotter.axis_plotter import AxisPlotter
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 # Default plotting parameters
 DEFAULT_LINE_WIDTH: float = 1.5

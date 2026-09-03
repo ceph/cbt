@@ -54,13 +54,9 @@ Examples:
 from argparse import SUPPRESS, ArgumentParser
 from logging import Logger, getLogger
 
-from post_processing.log_configuration import setup_logging
+from logging_configuration import setup_loggers
 from post_processing.post_processing_types import ReportOptions
 from post_processing.report import Report, parse_namespace_to_options
-
-setup_logging()
-log: Logger = getLogger("reports")
-log.info("=== Starting Post Processing of CBT results ===")
 
 
 def main() -> int:
@@ -113,7 +109,13 @@ def main() -> int:
     # the following argument is required to exist for future processing, but is not needed for timeseries reports
     parser.add_argument("--results_file_root", type=str, required=False, default="json_output", help=SUPPRESS)
 
-    report_options: ReportOptions = parse_namespace_to_options(arguments=parser.parse_args(), timeseries_report=True)
+    args = parser.parse_args()
+    log_fname = f"{args.output_directory}/post_processing.log"
+    setup_loggers(logfile_name=log_fname)
+    log: Logger = getLogger("cbt.reports")
+    log.info("=== Starting Post Processing of CBT results ===")
+
+    report_options: ReportOptions = parse_namespace_to_options(arguments=args, timeseries_report=True)
 
     report: Report = Report(options=report_options)
 

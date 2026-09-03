@@ -16,7 +16,7 @@ import yaml
 import benchmarkfactory
 import settings
 from cluster.ceph import Ceph
-from log_support import setup_loggers
+from logging_configuration import setup_loggers
 
 log_fname = "/tmp/cbt-utest.log"
 
@@ -156,7 +156,7 @@ class BenchJSONEncoder(JSONEncoder):
 
 
 def main(argv):
-    setup_loggers(log_fname="/tmp/cbt-utest.log")
+    setup_loggers(logfile_name="/tmp/cbt-utest.log")
     bg = BenchGenerator()
     bg.gen_json()
     bg.verify_json()

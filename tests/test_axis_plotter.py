@@ -56,7 +56,7 @@ class TestAxisPlotter(unittest.TestCase):
         """Test that setting y_label twice logs a warning"""
         self.plotter.y_label = "First Label"
 
-        with self.assertLogs("plotter", level="WARNING") as log_context:
+        with self.assertLogs("cbt.plotter", level="WARNING") as log_context:
             self.plotter.y_label = "Second Label"
 
         self.assertIn("Y label value already set", log_context.output[0])
@@ -76,7 +76,7 @@ class TestAxisPlotter(unittest.TestCase):
         """Test that setting plot_label twice logs a warning"""
         self.plotter.plot_label = "First Label"
 
-        with self.assertLogs("plotter", level="WARNING") as log_context:
+        with self.assertLogs("cbt.plotter", level="WARNING") as log_context:
             self.plotter.plot_label = "Second Label"
 
         self.assertIn("Plot label value already set", log_context.output[0])

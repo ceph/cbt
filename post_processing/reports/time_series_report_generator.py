@@ -36,7 +36,7 @@ from post_processing.plotter.time_series_plotter import TimeSeriesPlotter
 from post_processing.post_processing_types import CommonFormatDataType
 from post_processing.reports.report_generator import ReportGenerator
 
-log: Logger = getLogger("reports")
+log: Logger = getLogger("cbt.reports")
 
 
 class TimeSeriesReportGenerator(ReportGenerator):

@@ -14,7 +14,7 @@ from post_processing.run_results.resources.collectl_resource import CollectlReso
 from post_processing.run_results.resources.fio_resource import FIOResource
 from post_processing.run_results.resources.top_resource import TopResource
 
-log: Logger = getLogger("formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 def get_all_resources(file_path: Path) -> list[ResourceResult]:

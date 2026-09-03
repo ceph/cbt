@@ -1,5 +1,6 @@
 """Factory class for creating and managing monitoring backends."""
 
+import logging
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from typing import Any, ClassVar, Optional
@@ -10,6 +11,8 @@ from monitoring.collectl_monitoring import CollectlMonitoring
 from monitoring.monitoring import Monitoring
 from monitoring.perf_monitoring import OsdPerfMonitoring, PerfMonitoring
 from monitoring.top_monitoring import OsdTopMonitoring, TopMonitoring
+
+logger = logging.getLogger("cbt")
 
 
 class MonitoringFactory:
@@ -45,12 +48,14 @@ class MonitoringFactory:
     @classmethod
     def start(cls, directory: str) -> None:
         """Start all configured monitoring backends."""
+        logger.info("Starting monitoring in %s", directory)
         for monitor in cls.get_all():
             monitor.start(directory)
 
     @classmethod
     def stop(cls, directory: Optional[str] = None) -> None:
         """Stop all configured monitoring backends."""
+        logger.info("Stopping monitoring.")
         for monitor in cls.get_all():
             monitor.stop(directory)
 
@@ -59,11 +64,13 @@ class MonitoringFactory:
     def monitor(cls, directory: str) -> Generator[None, None, None]:
         """Context manager: start all monitors, yield, then stop all."""
         monitors = list(cls.get_all())
+        logger.info("Starting monitoring in %s", directory)
         for monitor in monitors:
             monitor.start(directory)
         try:
             yield
         finally:
+            logger.info("Stopping monitoring.")
             for monitor in monitors:
                 monitor.stop(directory)
 

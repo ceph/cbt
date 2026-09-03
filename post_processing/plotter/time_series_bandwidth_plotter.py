@@ -6,7 +6,7 @@ from logging import Logger, getLogger
 
 from post_processing.plotter.time_series_metric_plotter import TimeSeriesMetricPlotter
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 BANDWIDTH_PLOT_DEFAULT_COLOUR: str = "xkcd:purple"  # Purple from xkcd color survey
 BANDWIDTH_Y_LABEL: str = "Bandwidth (MB/s)"

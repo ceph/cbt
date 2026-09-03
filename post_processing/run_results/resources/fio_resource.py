@@ -9,7 +9,7 @@ from typing import Any
 
 from post_processing.run_results.resource_result import ResourceResult
 
-log: Logger = getLogger("formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 class FIOResource(ResourceResult):

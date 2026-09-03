@@ -68,20 +68,32 @@ class Workloads:
 
         ramp_time: str = f"{self._benchmark_configuration.get('ramp', '')}"
 
+        total_workloads = len(self._workloads)
         processes: list[Union[CheckedPopen, CheckedPopenLocal]] = []
-        for workload in self._workloads:
+        for workload_index, workload in enumerate(self._workloads, start=1):
+            workload_name = workload.get_name()
+            log.info("Starting workload '%s' (%d/%d)...", workload_name, workload_index, total_workloads)
             workload.set_benchmark_type(self._benchmark_type)
             workload.set_executable(self._executable)
 
             script_command: Optional[str] = None
             if workload.has_script():
                 script_command = workload.get_script_command()
-                log.debug("Scheduling script %s to run before workload %s", script_command, workload.get_name())
+                log.debug("Scheduling script %s to run before workload %s", script_command, workload_name)
 
             for output_directory in workload.get_output_directories():
                 make_remote_dir(output_directory)  # type: ignore[no-untyped-call]
 
-            for output_directory, fio_command_list in workload.get_commands_list():
+            param_sets = list(workload.get_commands_list())
+            total_param_sets = len(param_sets)
+            for param_index, (output_directory, fio_command_list) in enumerate(param_sets, start=1):
+                log.info(
+                    "Workload '%s': running parameter set %d/%d -> %s",
+                    workload_name,
+                    param_index,
+                    total_param_sets,
+                    output_directory,
+                )
                 if script_command:
                     pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
 
@@ -90,6 +102,7 @@ class Workloads:
 
                 # Sleep for the ramp time and then collect stats
                 if ramp_time:
+                    log.info("Ramp time: waiting %ss before collecting stats...", ramp_time)
                     sleep(int(ramp_time))
 
                 MonitoringFactory.start(output_directory)
@@ -98,6 +111,9 @@ class Workloads:
                     process.wait()  # type: ignore[no-untyped-call]
 
                 MonitoringFactory.stop()
+                log.info("Workload '%s': parameter set %d/%d complete.", workload_name, param_index, total_param_sets)
+
+            log.info("Workload '%s' complete (%d/%d).", workload_name, workload_index, total_workloads)
 
         log.info("== Workloads completed ==")
 

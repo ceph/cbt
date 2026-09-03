@@ -21,7 +21,7 @@ from post_processing.run_results.benchmark_result import BenchmarkResult
 from post_processing.run_results.resource_result import ResourceResult
 from post_processing.run_results.resource_result_factory import get_all_resources
 
-log: Logger = getLogger("formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
@@ -172,7 +172,7 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
                     log.debug("Processing file %s", file_path)
                     self._convert_file(file_path)
                 else:
-                    log.warning("Not processing file %s as it is from a precondition operation", file_path)
+                    log.debug("Not processing file %s as it is from a precondition operation", file_path)
                     self._files.remove(file_path)
             else:
                 log.warning("Cannot process file %s as it is empty", file_path)

@@ -18,7 +18,7 @@ from post_processing.post_processing_types import (
     TimeSeriesMetadata,
 )
 
-log: Logger = getLogger("parser")
+log: Logger = getLogger("cbt.parser")
 
 
 class FIOTimeSeriesParser:  # pylint: disable=too-many-instance-attributes

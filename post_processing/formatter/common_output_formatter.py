@@ -226,7 +226,7 @@ class CommonOutputFormatter(BaseFormatter):
         output_dir = operation_directory / "visualisation"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.log.info("Writing hockey-stick data to %s", output_dir)
+        self.log.debug("Writing hockey-stick data to %s", output_dir)
 
         # Process each operation type in the results
         for operation_type, operation_data in processed_results.items():

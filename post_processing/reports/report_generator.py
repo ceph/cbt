@@ -25,7 +25,7 @@ from post_processing.common import (
     get_date_time_string,
 )
 
-log: Logger = getLogger("reports")
+log: Logger = getLogger("cbt.reports")
 
 
 # pylint: disable=too-many-instance-attributes
