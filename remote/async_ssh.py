@@ -1,19 +1,11 @@
 """
-Async parallel SSH via the system OpenSSH client.
-
-This module implements :class:`~remote.remote_executor.RemoteExecutor` using
-Python's stdlib ``asyncio`` and the system ``/usr/bin/ssh`` binary — no
-third-party packages are required.  The directory-setup and result-collection
-helpers (``make_remote_dir``, ``clean_remote_dir``, ``sync_files``) are methods
-on the executor, so swapping the fan-out mechanism swaps them too.
-
-The naming here should not be confused with the external ``asyncssh`` PyPI
-package; only built-in Python packages are used.
+Parallel SSH fan-out using stdlib asyncio and the system ssh binary.
 """
 
 import asyncio
 import logging
 import os
+from typing import Optional, Union
 
 import settings
 from common import expanded_node_list
@@ -22,7 +14,11 @@ from remote.remote_executor import RemoteExecutor
 logger = logging.getLogger("cbt")
 
 
-async def _ssh_exec_one(host, command, ssh_args):
+async def _ssh_exec_one(
+    host: str,
+    command: str,
+    ssh_args: list[str],
+) -> tuple[str, str, str, int]:
     proc = await asyncio.create_subprocess_exec(
         *ssh_args, host, command,
         stdout=asyncio.subprocess.PIPE,
@@ -33,11 +29,15 @@ async def _ssh_exec_one(host, command, ssh_args):
         host,
         stdout_bytes.decode(errors="replace"),
         stderr_bytes.decode(errors="replace"),
-        proc.returncode,
+        proc.returncode if proc.returncode is not None else -1,
     )
 
 
-async def _ssh_exec_all(node_list, command, ssh_args):
+async def _ssh_exec_all(
+    node_list: list[str],
+    command: str,
+    ssh_args: list[str],
+) -> list[Union[tuple[str, str, str, int], BaseException]]:
     tasks = [_ssh_exec_one(h, command, ssh_args) for h in node_list]
     return await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -45,27 +45,27 @@ async def _ssh_exec_all(node_list, command, ssh_args):
 class AsyncSSHExecutor(RemoteExecutor):
     """Run commands on cluster nodes concurrently via the system ``ssh`` binary."""
 
-    def _build_ssh_args(self):
-        """Build the base ``ssh`` argv shared by every node invocation.
-
-        ``-o BatchMode=yes`` is always passed so that a host requiring
-        interactive authentication fails immediately rather than hanging.
-        The SSH user, if any, is taken from ``settings.cluster['user']``.
-        """
+    def _build_ssh_args(self) -> list[str]:
+        # BatchMode=yes so a host that needs interactive auth fails fast.
         ssh_args = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
         user = settings.cluster.get("user")
         if user:
-            ssh_args += ["-l", user]
+            ssh_args += ["-l", str(user)]
         return ssh_args
 
-    def run_command(self, nodes, command, continue_if_error=True):
-        node_list = expanded_node_list(nodes)
+    def run_command(
+        self,
+        nodes: str,
+        command: str,
+        continue_if_error: bool = True,
+    ) -> list[tuple[str, str, str, int]]:
+        node_list: list[str] = expanded_node_list(nodes)
         ssh_args = self._build_ssh_args()
 
         raw = asyncio.run(_ssh_exec_all(node_list, command, ssh_args))
 
-        results = []
-        errors = []
+        results: list[tuple[str, str, str, int]] = []
+        errors: list[str] = []
         for item in raw:
             if isinstance(item, BaseException):
                 errors.append(str(item))
@@ -78,7 +78,7 @@ class AsyncSSHExecutor(RemoteExecutor):
             if stderr:
                 logger.debug("ssh [%s] stderr: %s", host, stderr.rstrip())
             if exit_status != 0:
-                detail = (stdout or stderr).rstrip()
+                detail = (stderr or stdout).rstrip()
                 msg = f"ssh [{host}] exited {exit_status}: {detail}"
                 if not continue_if_error:
                     errors.append(msg)
@@ -93,59 +93,29 @@ class AsyncSSHExecutor(RemoteExecutor):
 
         return results
 
-    def run_command_with_error_checking(self, nodes, command):
-        self.run_command(nodes, command, continue_if_error=False)
-
-    # ------------------------------------------------------------------
-    # pdsh-free cluster helpers (RemoteExecutor interface)
-    # ------------------------------------------------------------------
-
-    def make_remote_dir(self, remote_dir):
-        """Create *remote_dir* on all cluster nodes via parallel SSH."""
-        self.run_command_with_error_checking(
-            all_cluster_nodes(), f'mkdir -p -m0755 -- {remote_dir}'
-        )
-
-    def clean_remote_dir(self, remote_dir):
-        """Remove *remote_dir* from all cluster nodes via parallel SSH."""
-        if remote_dir == "/" or not os.path.isabs(remote_dir):
-            raise SystemExit("Cleaning the remote dir doesn't seem safe, bailing.")
-        self.run_command_with_error_checking(
-            all_cluster_nodes(),
-            f'if [ -d "{remote_dir}" ]; then rm -rf {remote_dir}; fi',
-        )
-
-    def sync_files(self, remote_dir, local_dir):
-        """Pull *remote_dir* from all cluster nodes into *local_dir* via parallel ``scp -r``."""
-        nodes_str = all_cluster_nodes()
-        node_list = expanded_node_list(nodes_str)
+    def sync_files(self, nodes: str, remote_dir: str, local_dir: str) -> None:
+        """Pull *remote_dir* from *nodes* into *local_dir* via parallel ``scp -r``."""
+        node_list: list[str] = expanded_node_list(nodes)
 
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
 
         if 'user' in settings.cluster:
             self.run_command_with_error_checking(
-                nodes_str,
+                nodes,
                 'sudo chown -R {0}.{0} {1}'.format(settings.cluster['user'], remote_dir),
             )
 
         user = settings.cluster.get("user")
         scp_base_args = _build_scp_args()
 
-        def _bare_host(h):
-            return h.split("@", 1)[-1]
+        raw = asyncio.run(_scp_pull_all(node_list, remote_dir, local_dir, scp_base_args, user))
 
-        async def _pull_all():
-            tasks = [
-                _scp_pull_one(_bare_host(h), remote_dir, local_dir, scp_base_args, user=user)
-                for h in node_list
-            ]
-            return await asyncio.gather(*tasks, return_exceptions=True)
-
-        raw = asyncio.run(_pull_all())
-
-        errors = []
+        errors: list[str] = []
         for item in raw:
+            # TODO: the BaseException branch duplicates the same pattern in
+            # run_command(); consolidate into a shared helper once the pattern
+            # stabilises.
             if isinstance(item, BaseException):
                 errors.append(str(item))
                 logger.warning("scp: failed to launch process: %s", item)
@@ -165,21 +135,36 @@ class AsyncSSHExecutor(RemoteExecutor):
 # Module-level helpers used by AsyncSSHExecutor
 # ---------------------------------------------------------------------------
 
-def all_cluster_nodes():
-    """Return every node in the cluster (clients, osds, mons, rgws, mds).
-
-    Single source of truth for the "all nodes" set used by the cluster-wide
-    helpers above, so the node groups are declared in exactly one place.
-    """
-    return settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mds')
+def _bare_host(h: str) -> str:
+    """Strip any ``user@`` prefix, returning just the hostname."""
+    return h.split("@", 1)[-1]
 
 
-def _build_scp_args():
-    """Build the base ``scp`` argv shared by every pull invocation."""
+async def _scp_pull_all(
+    node_list: list[str],
+    remote_dir: str,
+    local_dir: str,
+    scp_base_args: list[str],
+    user: Optional[str],
+) -> list[Union[tuple[str, str, str, int], BaseException]]:
+    tasks = [
+        _scp_pull_one(_bare_host(h), remote_dir, local_dir, scp_base_args, user=str(user) if user else None)
+        for h in node_list
+    ]
+    return await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _build_scp_args() -> list[str]:
     return ["scp", "-r", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
 
 
-async def _scp_pull_one(host, remote_path, local_dir, scp_base_args, user=None):
+async def _scp_pull_one(
+    host: str,
+    remote_path: str,
+    local_dir: str,
+    scp_base_args: list[str],
+    user: Optional[str] = None,
+) -> tuple[str, str, str, int]:
     dest = os.path.join(local_dir, host)
     os.makedirs(dest, exist_ok=True)
     src_host = f"{user}@{host}" if user else host
@@ -195,5 +180,5 @@ async def _scp_pull_one(host, remote_path, local_dir, scp_base_args, user=None):
         host,
         stdout_bytes.decode(errors="replace"),
         stderr_bytes.decode(errors="replace"),
-        proc.returncode,
+        proc.returncode if proc.returncode is not None else -1,
     )

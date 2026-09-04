@@ -122,22 +122,28 @@ class TestRunCommandErrorHandling(unittest.TestCase):
 
     @patch.dict("settings.cluster", {}, clear=True)
     @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-    def test_error_detail_prefers_stdout_over_stderr(self, mock_exec):
-        # The error detail is (stdout or stderr): when a failing command wrote
-        # to stdout, that text — not stderr — is what surfaces in the message.
+    def test_error_detail_prefers_stderr_over_stdout(self, mock_exec):
         mock_exec.return_value = _make_proc(returncode=1, stdout=b"stdout detail", stderr=b"stderr detail")
         with self.assertRaises(RuntimeError) as ctx:
             AsyncSSHExecutor().run_command("h1", "cmd", continue_if_error=False)
-        self.assertIn("stdout detail", str(ctx.exception))
-        self.assertNotIn("stderr detail", str(ctx.exception))
+        self.assertIn("stderr detail", str(ctx.exception))
+        self.assertNotIn("stdout detail", str(ctx.exception))
 
     @patch.dict("settings.cluster", {}, clear=True)
     @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-    def test_error_detail_falls_back_to_stderr_when_stdout_empty(self, mock_exec):
+    def test_error_detail_uses_stderr_when_no_stdout(self, mock_exec):
         mock_exec.return_value = _make_proc(returncode=1, stdout=b"", stderr=b"stderr detail")
         with self.assertRaises(RuntimeError) as ctx:
             AsyncSSHExecutor().run_command("h1", "cmd", continue_if_error=False)
         self.assertIn("stderr detail", str(ctx.exception))
+
+    @patch.dict("settings.cluster", {}, clear=True)
+    @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    def test_error_detail_falls_back_to_stdout_when_stderr_empty(self, mock_exec):
+        mock_exec.return_value = _make_proc(returncode=1, stdout=b"stdout detail", stderr=b"")
+        with self.assertRaises(RuntimeError) as ctx:
+            AsyncSSHExecutor().run_command("h1", "cmd", continue_if_error=False)
+        self.assertIn("stdout detail", str(ctx.exception))
 
     @patch.dict("settings.cluster", {}, clear=True)
     @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)

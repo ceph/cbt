@@ -226,6 +226,24 @@ class TestWorkload(unittest.TestCase):
         self.assertIsNotNone(command)
         self.assertIsInstance(command, Command)
 
+    def test_create_command_class_elbencho(self) -> None:
+        """Test creating ElbenchoCommand for elbencho benchmark"""
+        workload = self._create_workload()
+        workload.set_benchmark_type("elbencho")
+
+        options = {
+            "mode": "write",
+            "s3_bucket": "bkt",
+            "blocksize": "4k",
+            "threads": "1",
+            "iodepth": "1",
+        }
+
+        command = workload._create_command_class(options)
+
+        self.assertIsNotNone(command)
+        self.assertIsInstance(command, Command)
+
     def test_create_command_class_unsupported(self) -> None:
         """Test creating command for unsupported benchmark type"""
         workload = self._create_workload()
@@ -250,8 +268,6 @@ class TestWorkload(unittest.TestCase):
 
         self.assertIn(self.workload_name, str_repr)
         self.assertIn("Name:", str_repr)
-
-
 if __name__ == "__main__":
     unittest.main()
 
