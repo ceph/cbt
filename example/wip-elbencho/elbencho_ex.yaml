@@ -1,0 +1,40 @@
+cluster:
+  user: 'cbt'
+  head: "cadmin"
+  clients: ["cadmin"]
+  osds: ["inf1", "inf2", "inf3"]
+  rgws: ["inf1", "inf2", "inf3"]  
+  osds_per_node: 1
+  conf_file: '/etc/ceph/ceph.conf'
+  iterations: 1
+  use_existing: True
+  clusterid: 'ceph'
+  tmp_dir: '/tmp/cbt'
+
+benchmarks:
+  elbencho:
+    cmd_path: '/usr/local/bin/elbencho'
+    auth:
+      config: access_key=<your-access-key>;secret_key=<your-secret-key>;url=http://192.168.110.51:8000;retry=9
+
+    workloads:
+      write_small:
+        s3_bucket: 'cbt-benchmark'
+        mode: 'write'
+        mkdirs: True
+        threads: [1, 4]
+        iodepth: [1, 4]
+        blocksize: ['5m', '16m']
+        size: '5g'
+        num_objects: 100
+        duration: 30
+
+      read_small:
+        s3_bucket: 'cbt-benchmark'
+        mode: 'read'
+        threads: [1, 4]
+        iodepth: [1, 4]
+        blocksize: ['5m', '16m']
+        size: '5g'
+        num_objects: 100
+        duration: 30
