@@ -82,6 +82,31 @@ def test_start_creates_directory_and_starts_traces() -> None:
     assert mock_pdsh.call_count == 4  # check + mkdir + 2 devices
 
 
+def test_start_logs_background_collection() -> None:
+    """start() logs the number of OSD devices being traced per node."""
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/sbin/blktrace\n", "")
+    mkdir_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.blktrace_monitoring.settings") as mock_settings,
+        patch("monitoring.blktrace_monitoring.common.pdsh", side_effect=[check_runner, mkdir_runner, MagicMock()]),
+        patch("monitoring.blktrace_monitoring.logger") as mock_logger,
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.return_value = "ceph"
+        mock_settings.cluster.get.side_effect = lambda key, default=None: {
+            "osds_per_node": 1,
+            "use_existing": True,
+            "user": "ceph",
+        }.get(key, default)
+        BlktraceMonitoring({}).start("/tmp/output")
+
+    mock_logger.info.assert_called_once_with(
+        "Blktrace monitoring running in background for %d OSD devices per node.", 1
+    )
+
+
 def test_stop_issues_pkill() -> None:
     """stop() always calls pdsh pkill blktrace."""
     pkill_runner = MagicMock()
@@ -98,6 +123,19 @@ def test_stop_issues_pkill() -> None:
     mock_movies.assert_not_called()
 
 
+def test_stop_logs_completion() -> None:
+    """stop() logs that blktrace monitoring has stopped."""
+    monitor = _make_monitor()
+
+    with (
+        patch("monitoring.blktrace_monitoring.common.pdsh"),
+        patch("monitoring.blktrace_monitoring.logger") as mock_logger,
+    ):
+        monitor.stop(None)
+
+    mock_logger.info.assert_called_once_with("Blktrace monitoring stopped.")
+
+
 def test_stop_calls_make_movies_when_not_use_existing() -> None:
     """stop() calls _make_movies when use_existing is False and directory is provided."""
     pkill_runner = MagicMock()
@@ -110,6 +148,26 @@ def test_stop_calls_make_movies_when_not_use_existing() -> None:
         monitor.stop("/tmp/output")
 
     mock_movies.assert_called_once_with("/tmp/output")
+
+
+def test_stop_logs_movie_generation() -> None:
+    """stop() logs movie generation progress when rendering is requested."""
+    monitor = _make_monitor(use_existing=False)
+
+    with (
+        patch("monitoring.blktrace_monitoring.common.pdsh"),
+        patch.object(monitor, "_make_movies"),
+        patch("monitoring.blktrace_monitoring.logger") as mock_logger,
+    ):
+        monitor.stop("/tmp/output")
+
+    mock_logger.info.assert_has_calls(
+        [
+            call("Blktrace monitoring stopped."),
+            call("Generating blktrace seekwatcher movies."),
+            call("Blktrace seekwatcher movie generation complete."),
+        ]
+    )
 
 
 def test_stop_does_not_call_make_movies_when_use_existing() -> None:

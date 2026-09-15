@@ -27,6 +27,7 @@ class OsdPidMonitoring(Monitoring, ABC):
         self._pid_dir = cast(str, settings.cluster.get("pid_dir"))
         self._pid_glob = mconfig.get("pid_glob", "osd.*.pid")
 
+    # pylint: disable=too-many-locals
     def _start_per_pid(self, output_dir: str, tool_name: str, cmd_template: str, runners: list[Any]) -> None:
         """Launch *cmd_template* once per OSD PID, populating *runners*.
 
@@ -68,7 +69,5 @@ class OsdPidMonitoring(Monitoring, ABC):
                     tool_name,
                 )
             cmd = cmd_template.format(output_dir=output_dir, pid='"$pid"')
-            common.pdsh(  # type: ignore[no-untyped-call]
-                self._nodes,
-                f'for f in {pid_glob_path}; do pid=$(cat "$f"); {cmd}; done',
-            ).communicate()
+            loop_cmd = f'for f in {pid_glob_path}; do pid=$(cat "$f"); {cmd} & done'
+            runners.append(common.pdsh(self._nodes, loop_cmd))  # type: ignore[no-untyped-call]

@@ -15,6 +15,10 @@ def _estimate_top_duration(args: str) -> Optional[float]:
 
     Returns the estimated duration in seconds, or ``None`` if ``-n`` is not
     present (meaning top will run indefinitely and must be killed to stop).
+
+    When ``-d`` is absent, this assumes the procps-ng compile-time default of
+    three seconds. The actual delay can be configured in ``~/.toprc``; pass
+    ``-d <seconds>`` explicitly for an accurate estimate.
     """
     n_match = re.search(r"-n\s+(\d+)", args)
     d_match = re.search(r"-d\s+([\d.]+)", args)
@@ -65,25 +69,29 @@ class TopMonitoring(Monitoring):
             duration = _estimate_top_duration(self._args)
             if duration is not None:
                 logger.info(
-                    "Top monitoring collecting %s samples (estimated ~%.0fs)...",
+                    "Top monitoring running in background (%s samples, estimated ~%.0fs; "
+                    "use -d for an explicit delay).",
                     self._args.split("-n")[1].split()[0].strip(),
                     duration,
                 )
             else:
-                logger.info("Top monitoring running (will be killed on stop)...")
-            common.pdsh(self._nodes, top_cmd).communicate()  # type: ignore[no-untyped-call]
-            logger.info("Top monitoring collection complete.")
+                logger.info("Top monitoring running in background (will be killed on stop).")
+            runner = common.pdsh(self._nodes, top_cmd)  # type: ignore[no-untyped-call]
+            self._top_runners.append(runner)
 
     def stop(self, directory: Optional[str]) -> None:
         """Stop top collection and adjust file ownership when needed."""
-        if self._top_runners:
-            for runner in self._top_runners:
-                runner.kill()
-        else:
+        if self._running_cmd:
             pkill_cmd = f"sudo pkill -SIGINT -f '{self._running_cmd}'"
             common.pdsh(self._nodes, pkill_cmd).communicate()  # type: ignore[no-untyped-call]
+        for runner in self._top_runners:
+            try:
+                runner.kill()
+            except OSError:
+                pass
         if directory:
             common.pdsh(  # type: ignore[no-untyped-call]
                 self._nodes,
                 f"sudo find {directory}/top -maxdepth 1 -name '*top.out' -exec chown {self._user}:{self._user} {{}} +",
             )
+        logger.info("Top monitoring stopped.")
