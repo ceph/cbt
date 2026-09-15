@@ -300,7 +300,7 @@ class TestWorkloads(unittest.TestCase):
         self.assertEqual(workloads._global_options["iodepth"], ["4", "8"])
 
     def test_string_conversion_in_global_options(self) -> None:
-        """Test that non-list values are converted to strings"""
+        """Test that non-list scalar values in global config are converted to strings"""
         config: dict[str, Any] = {
             "time": 300,  # int
             "ramp": 30,  # int
@@ -313,6 +313,76 @@ class TestWorkloads(unittest.TestCase):
         # Should be converted to strings
         self.assertIsInstance(workloads._global_options["time"], str)
         self.assertEqual(workloads._global_options["time"], "300")
+
+    def test_int_elements_in_global_list_options_are_stringified(self) -> None:
+        """Test that integer elements inside a list in global config are converted to strings.
+
+        YAML can produce list[int] for values like 'total_iodepth: [16, 32]'.
+        all_configs() unpacks list elements directly into the options dict, so
+        each element must be a str before it reaches FioCommand.
+        """
+        config: dict[str, Any] = {
+            "total_iodepth": [16, 32],  # list of ints from YAML
+            "workloads": {
+                "test": {"mode": "randwrite"},
+            },
+        }
+        workloads: Workloads = self._create_workloads(config)
+
+        iodepth_list = workloads._global_options["total_iodepth"]
+        self.assertIsInstance(iodepth_list, list)
+        for element in iodepth_list:
+            self.assertIsInstance(element, str, f"Expected str, got {type(element)} for value {element!r}")
+
+    def test_scalar_non_str_in_workload_options_are_stringified(self) -> None:
+        """Test that scalar non-str values in workload-specific options are converted to strings.
+
+        Values such as 'time: 600' or 'numjobs: 1' arrive as int from YAML
+        and must be str before reaching FioCommand.
+        """
+        config: dict[str, Any] = {
+            "workloads": {
+                "test": {
+                    "mode": "randwrite",
+                    "time": 600,  # int
+                    "numjobs": 1,  # int
+                    "monitor": False,  # bool
+                },
+            },
+        }
+        workloads: Workloads = self._create_workloads(config)
+
+        workload = workloads._workloads[0]
+        for key in ("time", "numjobs", "monitor"):
+            value = workload._all_options[key]
+            self.assertIsInstance(value, str, f"Expected str for '{key}', got {type(value)} ({value!r})")
+
+        self.assertEqual(workload._all_options["time"], "600")
+        self.assertEqual(workload._all_options["numjobs"], "1")
+        self.assertEqual(workload._all_options["monitor"], "false")
+
+    def test_int_elements_in_workload_list_options_are_stringified(self) -> None:
+        """Test that integer elements inside a list in workload-specific options are converted to strings.
+
+        A workload option like 'total_iodepth: [16, 32]' from YAML produces
+        list[int]; all_configs() unpacks those integers straight into the
+        options dict that FioCommand receives, so they must be strings first.
+        """
+        config: dict[str, Any] = {
+            "workloads": {
+                "test": {
+                    "mode": "randwrite",
+                    "total_iodepth": [16, 32],  # list of ints from YAML
+                },
+            },
+        }
+        workloads: Workloads = self._create_workloads(config)
+
+        workload = workloads._workloads[0]
+        iodepth_list = workload._all_options["total_iodepth"]
+        self.assertIsInstance(iodepth_list, list)
+        for element in iodepth_list:
+            self.assertIsInstance(element, str, f"Expected str, got {type(element)} for value {element!r}")
 
 
 if __name__ == "__main__":

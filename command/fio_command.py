@@ -77,10 +77,10 @@ class FioCommand(Command, ABC):
         if options.get("rate_iops", None) is not None:
             fio_cli_options["rate_iops"] = options.get("rate_iops", None)
 
-        if bool(options.get("time_based", False)) is True:
+        if options.get("time_based", "false") == "true":
             fio_cli_options["time_based"] = ""
 
-        if bool(options.get("no_sudo", False)) is False:
+        if options.get("no_sudo", "false") != "true":
             fio_cli_options["sudo"] = ""
 
         if options.get("norandommap", None) is not None:
@@ -96,13 +96,13 @@ class FioCommand(Command, ABC):
             fio_cli_options["rwmixread"] = read_percent
             fio_cli_options["rwmixwrite"] = write_percent
 
-        if bool(options.get("log_iops", True)):
+        if options.get("log_iops", "true") != "false":
             fio_cli_options["log_iops"] = ""
 
-        if bool(options.get("log_bw", True)):
+        if options.get("log_bw", "true") != "false":
             fio_cli_options["log_bw"] = ""
 
-        if bool(options.get("log_lat", True)):
+        if options.get("log_lat", "true") != "false":
             fio_cli_options["log_lat"] = ""
 
         processes_per_volume: int = int(options.get("procs_per_volume", 1))
