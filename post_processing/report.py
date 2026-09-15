@@ -18,7 +18,6 @@ from post_processing.formatter.common_output_formatter import CommonOutputFormat
 from post_processing.formatter.time_series_output_formatter import (
     TimeSeriesOutputFormatter,
 )
-from post_processing.log_configuration import setup_logging
 from post_processing.post_processing_types import ReportOptions, ReportType
 from post_processing.reports.comparison_report_generator import ComparisonReportGenerator
 from post_processing.reports.report_generator import ReportGenerator
@@ -27,8 +26,7 @@ from post_processing.reports.time_series_report_generator import (
     TimeSeriesReportGenerator,
 )
 
-setup_logging()
-log: Logger = getLogger(name="reports")
+log: Logger = getLogger("cbt.reports")
 
 
 def parse_namespace_to_options(
@@ -105,7 +103,7 @@ class Report:
                            If False, exceptions are caught and logged but not re-raised.
                            Defaults to False.
         """
-        log.info("Creating directory %s to contain the reports", self._options.output_directory)
+        log.debug("Creating directory %s to contain the reports", self._options.output_directory)
         os.makedirs(name=f"{self._options.output_directory}", exist_ok=True)
 
         try:
@@ -149,7 +147,7 @@ class Report:
                 + f"\n The exception was {e}"
                 + f"\nWith stack trace {traceback.format_exc()}"
             )
-            log.warning(error_text)
+            log.error(error_text)
             if throw_exception:
                 raise e
 

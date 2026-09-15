@@ -11,7 +11,7 @@ from typing_extensions import override
 
 from post_processing.plotter.axis_plotter import AxisPlotter
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 MEMORY_Y_LABEL: str = "Memory use (Mb)"
 MEMORY_PLOT_LABEL: str = "Memory use"

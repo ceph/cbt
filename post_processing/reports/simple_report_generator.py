@@ -28,7 +28,7 @@ from post_processing.common import (
 from post_processing.plotter.simple_plotter import SimplePlotter
 from post_processing.reports.report_generator import ReportGenerator
 
-log: Logger = getLogger("reports")
+log: Logger = getLogger("cbt.reports")
 
 
 class SimpleReportGenerator(ReportGenerator):

@@ -20,7 +20,7 @@ from post_processing.common import (
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
 from post_processing.post_processing_types import CommonFormatDataType
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 
 # pylint: disable=[too-few-public-methods]

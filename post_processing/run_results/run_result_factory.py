@@ -11,7 +11,7 @@ from pathlib import Path
 from post_processing.run_results.rbdfio import RBDFIO
 from post_processing.run_results.run_result import RunResult
 
-log: Logger = getLogger(name="formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 # Map benchmark types to their RunResult classes

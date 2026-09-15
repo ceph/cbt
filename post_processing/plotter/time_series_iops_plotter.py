@@ -6,7 +6,7 @@ from logging import Logger, getLogger
 
 from post_processing.plotter.time_series_metric_plotter import TimeSeriesMetricPlotter
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 IOPS_PLOT_DEFAULT_COLOUR: str = "xkcd:blue"  # Blue from xkcd color survey
 IOPS_Y_LABEL: str = "IOPS (ops/s)"

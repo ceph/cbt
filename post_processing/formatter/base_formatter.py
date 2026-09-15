@@ -28,7 +28,7 @@ class BaseFormatter(ABC):
             archive_directory: Directory containing benchmark results
         """
         self._directory = archive_directory
-        self._log: Logger = getLogger("formatter")
+        self._log: Logger = getLogger("cbt.formatter")
         self._all_test_run_ids: set[str] = set()
 
     @property

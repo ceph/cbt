@@ -12,7 +12,7 @@ from typing import Any
 
 from post_processing.common import file_is_empty
 
-log: Logger = getLogger("formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 class ResourceResult(ABC):

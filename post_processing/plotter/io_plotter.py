@@ -7,7 +7,7 @@ from logging import Logger, getLogger
 
 from post_processing.plotter.axis_plotter import AxisPlotter
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 IO_PLOT_DEFAULT_COLOUR: str = "xkcd:cerulean"  # Cerulean from xkcd color survey; distinct from CPU/memory lines
 IO_Y_LABEL: str = "Latency (ms)"

@@ -61,13 +61,9 @@ Examples:
 from argparse import ArgumentParser
 from logging import Logger, getLogger
 
-from post_processing.log_configuration import setup_logging
+from logging_configuration import setup_loggers
 from post_processing.post_processing_types import ReportOptions
 from post_processing.report import Report, parse_namespace_to_options
-
-setup_logging()
-log: Logger = getLogger("reports")
-log.info("=== Starting Post Processing of CBT results ===")
 
 
 def main() -> int:
@@ -131,7 +127,13 @@ def main() -> int:
         help="Add a line for resource usage to the plots, if details are avaialable",
     )
 
-    report_options: ReportOptions = parse_namespace_to_options(arguments=parser.parse_args())
+    args = parser.parse_args()
+    log_fname = f"{args.output_directory}/post_processing.log"
+    setup_loggers(logfile_name=log_fname)
+    log: Logger = getLogger("cbt.reports")
+    log.info("=== Starting Post Processing of CBT results ===")
+
+    report_options: ReportOptions = parse_namespace_to_options(arguments=args)
 
     report: Report = Report(report_options)
     try:

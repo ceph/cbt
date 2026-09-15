@@ -26,7 +26,7 @@ from post_processing.plotter.plot_data_collector import PlotDataCollector
 from post_processing.plotter.plot_data_results import DataPointResult, PlotDataResult
 from post_processing.post_processing_types import CommonFormatDataType, PlotDataType
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 # Module-level constants for data conversion and plotting
 BLOCKSIZE_THRESHOLD_KB = 64

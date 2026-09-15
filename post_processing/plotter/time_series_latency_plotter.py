@@ -12,7 +12,7 @@ from post_processing.plotter.time_series_metric_plotter import (
     TimeSeriesMetricPlotter,
 )
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 LATENCY_MEAN_COLOR: str = "xkcd:orange"  # Orange from xkcd color survey
 LATENCY_P50_COLOR: str = "xkcd:blue"  # Blue from xkcd color survey

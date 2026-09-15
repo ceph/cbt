@@ -9,7 +9,7 @@ import yaml
 import settings
 import benchmarkfactory
 from cluster.ceph import Ceph
-from log_support import setup_loggers
+from logging_configuration import setup_loggers
 
 logger = logging.getLogger("cbt")
 

@@ -16,7 +16,7 @@ from post_processing.run_results.resource_result import ResourceResult
 from post_processing.run_results.resources.fio_resource import FIOResource
 from post_processing.run_results.run_result import RunResult
 
-log: Logger = getLogger(name="formatter")
+log: Logger = getLogger("cbt.formatter")
 
 
 class RBDFIO(RunResult):

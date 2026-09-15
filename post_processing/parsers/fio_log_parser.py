@@ -12,7 +12,7 @@ from typing import Callable, Optional
 import pandas as pd
 from pandas.core.frame import DataFrame
 
-log: Logger = getLogger("parser")
+log: Logger = getLogger("cbt.parser")
 
 
 class FIOLogParser:

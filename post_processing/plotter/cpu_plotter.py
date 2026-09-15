@@ -10,7 +10,7 @@ from matplotlib.axes import Axes
 
 from post_processing.plotter.axis_plotter import AxisPlotter
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 CPU_Y_LABEL: str = "System CPU use (%)"
 CPU_PLOT_LABEL: str = "CPU use"

@@ -23,13 +23,9 @@ import os
 from argparse import ArgumentParser, Namespace
 from logging import Logger, getLogger
 
+from logging_configuration import setup_loggers
 from post_processing.formatter.common_output_formatter import CommonOutputFormatter
 from post_processing.formatter.time_series_output_formatter import TimeSeriesOutputFormatter
-from post_processing.log_configuration import setup_logging
-
-setup_logging()
-log: Logger = getLogger("formatter")
-log.info("=== Starting Post Processing of CBT results ===")
 
 
 def main() -> int:
@@ -50,6 +46,11 @@ def main() -> int:
     )
 
     args: Namespace = parser.parse_args()
+
+    log_fname = f"{args.archive}/post_processing.log"
+    setup_loggers(logfile_name=log_fname)
+    log: Logger = getLogger("cbt.formatter")
+    log.info("=== Starting Post Processing of CBT results ===")
 
     output_directory: str = f"{args.archive}/visualisation/"
     log.debug("Creating directory %s", output_directory)

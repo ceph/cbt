@@ -8,7 +8,7 @@ from logging import Logger, getLogger
 
 from matplotlib.axes import Axes
 
-log: Logger = getLogger("plotter")
+log: Logger = getLogger("cbt.plotter")
 
 
 class AxisPlotter(ABC):

@@ -25,27 +25,35 @@ class Cosbench(Benchmark):
         self.containers = config["containers_max"]
         self.objects = config["objects_max"]
         self.mode = config["mode"]
-        self.rgw = list(settings.cluster.get('rgws').keys())[0]
-        self.radosgw_admin_cmd = settings.cluster.get('radosgw-admin_cmd', '/usr/bin/radosgw-admin')
-        self.use_existing = settings.cluster.get('use_existing')
-        self.is_teuthology = settings.cluster.get('is_teuthology', False)
+        self.rgw = list(settings.cluster.get("rgws").keys())[0]
+        self.radosgw_admin_cmd = settings.cluster.get("radosgw-admin_cmd", "/usr/bin/radosgw-admin")
+        self.use_existing = settings.cluster.get("use_existing")
+        self.is_teuthology = settings.cluster.get("is_teuthology", False)
 
-        self.run_dir = '%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s' % (self.run_dir, int(self.osd_ra), self.op_size, int(self.total_procs), int(self.containers), int(self.objects), self.mode)
+        self.run_dir = "%s/osd_ra-%08d/op_size-%s/concurrent_procs-%03d/containers-%05d/objects-%05d/%s" % (
+            self.run_dir,
+            int(self.osd_ra),
+            self.op_size,
+            int(self.total_procs),
+            int(self.containers),
+            int(self.objects),
+            self.mode,
+        )
         self.out_dir = self.archive_dir
 
     def _filter_ssh_output(self, output):
         if not output:
             return output
-        lines = output.split('\n')
-        if re.search('Permanently added', lines[0]):
-            return '\n'.join(line for line in lines[1:] if line.strip())
+        lines = output.split("\n")
+        if re.search("Permanently added", lines[0]):
+            return "\n".join(line for line in lines[1:] if line.strip())
         else:
             return output
 
     def _do_rgw(self, cmd_fmt, **kwargs):
         cmd = cmd_fmt.format(**kwargs)
         stdout, stderr = common.pdsh(self.rgw, cmd).communicate()
-        logger.info('[rgw]: %s\n%s', cmd, stdout)
+        logger.debug("[rgw]: %s\n%s", cmd, stdout)
         stderr = self._filter_ssh_output(stderr)
         if stderr:
             logger.error(stderr)
@@ -53,7 +61,7 @@ class Cosbench(Benchmark):
     def _do_ctrl(self, cmd_fmt, **kwargs):
         cmd = cmd_fmt.format(**kwargs)
         stdout, stderr = common.pdsh(self.config["controller"], cmd).communicate()
-        logger.info('[controller]: %s\n%s', cmd, stdout)
+        logger.debug("[controller]: %s\n%s", cmd, stdout)
         stderr = self._filter_ssh_output(stderr)
         if stderr:
             logger.error(stderr)
@@ -65,9 +73,9 @@ class Cosbench(Benchmark):
             sys.exit()
         # 2. check rgw
         cosconf = {}
-        for param in self.config["auth"].split(';'):
+        for param in self.config["auth"].split(";"):
             try:
-                key, value = param.split('=')
+                key, value = param.split("=")
                 cosconf[key] = value
             except:
                 pass
@@ -75,21 +83,26 @@ class Cosbench(Benchmark):
         if "username" in cosconf and "password" in cosconf and "url" in cosconf:
             if not self.use_existing or self.is_teuthology:
                 username = cosconf["username"]
-                uid, _ = username.split(':')
+                uid, _ = username.split(":")
                 fmt_args = dict(uid=uid, subuser=username, secret=cosconf["password"])
                 self._do_rgw("radosgw-admin user create --uid='{uid}' --display-name='{uid}'", **fmt_args)
                 self._do_rgw("radosgw-admin subuser create --uid={uid} --subuser={subuser} --access=full", **fmt_args)
-                self._do_rgw("radosgw-admin key create --uid={uid} --subuser={subuser} --key-type=swift --secret-key={secret}", **fmt_args)
+                self._do_rgw(
+                    "radosgw-admin key create --uid={uid} --subuser={subuser} --key-type=swift --secret-key={secret}",
+                    **fmt_args,
+                )
                 self._do_rgw("radosgw-admin user modify --uid={uid} --max-buckets=100000", **fmt_args)
 
-            stdout, stderr = self._do_ctrl("curl -D - -H 'X-Auth-User: {user}' -H 'X-Auth-Key: {key}' {url}",
-                                           user=cosconf["username"],
-                                           key=cosconf["password"],
-                                           url=cosconf["url"])
+            stdout, stderr = self._do_ctrl(
+                "curl -D - -H 'X-Auth-User: {user}' -H 'X-Auth-Key: {key}' {url}",
+                user=cosconf["username"],
+                key=cosconf["password"],
+                url=cosconf["url"],
+            )
         else:
             logger.error("Auth Configuration in Yaml file is not in correct format")
             sys.exit()
-        if re.search('(refused|error)', stderr):
+        if re.search("(refused|error)", stderr):
             logger.error("Cosbench connect to Radosgw Connection Failed\n%s", stderr)
             sys.exit()
         if re.search("AccessDenied", stdout):
@@ -98,12 +111,14 @@ class Cosbench(Benchmark):
         # 3. check if container and obj created
         target_name = "%s-%s-%s" % (self.config["obj_size"], self.config["mode"], self.config["objects_max"])
         container_count = 0
-        stdout, stderr = common.pdsh(self.rgw, "swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])).communicate()
+        stdout, stderr = common.pdsh(
+            self.rgw, "swift -A %s -U %s -K %s list" % (cosconf["url"], cosconf["username"], cosconf["password"])
+        ).communicate()
         if stderr != "":
             self.container_prepared = False
             return
 
-        for container_name in stdout.split('\n'):
+        for container_name in stdout.split("\n"):
             if target_name in container_name:
                 container_count += 1
         if container_count >= int(self.config["containers_max"]):
@@ -113,7 +128,7 @@ class Cosbench(Benchmark):
 
     def exists(self):
         if os.path.exists(self.out_dir):
-            logger.debug('Skipping existing test in %s.', self.out_dir)
+            logger.debug("Skipping existing test in %s.", self.out_dir)
             return True
         return False
 
@@ -132,27 +147,45 @@ class Cosbench(Benchmark):
 
         operation = []
         for tmp_mode in mode:
-            operation.append({
-                "config": "containers=%s;objects=%s;cprefix=%s-%s-%s;sizes=c(%s)%s"
-                % (conf["containers"], conf["objects"], conf["obj_size"], conf["mode"], conf["objects_max"], conf["obj_size_num"], conf["obj_size_unit"]),
-                "ratio": ratio[tmp_mode],
-                "type": tmp_mode
-            })
+            operation.append(
+                {
+                    "config": "containers=%s;objects=%s;cprefix=%s-%s-%s;sizes=c(%s)%s"
+                    % (
+                        conf["containers"],
+                        conf["objects"],
+                        conf["obj_size"],
+                        conf["mode"],
+                        conf["objects_max"],
+                        conf["obj_size_num"],
+                        conf["obj_size_unit"],
+                    ),
+                    "ratio": ratio[tmp_mode],
+                    "type": tmp_mode,
+                }
+            )
 
         template = {
             "default": {
                 "description": conf["mode"],
-                "name": "%s_%scon_%sobj_%s_%dw" % (conf["mode"], conf["containers_max"], conf["objects_max"], conf["obj_size"], conf["workers"]),
+                "name": "%s_%scon_%sobj_%s_%dw"
+                % (conf["mode"], conf["containers_max"], conf["objects_max"], conf["obj_size"], conf["workers"]),
                 "storage": {"type": "swift", "config": "timeout=300000"},
                 "auth": {"type": "swauth", "config": "%s" % (conf["auth"])},
                 "workflow": {
-                    "workstage": [{
-                        "name": "main",
-                        "work": {"rampup": conf["rampup"], "rampdown":conf["rampdown"], "name":conf["obj_size"], "workers":conf["workers"], "runtime":conf["runtime"],
-                                 "operation":operation
-                                 }
-                    }]
-                }
+                    "workstage": [
+                        {
+                            "name": "main",
+                            "work": {
+                                "rampup": conf["rampup"],
+                                "rampdown": conf["rampdown"],
+                                "name": conf["obj_size"],
+                                "workers": conf["workers"],
+                                "runtime": conf["runtime"],
+                                "operation": operation,
+                            },
+                        }
+                    ]
+                },
             }
         }
         if temp_name in template:
@@ -181,15 +214,16 @@ class Cosbench(Benchmark):
     def initialize(self):
         super(Cosbench, self).initialize()
 
-        logger.debug('Running cosbench and radosgw check.')
+        logger.debug("Running cosbench and radosgw check.")
         self.prerun_check()
 
-        logger.debug('Pausing for 60s for idle monitoring.')
+        logger.info("Pausing for 60s for idle monitoring.")
         MonitoringFactory.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
         MonitoringFactory.stop()
+        logger.info("Idle monitoring complete.")
 
-        common.sync_files('%s' % self.run_dir, self.out_dir)
+        common.sync_files("%s" % self.run_dir, self.out_dir)
 
         # Create the run directory
         common.make_remote_dir(self.run_dir)
@@ -203,16 +237,29 @@ class Cosbench(Benchmark):
         if not self.container_prepare_check():
             workstage_init = {
                 "name": "init",
-                "work": {"type": "init", "workers": conf["workers"], "config": "containers=r(1,%s);cprefix=%s-%s-%s" % (conf["containers_max"], conf["obj_size"], conf["mode"], conf["objects_max"])}
+                "work": {
+                    "type": "init",
+                    "workers": conf["workers"],
+                    "config": "containers=r(1,%s);cprefix=%s-%s-%s"
+                    % (conf["containers_max"], conf["obj_size"], conf["mode"], conf["objects_max"]),
+                },
             }
             workstage_prepare = {
                 "name": "prepare",
                 "work": {
                     "type": "prepare",
                     "workers": conf["workers"],
-                    "config": "containers=r(1,%s);objects=r(1,%s);cprefix=%s-%s-%s;sizes=c(%s)%s" %
-                    (conf["containers_max"], conf["objects_max"], conf["obj_size"], conf["mode"], conf["objects_max"], conf["obj_size_num"], conf["obj_size_unit"])
-                }
+                    "config": "containers=r(1,%s);objects=r(1,%s);cprefix=%s-%s-%s;sizes=c(%s)%s"
+                    % (
+                        conf["containers_max"],
+                        conf["objects_max"],
+                        conf["obj_size"],
+                        conf["mode"],
+                        conf["objects_max"],
+                        conf["obj_size_num"],
+                        conf["obj_size_unit"],
+                    ),
+                },
             }
             self.config["workload"]["workflow"]["workstage"].insert(0, workstage_prepare)
             self.config["workload"]["workflow"]["workstage"].insert(0, workstage_init)
@@ -256,39 +303,42 @@ class Cosbench(Benchmark):
         except KeyboardInterrupt:
             logger.warning("accept keyboard interrupt, cancel this run")
             conf = self.config
-            stdout, stderr = common.pdsh(conf["controller"], 'sh %s/cli.sh cancel %s' % (conf["cosbench_dir"], self.runid)).communicate()
-            logger.info("%s", stdout)
+            stdout, stderr = common.pdsh(
+                conf["controller"], "sh %s/cli.sh cancel %s" % (conf["cosbench_dir"], self.runid)
+            ).communicate()
+            logger.debug("%s", stdout)
 
         self.check_workload_status()
         self.check_cosbench_res_dir()
 
         MonitoringFactory.stop(self.run_dir)
         self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        common.sync_files("%s/*" % self.run_dir, self.out_dir)
 
     def check_workload_status(self):
-        logger.info("Checking workload status")
+        logger.debug("Checking workload status")
         wait = True
         try:
             self.runid
         except:
             wait = False
         while wait:
-            stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info | grep {runid} | awk '{{print $8}}'",
-                                           cosbench_dir=self.config["cosbench_dir"],
-                                           runid=self.runid)
+            stdout, stderr = self._do_ctrl(
+                "sh {cosbench_dir}/cli.sh info | grep {runid} | awk '{{print $8}}'",
+                cosbench_dir=self.config["cosbench_dir"],
+                runid=self.runid,
+            )
             if stderr:
-                logger.info("Cosbench Deamon is not running on %s", self.config["controller"])
+                logger.warning("Cosbench Daemon is not running on %s", self.config["controller"])
                 return False
             try:
-                status = stdout.split(':')[1]
-                if status.strip() != 'PROCESSING':
+                status = stdout.split(":")[1]
+                if status.strip() != "PROCESSING":
                     wait = False
             except:
                 wait = False
             time.sleep(1)
-        stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info",
-                                       cosbench_dir=self.config["cosbench_dir"])
+        stdout, stderr = self._do_ctrl("sh {cosbench_dir}/cli.sh info", cosbench_dir=self.config["cosbench_dir"])
         time.sleep(15)
         return True
 
@@ -296,9 +346,11 @@ class Cosbench(Benchmark):
         # check res dir
         check_time = 0
         while True:
-            stdout, stderr = self._do_ctrl("find {cosbench_dir}/archive -maxdepth 1 -name '{runid}-*'",
-                                           cosbench_dir=self.config["cosbench_dir"],
-                                           runid=self.runid)
+            stdout, stderr = self._do_ctrl(
+                "find {cosbench_dir}/archive -maxdepth 1 -name '{runid}-*'",
+                cosbench_dir=self.config["cosbench_dir"],
+                runid=self.runid,
+            )
             if stdout:
                 return True
             if check_time == 3000:
@@ -308,11 +360,13 @@ class Cosbench(Benchmark):
 
     def _run(self):
         conf = self.config
-        stdout, stderr = self._do_ctrl('sh {cosbench_dir}/cli.sh submit {cosbench_xml_dir}/{xml_name}.xml',
-                                       cosbench_dir=conf["cosbench_dir"],
-                                       cosbench_xml_dir=conf["cosbench_xml_dir"],
-                                       xml_name=conf["xml_name"])
-        m = re.findall(r'Accepted with ID:\s*(\w+)', stdout)
+        stdout, stderr = self._do_ctrl(
+            "sh {cosbench_dir}/cli.sh submit {cosbench_xml_dir}/{xml_name}.xml",
+            cosbench_dir=conf["cosbench_dir"],
+            cosbench_xml_dir=conf["cosbench_xml_dir"],
+            xml_name=conf["xml_name"],
+        )
+        m = re.findall(r"Accepted with ID:\s*(\w+)", stdout)
         if not m:
             logger.error("cosbench start failing with error: %s", stderr)
             sys.exit()
@@ -321,7 +375,7 @@ class Cosbench(Benchmark):
         wait_time = conf["rampup"] + conf["rampdown"] + conf["runtime"]
         logger.info("====== cosbench job: %s started ======", conf["xml_name"])
         logger.info("wait %d secs to finish the test", wait_time)
-        logger.info("You can monitor the runtime status and results on http://localhost:19088/controller")
+        logger.debug("You can monitor the runtime status and results on http://localhost:19088/controller")
         time.sleep(wait_time)
 
     def __str__(self):

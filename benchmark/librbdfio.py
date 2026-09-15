@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Union
 
 import common
-from monitoring.monitoring_factory import MonitoringFactory
 import settings
+from logging_configuration import setup_loggers
+from monitoring.monitoring_factory import MonitoringFactory
 from post_processing.post_processing_types import ReportType
 from post_processing.report import Report, ReportOptions
 
@@ -109,6 +110,7 @@ class LibrbdFio(Benchmark):
         MonitoringFactory.start(f"{self.run_dir}idle_monitoring")
         time.sleep(self.idle_monitor_sleep)
         MonitoringFactory.stop()
+        logger.info("Idle monitoring complete.")
         common.sync_files(f"{self.run_dir}/", self.out_dir)
         # Create the recovery image based on test type requested
         if "recovery_test" in self.cluster.config and self.recov_test_type == "background":
@@ -128,12 +130,13 @@ class LibrbdFio(Benchmark):
         common.make_remote_dir(self.run_dir)
         # dump the cluster config
         self.cluster.dump_config(self.run_dir)
+        logger.debug("Waiting 5s before starting test...")
         time.sleep(5)
         # If the pg autoscaler kicks in before starting the test,
         # wait for it to complete. Otherwise, results may be skewed.
         ret = self.cluster.check_pg_autoscaler(self.wait_pgautoscaler_timeout, f"{self.run_dir}pgautoscaler.log")
         if ret == 1:
-            logger.warn("PG autoscaler taking longer to complete.Continuing anyway...results may be skewed.")
+            logger.warning("PG autoscaler taking longer to complete. Continuing anyway...results may be skewed.")
         # Start the recovery thread if requested
         if "recovery_test" in self.cluster.config:
             if self.recov_test_type == "blocking":
@@ -162,6 +165,7 @@ class LibrbdFio(Benchmark):
                 ps.append(p)
             for p in ps:
                 p.wait()
+            logger.info("rbd fio %s test complete.", self.mode)
 
         # If we were doing recovery, wait until it's done.
         if "recovery_test" in self.cluster.config:
@@ -180,6 +184,8 @@ class LibrbdFio(Benchmark):
         if self._create_report:
             report_config: dict[str, Union[str, bool]] = settings.report
             output_directory: str = report_config.get("output_directory", f"{self.out_dir}/report")
+            # Append post-processing output to the main CBT log in the archive
+            setup_loggers(logfile_name=f"{self.archive_dir}/cbt.log", log_file_mode="a")
             report_options: ReportOptions = ReportOptions(
                 archives=[f"{self.archive_dir}"],
                 output_directory=output_directory,
@@ -288,12 +294,16 @@ class LibrbdFio(Benchmark):
                 self.data_pool = self.pool_name + "-data"
                 self.cluster.rmpool(self.data_pool, self.data_pool_profile)
                 self.cluster.mkpool(self.data_pool, self.data_pool_profile, "rbd")
-        for node in common.get_fqdn_list("clients"):
+        client_list = common.get_fqdn_list("clients")
+        total_images = len(client_list) * self.volumes_per_client
+        image_num = 0
+        for node in client_list:
             for volnum in range(0, self.volumes_per_client):
                 node = node.rpartition("@")[2]
-                self.cluster.mkimage(
-                    f"cbt-rbdfio-{node}-{volnum:d}", self.vol_size, self.pool_name, self.data_pool, self.vol_object_size
-                )
+                image_num += 1
+                image_name = f"cbt-rbdfio-{node}-{volnum:d}"
+                logger.info("Creating fio image %d/%d: %s", image_num, total_images, image_name)
+                self.cluster.mkimage(image_name, self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
         MonitoringFactory.stop()
 
     def prefill(self):
@@ -305,6 +315,7 @@ class LibrbdFio(Benchmark):
             rbd_base_name: str = self.config.get("rbdname", "cbt-rbdfio")
             for volnum in range(self.volumes_per_client):
                 rbd_name = f"{rbd_base_name}-`{common.get_fqdn_cmd()}`-{volnum:d}"
+                logger.info("Prefilling volume %d/%d: %s", volnum + 1, self.volumes_per_client, rbd_name)
                 pre_cmd = ""
                 if not self.no_sudo:
                     pre_cmd += "sudo "
@@ -323,6 +334,7 @@ class LibrbdFio(Benchmark):
                 ps.append(p)
             for p in ps:
                 p.wait()
+            logger.info("Prefill complete.")
 
     def recovery_callback_blocking(self):
         common.pdsh(settings.getnodes("clients"), "sudo killall -2 fio").communicate()
