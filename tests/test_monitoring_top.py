@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 from monitoring.osd_top_monitoring import OsdTopMonitoring
-from monitoring.top_monitoring import TopMonitoring
+from monitoring.top_monitoring import TopMonitoring, _estimate_top_duration
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,6 +53,19 @@ def _make_osd_top_monitor(
 # ---------------------------------------------------------------------------
 # TopMonitoring
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ("-b -n 30", 90.0),
+        ("-b -n 30 -d 1.5", 45.0),
+        ("-b", None),
+    ],
+)
+def test_estimate_top_duration(args: str, expected: Optional[float]) -> None:
+    """_estimate_top_duration() uses an explicit delay or the three-second default."""
+    assert _estimate_top_duration(args) == expected
 
 
 def test_top_default_nodes_is_osds() -> None:
@@ -111,7 +124,7 @@ def test_top_start_local_node_runs_top() -> None:
 
 
 def test_top_start_remote_node_uses_pdsh() -> None:
-    """TopMonitoring.start() dispatches a single pdsh command for remote nodes."""
+    """TopMonitoring.start() dispatches a background pdsh command for remote nodes."""
     check_runner = MagicMock()
     check_runner.communicate.return_value = ("/usr/bin/top\n", "")
     mkdir_runner = MagicMock()
@@ -131,19 +144,50 @@ def test_top_start_remote_node_uses_pdsh() -> None:
     mock_pdsh.assert_any_call("resolved-nodes", "command -v top", continue_if_error=False)
     mock_pdsh.assert_any_call("resolved-nodes", "mkdir -p -m0755 -- /tmp/output/top")
     mock_pdsh.assert_any_call("resolved-nodes", "top -b -H -1 -n 30 > /tmp/output/top/top.out")
+    assert monitor._top_runners == [remote_runner]
+    remote_runner.communicate.assert_not_called()
 
 
 def test_top_stop_kills_local_runners() -> None:
-    """TopMonitoring.stop() kills locally started runners when present."""
+    """TopMonitoring.stop() pkills remote top before killing tracked runners."""
     runner = MagicMock()
+    stop_runner = MagicMock()
+    monitor = _make_top_monitor()
+    monitor._running_cmd = "top -b -n 1"
+    monitor._top_runners = [runner]
+
+    with patch("monitoring.top_monitoring.common.pdsh", return_value=stop_runner) as mock_pdsh:
+        monitor.stop(None)
+
+    mock_pdsh.assert_called_once_with("resolved-nodes", "sudo pkill -SIGINT -f 'top -b -n 1'")
+    stop_runner.communicate.assert_called_once_with()
+    runner.kill.assert_called_once_with()
+
+
+def test_top_stop_logs_completion() -> None:
+    """TopMonitoring.stop() logs that monitoring has stopped."""
+    monitor = _make_top_monitor()
+
+    with (
+        patch("monitoring.top_monitoring.common.pdsh"),
+        patch("monitoring.top_monitoring.logger") as mock_logger,
+    ):
+        monitor.stop(None)
+
+    mock_logger.info.assert_called_once_with("Top monitoring stopped.")
+
+
+def test_top_stop_ignores_already_exited_runner() -> None:
+    """TopMonitoring.stop() ignores an OSError from an exited runner."""
+    runner = MagicMock()
+    runner.kill.side_effect = OSError
     monitor = _make_top_monitor()
     monitor._top_runners = [runner]
 
-    with patch("monitoring.top_monitoring.common.pdsh") as mock_pdsh:
+    with patch("monitoring.top_monitoring.common.pdsh"):
         monitor.stop(None)
 
     runner.kill.assert_called_once_with()
-    mock_pdsh.assert_not_called()
 
 
 def test_top_stop_uses_pdsh_when_no_local_runners() -> None:
@@ -298,16 +342,19 @@ def test_osd_top_start_remote_node_uses_pdsh_loop() -> None:
             key, default
         )
         mock_pdsh.side_effect = [check_runner, mkdir_runner, ls_runner, remote_runner]
-        OsdTopMonitoring({}).start("/tmp/output")
+        monitor = OsdTopMonitoring({})
+        monitor.start("/tmp/output")
 
     mock_pdsh.assert_any_call("resolved-nodes", "command -v top", continue_if_error=False)
     mock_pdsh.assert_any_call("resolved-nodes", "mkdir -p -m0755 -- /tmp/output/top")
     mock_pdsh.assert_any_call("resolved-nodes", "ls /var/run/ceph/osd.*.pid 2>/dev/null")
     expected_loop = (
         'for f in /var/run/ceph/osd.*.pid; do pid=$(cat "$f");'
-        ' top -b -H -1 -p "$pid" -n 30 > /tmp/output/top/"$pid"_osd_top.out; done'
+        ' top -b -H -1 -p "$pid" -n 30 > /tmp/output/top/"$pid"_osd_top.out & done'
     )
     mock_pdsh.assert_any_call("resolved-nodes", expected_loop)
+    assert monitor._top_runners == [remote_runner]
+    remote_runner.communicate.assert_not_called()
 
 
 def test_osd_top_start_remote_node_warns_when_no_pid_files() -> None:

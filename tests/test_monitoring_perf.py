@@ -106,8 +106,26 @@ def test_perf_start_local_node_runs_perf() -> None:
     assert monitor._perf_dir == "/tmp/output/perf"
 
 
+def test_perf_start_logs_background_collection() -> None:
+    """PerfMonitoring.start() logs that collection runs in the background."""
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/bin/perf\n", "")
+    mkdir_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.perf_monitoring.common.pdsh", side_effect=[check_runner, mkdir_runner, MagicMock()]),
+        patch("monitoring.perf_monitoring.common.get_localnode", return_value=None),
+        patch("monitoring.perf_monitoring.logger") as mock_logger,
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        PerfMonitoring({"args": "stat -o {perf_dir}/perf_stat.out"}).start("/tmp/output")
+
+    mock_logger.info.assert_called_once_with("Perf monitoring running in background (will be killed on stop).")
+
+
 def test_perf_start_remote_node_uses_pdsh() -> None:
-    """PerfMonitoring.start() dispatches a single pdsh command for remote nodes and awaits it."""
+    """PerfMonitoring.start() dispatches a background pdsh command for remote nodes."""
     check_runner = MagicMock()
     check_runner.communicate.return_value = ("/usr/bin/perf\n", "")
     mkdir_runner = MagicMock()
@@ -120,17 +138,48 @@ def test_perf_start_remote_node_uses_pdsh() -> None:
         mock_base_settings.getnodes.return_value = "resolved-nodes"
         mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
         mock_pdsh.side_effect = [check_runner, mkdir_runner, remote_runner]
-        PerfMonitoring({"args": "stat -o {perf_dir}/perf_stat.out"}).start("/tmp/output")
+        monitor = PerfMonitoring({"args": "stat -o {perf_dir}/perf_stat.out"})
+        monitor.start("/tmp/output")
 
     mock_pdsh.assert_any_call("resolved-nodes", "command -v perf", continue_if_error=False)
     mock_pdsh.assert_any_call("resolved-nodes", "mkdir -p -m0755 -- /tmp/output/perf")
     mock_pdsh.assert_any_call("resolved-nodes", "sudo perf stat -o /tmp/output/perf/perf_stat.out")
-    remote_runner.communicate.assert_called_once_with()
+    assert monitor._perf_runners == [remote_runner]
+    remote_runner.communicate.assert_not_called()
 
 
 def test_perf_stop_kills_local_runners() -> None:
-    """PerfMonitoring.stop() kills locally started runners when present."""
+    """PerfMonitoring.stop() pkills remote perf before killing tracked runners."""
     runner = MagicMock()
+    stop_runner = MagicMock()
+    monitor = _make_perf_monitor()
+    monitor._perf_runners = [runner]
+
+    with patch("monitoring.perf_monitoring.common.pdsh", return_value=stop_runner) as mock_pdsh:
+        monitor.stop(None)
+
+    mock_pdsh.assert_called_once_with("resolved-nodes", "sudo pkill -SIGINT -f 'perf '")
+    stop_runner.communicate.assert_called_once_with()
+    runner.kill.assert_called_once_with()
+
+
+def test_perf_stop_logs_completion() -> None:
+    """PerfMonitoring.stop() logs that monitoring has stopped."""
+    monitor = _make_perf_monitor()
+
+    with (
+        patch("monitoring.perf_monitoring.common.pdsh"),
+        patch("monitoring.perf_monitoring.logger") as mock_logger,
+    ):
+        monitor.stop(None)
+
+    mock_logger.info.assert_called_once_with("Perf monitoring stopped.")
+
+
+def test_perf_stop_ignores_already_exited_runner() -> None:
+    """PerfMonitoring.stop() ignores an OSError from an exited runner."""
+    runner = MagicMock()
+    runner.kill.side_effect = OSError
     monitor = _make_perf_monitor()
     monitor._perf_runners = [runner]
 
@@ -324,17 +373,19 @@ def test_osd_perf_start_remote_node_uses_pdsh_loop() -> None:
             key, default
         )
         mock_pdsh.side_effect = [check_runner, mkdir_runner, ls_runner, remote_runner]
-        OsdPerfMonitoring({"args": _ARGS}).start("/tmp/output")
+        monitor = OsdPerfMonitoring({"args": _ARGS})
+        monitor.start("/tmp/output")
 
     mock_pdsh.assert_any_call("resolved-nodes", "command -v perf", continue_if_error=False)
     mock_pdsh.assert_any_call("resolved-nodes", "mkdir -p -m0755 -- /tmp/output/perf")
     mock_pdsh.assert_any_call("resolved-nodes", "ls /var/run/ceph/osd.*.pid 2>/dev/null")
     expected_loop = (
         'for f in /var/run/ceph/osd.*.pid; do pid=$(cat "$f");'
-        ' sudo perf stat -p "$pid" -o /tmp/output/perf/perf_stat."$pid"; done'
+        ' sudo perf stat -p "$pid" -o /tmp/output/perf/perf_stat."$pid" & done'
     )  # {output_dir} resolved
     mock_pdsh.assert_any_call("resolved-nodes", expected_loop)
-    remote_runner.communicate.assert_called_once_with()
+    assert monitor._perf_runners == [remote_runner]
+    remote_runner.communicate.assert_not_called()
 
 
 def test_osd_perf_start_local_node_warns_when_no_pid_files() -> None:

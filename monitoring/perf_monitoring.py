@@ -1,5 +1,7 @@
 """Perf monitoring backend."""
 
+# pylint: disable=duplicate-code
+
 import logging
 import os
 import re
@@ -44,15 +46,18 @@ class PerfMonitoring(Monitoring):
             runner = common.sh(local_node, perf_cmd)  # type: ignore[no-untyped-call]
             self._perf_runners.append(runner)
         else:
-            common.pdsh(self._nodes, perf_cmd).communicate()  # type: ignore[no-untyped-call]
+            runner = common.pdsh(self._nodes, perf_cmd)  # type: ignore[no-untyped-call]
+            self._perf_runners.append(runner)
+        logger.info("Perf monitoring running in background (will be killed on stop).")
 
     def stop(self, directory: Optional[str]) -> None:
         """Stop perf collection and adjust file ownership when needed."""
-        if self._perf_runners:
-            for runner in self._perf_runners:
+        common.pdsh(self._nodes, "sudo pkill -SIGINT -f 'perf '").communicate()  # type: ignore[no-untyped-call]
+        for runner in self._perf_runners:
+            try:
                 runner.kill()
-        else:
-            common.pdsh(self._nodes, "sudo pkill -SIGINT -f 'perf '").communicate()  # type: ignore[no-untyped-call]
+            except OSError:
+                pass
         if directory:
             common.pdsh(  # type: ignore[no-untyped-call]
                 self._nodes, f"sudo chown {self._user}:{self._user} {directory}/perf/perf.data"
@@ -60,6 +65,7 @@ class PerfMonitoring(Monitoring):
             common.pdsh(  # type: ignore[no-untyped-call]
                 self._nodes, f"sudo chown {self._user}:{self._user} {directory}/perf/perf_stat.*"
             ).communicate()
+        logger.info("Perf monitoring stopped.")
 
     def get_cpu_cycles(self, out_dir: str) -> Optional[int]:
         """Return total CPU cycles from perf stat output, if available."""

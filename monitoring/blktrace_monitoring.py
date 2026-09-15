@@ -33,12 +33,16 @@ class BlktraceMonitoring(Monitoring):
                 f" -o device{device} -d /dev/disk/by-partlabel/osd-device-{device}-data"
             )
             common.pdsh(self._nodes, cmd)  # type: ignore[no-untyped-call]
+        logger.info("Blktrace monitoring running in background for %d OSD devices per node.", self._osds_per_node)
 
     def stop(self, directory: Optional[str]) -> None:
         """Stop blktrace and optionally generate seekwatcher movies."""
         common.pdsh(self._nodes, "sudo pkill -SIGINT -f blktrace").communicate()  # type: ignore[no-untyped-call]
+        logger.info("Blktrace monitoring stopped.")
         if directory and not self._use_existing:
+            logger.info("Generating blktrace seekwatcher movies.")
             self._make_movies(directory)
+            logger.info("Blktrace seekwatcher movie generation complete.")
 
     def _make_movies(self, directory: str) -> None:
         """Generate an mpg movie for each OSD device using seekwatcher."""
