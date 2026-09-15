@@ -154,11 +154,42 @@ class Workloads:
         Get the options needed to construct the benchmark command to run the test
         """
         for workload_name, workload_options in workload_json.items():
-            workload = Workload(workload_name, workload_options, self._base_run_directory)
+            normalised_options = self._normalise_options(workload_options)
+            workload = Workload(workload_name, normalised_options, self._base_run_directory)
             workload.add_global_options(self._global_options)
             # workload.set_benchmark_type(self._benchmark_type)
 
             self._workloads.append(workload)
+
+    @staticmethod
+    def _to_str(value: object) -> str:
+        """Convert a scalar option value to its string representation.
+
+        Booleans are lowercased (``True`` → ``"true"``, ``False`` → ``"false"``)
+        so that downstream CLI tools receive the conventional form.
+        The bool check must precede any int check because ``bool`` is a subclass
+        of ``int`` in Python.
+        """
+        if isinstance(value, bool):
+            return str(value).lower()
+        return str(value)
+
+    @staticmethod
+    def _normalise_options(options: WorkloadType) -> WorkloadType:
+        """
+        Convert every option value (and every element within list values)
+        to a string so that dict[str, str | list[str]] is consistently
+        typed before being handed to Workload / FioCommand (which expect
+        dict[str, str]).
+        Booleans are lowercased (``True`` → ``"true"``, ``False`` → ``"false"``).
+        """
+        normalised: WorkloadType = {}
+        for key, value in options.items():
+            if isinstance(value, list):
+                normalised[key] = [Workloads._to_str(item) for item in value]
+            else:
+                normalised[key] = Workloads._to_str(value)
+        return normalised
 
     def _get_global_options_from_configuration(self, configuration: BenchmarkConfigurationType) -> WorkloadType:
         """
@@ -174,8 +205,8 @@ class Workloads:
                 # workloads we also want to ignore as these will be dealt with at a later date
                 pass
             elif isinstance(value, list):
-                global_options[option_name] = value
+                global_options[option_name] = [Workloads._to_str(item) for item in value]
             else:
-                global_options[option_name] = f"{value}"
+                global_options[option_name] = Workloads._to_str(value)
 
         return global_options
