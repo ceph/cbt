@@ -24,6 +24,7 @@ class LibrbdFio(Benchmark):
 
         # FIXME there are too many permutations, need to put results in SQLITE3
         self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
+        self.clientname= config.get('clientname', 'admin')
         self.pool_profile = config.get('pool_profile', 'default')
         self.recov_pool_profile = config.get('recov_pool_profile', 'default')
         self.recov_test_type = config.get('recov_test_type', 'blocking')
@@ -41,6 +42,10 @@ class LibrbdFio(Benchmark):
         self.log_avg_msec = config.get('log_avg_msec', None)
         self.op_size = config.get('op_size', 4194304)
 
+        # Add percentile latency configuration - only if explicitly enabled
+        self.enable_clat_percentiles = config.get('enable_clat_percentiles', False)
+        self.enable_slat_percentiles = config.get('enable_slat_percentiles', False)
+        self.enable_lat_percentiles = config.get('enable_lat_percentiles', False)
         self.pgs = config.get('pgs', 2048)
         self.vol_size = config.get('vol_size', 65536)
         self.vol_object_size = config.get('vol_object_size', 22)
@@ -183,8 +188,12 @@ class LibrbdFio(Benchmark):
                     self.mode = test['mode']
                     self.numjobs = job
                     self.iodepth = iodepth_value
-                    self.run_dir =  ( f'{self.base_run_dir}/{self.mode}_{int(self.op_size)}/'
-                                     f'iodepth-{int(self.iodepth):03d}/numjobs-{int(self.numjobs):03d}' )
+                    # Update run directory structure to include workload name
+                    self.run_dir =  ( f'{self.base_run_dir}/{wk}/'
+                                     f'op_size-{int(self.op_size):08d}/'
+                                     f'concurrent_procs-{int(self.total_procs):03d}/'
+                                     f'iodepth-{int(self.iodepth):03d}/'
+                                     f'numjobs-{int(self.numjobs):03d}/{self.mode}' )
                     common.make_remote_dir(self.run_dir)
 
                     # If there is a script to run specified in the yaml for this workload
@@ -283,7 +292,7 @@ class LibrbdFio(Benchmark):
         fio_cmd: str = ''
         if not self.no_sudo:
             fio_cmd = 'sudo '
-        fio_cmd += '%s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path, self.pool_name, rbdname)
+        fio_cmd += '%s --ioengine=rbd --clientname=%s --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path,self.clientname, self.pool_name, rbdname)
         fio_cmd += ' --rw=%s' % self.mode
         fio_cmd += ' --output-format=%s' % self.fio_out_format
         if (self.mode == 'readwrite' or self.mode == 'randrw'):
@@ -302,8 +311,14 @@ class LibrbdFio(Benchmark):
         
         fio_cmd += ' --iodepth=%s' % iodepth
         fio_cmd += ' --end_fsync=%d' % self.end_fsync
-#        if self.vol_size:
-#            fio_cmd += ' -- size=%dM' % self.vol_size
+
+        # Add percentile latency reporting only if explicitly enabled
+        if self.enable_clat_percentiles:
+            fio_cmd += ' --clat_percentiles=1'
+        if self.enable_slat_percentiles:
+            fio_cmd += ' --slat_percentiles=1'
+        if self.enable_lat_percentiles:
+            fio_cmd += ' --lat_percentiles=1'
         if self.norandommap:
             fio_cmd += ' --norandommap'
         if self.log_iops:
@@ -367,28 +382,50 @@ class LibrbdFio(Benchmark):
 
     def prefill(self):
         """
-        Execute a FIO cmd to prefill the volumes
+        Execute a FIO cmd to prefill the volumes with optimized settings for speed
         """
         ps = []
         if not self.use_existing_volumes:
+            # Optimize prefill settings for speed
+            prefill_blocksize = self.prefill_vols.get('blocksize', '16M')  # Increased from 4M
+            prefill_numjobs = self.prefill_vols.get('numjobs', '4')  # Increased from 1
+            prefill_iodepth = self.prefill_vols.get('iodepth', '32')  # Added iodepth for better parallelism
+            
+            logger.info('Starting volume prefill with optimized settings:')
+            logger.info('  Block size: %s', prefill_blocksize)
+            logger.info('  Number of jobs: %s', prefill_numjobs)
+            logger.info('  IO depth: %s', prefill_iodepth)
+            
             for volnum in range(self.volumes_per_client):
                 rbd_name = f'cbt-librbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}'
                 pre_cmd = ''
                 if not self.no_sudo:
                     pre_cmd += 'sudo '
-                numjobs = self.prefill_vols['numjobs']
-                bs = self.prefill_vols['blocksize']
-                pre_cmd += ( f'{self.cmd_path} --ioengine=rbd --clientname=admin'
+                
+                pre_cmd += ( f'{self.cmd_path} --ioengine=rbd --clientname={self.clientname}'
                             f' --pool={self.pool_name}'
-                            f' --rbdname={rbd_name} --invalidate=0  --rw=write'
-                            f' --numjobs={numjobs}'
-                            f' --bs={bs}'
-                            f' --size {self.vol_size:d}M {self.names}'
+                            f' --rbdname={rbd_name} --invalidate=0'
+                            f' --rw=write'
+                            f' --numjobs={prefill_numjobs}'
+                            f' --bs={prefill_blocksize}'
+                            f' --iodepth={prefill_iodepth}'
+                            f' --size {self.vol_size:d}M'
+                            f' --group_reporting=1'  # Added for better progress reporting
+                            f' --write_bw_log=/tmp/fio_prefill_{rbd_name}'  # Added for progress tracking
+                            f' --write_lat_log=/tmp/fio_prefill_{rbd_name}'
+                            f' --log_avg_msec=1000'  # Log every second
+                            f' {self.names}'
                             f' --output-format={self.fio_out_format} > /dev/null' )
+                
+                logger.info('Prefilling volume %d/%d: %s', volnum + 1, self.volumes_per_client, rbd_name)
                 p = common.pdsh(settings.getnodes('clients'), pre_cmd)
                 ps.append(p)
+            
+            # Wait for all prefills to complete
             for p in ps:
                 p.wait()
+            
+            logger.info('Volume prefill completed')
 
 
     def recovery_callback_blocking(self):
