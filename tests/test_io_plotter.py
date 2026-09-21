@@ -71,7 +71,8 @@ class TestIOPlotter(unittest.TestCase):
         # Verify error bars
         self.assertEqual(list(call_args[1]["yerr"]), error_data)
         self.assertEqual(call_args[1]["capsize"], cap_size)
-        self.assertEqual(call_args[1]["ecolor"], "red")
+        self.assertEqual(call_args[1]["color"], IO_PLOT_DEFAULT_COLOUR)
+        self.assertEqual(call_args[1]["ecolor"], "xkcd:red")
 
     def test_plot_with_error_bars_no_caps(self) -> None:
         """Test plotting with cap_size=0 (no error bar caps)"""
@@ -87,7 +88,7 @@ class TestIOPlotter(unittest.TestCase):
 
     def test_io_constants(self) -> None:
         """Test IO plotter constants"""
-        self.assertEqual(IO_PLOT_DEFAULT_COLOUR, "xkcd:leaf green")
+        self.assertEqual(IO_PLOT_DEFAULT_COLOUR, "xkcd:cerulean")
         self.assertEqual(IO_Y_LABEL, "Latency (ms)")
         self.assertEqual(IO_PLOT_LABEL, "IO Details")
 

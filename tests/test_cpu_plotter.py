@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 from matplotlib.axes import Axes
 
 from post_processing.plotter.cpu_plotter import (
-    CPU_PLOT_DEFAULT_COLOUR,
     CPU_PLOT_LABEL,
+    CPU_SOURCE_COLOURS,
     CPU_Y_LABEL,
     CPUPlotter,
 )
@@ -33,19 +33,32 @@ class TestCPUPlotter(unittest.TestCase):
     def test_initialization(self) -> None:
         """Test CPUPlotter initialization"""
         self.assertEqual(self.plotter._main_axes, self.mock_axes)
-        self.assertEqual(self.plotter._y_data, [])
+        self.assertEqual(self.plotter._y_data_by_source, {})
 
-    def test_add_y_data(self) -> None:
-        """Test adding CPU data"""
+    def test_add_y_data_legacy_format(self) -> None:
+        """Test adding CPU data in legacy string format"""
         self.plotter.add_y_data("45.5")
         self.plotter.add_y_data("67.8")
 
-        self.assertEqual(len(self.plotter._y_data), 2)
-        self.assertAlmostEqual(self.plotter._y_data[0], 45.5)
-        self.assertAlmostEqual(self.plotter._y_data[1], 67.8)
+        self.assertIn("default", self.plotter._y_data_by_source)
+        self.assertEqual(len(self.plotter._y_data_by_source["default"]), 2)
+        self.assertAlmostEqual(self.plotter._y_data_by_source["default"][0], 45.5)
+        self.assertAlmostEqual(self.plotter._y_data_by_source["default"][1], 67.8)
 
-    def test_plot(self) -> None:
-        """Test plotting CPU data"""
+    def test_add_y_data_multi_source_format(self) -> None:
+        """Test adding CPU data in multi-source dict format"""
+        self.plotter.add_y_data({"fio": "45.5", "collectl": "47.8"})
+        self.plotter.add_y_data({"fio": "50.0", "collectl": "52.3"})
+
+        self.assertIn("fio", self.plotter._y_data_by_source)
+        self.assertIn("collectl", self.plotter._y_data_by_source)
+        self.assertEqual(len(self.plotter._y_data_by_source["fio"]), 2)
+        self.assertEqual(len(self.plotter._y_data_by_source["collectl"]), 2)
+        self.assertAlmostEqual(self.plotter._y_data_by_source["fio"][0], 45.5)
+        self.assertAlmostEqual(self.plotter._y_data_by_source["collectl"][0], 47.8)
+
+    def test_plot_legacy_single_source(self) -> None:
+        """Test plotting CPU data with legacy single source"""
         self.plotter.add_y_data("50.0")
         self.plotter.add_y_data("60.0")
 
@@ -55,19 +68,44 @@ class TestCPUPlotter(unittest.TestCase):
         # Should create twin axes
         self.mock_axes.twinx.assert_called_once()
 
-        # Should set label and y_label
-        self.assertEqual(self.plotter._label, CPU_PLOT_LABEL)
-        self.assertEqual(self.plotter._y_label, CPU_Y_LABEL)
+        # Should set y_label
+        self.mock_twin_axes.set_ylabel.assert_called_once_with(CPU_Y_LABEL)
+
+        # Y-axis should always be fixed 0-100%
+        self.mock_twin_axes.set_ylim.assert_called_once_with(0, 100)
 
         # Should call plot on twin axes
-        self.mock_twin_axes.set_ylabel.assert_called_once_with(CPU_Y_LABEL)
         self.mock_twin_axes.plot.assert_called_once()
+
+    def test_plot_multi_source(self) -> None:
+        """Test plotting CPU data with multiple sources"""
+        self.plotter.add_y_data({"fio": "50.0", "collectl": "52.0"})
+        self.plotter.add_y_data({"fio": "60.0", "collectl": "62.0"})
+
+        x_data = [100.0, 200.0]
+        self.plotter.plot(x_data)
+
+        # Should create twin axes
+        self.mock_axes.twinx.assert_called_once()
+
+        # Should set y_label
+        self.mock_twin_axes.set_ylabel.assert_called_once_with(CPU_Y_LABEL)
+
+        # Y-axis should always be fixed 0-100%
+        self.mock_twin_axes.set_ylim.assert_called_once_with(0, 100)
+
+        # Should call plot twice (once per source)
+        self.assertEqual(self.mock_twin_axes.plot.call_count, 2)
+        # Should not add inline legend (legend appears below the plot)
+        self.mock_twin_axes.legend.assert_not_called()
 
     def test_cpu_constants(self) -> None:
         """Test CPU plotter constants"""
-        self.assertEqual(CPU_PLOT_DEFAULT_COLOUR, "xkcd:leaf green")
         self.assertEqual(CPU_Y_LABEL, "System CPU use (%)")
         self.assertEqual(CPU_PLOT_LABEL, "CPU use")
+        self.assertIn("fio", CPU_SOURCE_COLOURS)
+        self.assertIn("collectl", CPU_SOURCE_COLOURS)
+        self.assertIn("default", CPU_SOURCE_COLOURS)
 
 
 # Made with Bob

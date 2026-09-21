@@ -30,7 +30,6 @@ class ConcreteCommonFormatPlotter(CommonFormatPlotter):
 
     def draw_and_save(self) -> None:
         """Dummy implementation"""
-        pass
 
     def _generate_output_file_name(self, files: list) -> str:  # type: ignore[type-arg]
         """Dummy implementation"""
@@ -511,9 +510,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_log.warning.assert_called()
         # Check for either the specific invalid CPU warning or the general CPU data not found warning
         warning_message = str(mock_log.warning.call_args)
-        self.assertTrue(
-            "Invalid CPU value" in warning_message or "CPU data not found" in warning_message
-        )
+        self.assertTrue("Invalid CPU value" in warning_message or "CPU data not found" in warning_message)
 
         # Should still process valid data
         self.assertEqual(len(result.x_data), 2)
@@ -547,6 +544,116 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
 
         # Resource plotting should be disabled
         self.assertFalse(result.plot_resource_usage)
+
+    @patch("post_processing.plotter.common_format_plotter.log")
+    def test_extract_plot_data_multi_source_cpu(self, mock_log: MagicMock) -> None:
+        """Test _extract_plot_data handles multi-source CPU data (dict format)"""
+        mock_axes = MagicMock(spec=Axes)
+        mock_io_plotter = MagicMock(spec=IOPlotter)
+        mock_cpu_plotter = MagicMock(spec=CPUPlotter)
+
+        sorted_plot_data = {  # type: ignore[arg-type]
+            "1": {
+                "blocksize": "4096",
+                "bandwidth_bytes": "1000000",
+                "iops": "250",
+                "latency": "5000000",
+                "cpu": {"collectl": "39.75", "fio": "0.288828"},  # Multi-source CPU data
+            },
+            "2": {
+                "blocksize": "4096",
+                "bandwidth_bytes": "2000000",
+                "iops": "500",
+                "latency": "4000000",
+                "cpu": {"collectl": "45.5", "fio": "0.5"},
+            },
+        }
+
+        result = self.plotter._extract_plot_data(
+            sorted_plot_data, mock_axes, mock_io_plotter, mock_cpu_plotter, False, True
+        )
+
+        # Should successfully extract data from both entries
+        self.assertEqual(len(result.x_data), 2)
+        # Resource plotting should remain enabled
+        self.assertTrue(result.plot_resource_usage)
+        # CPU plotter should have received the dict for each data point
+        self.assertEqual(mock_cpu_plotter.add_y_data.call_count, 2)
+        # First call should receive the entire dict
+        first_call_arg = mock_cpu_plotter.add_y_data.call_args_list[0][0][0]
+        self.assertIsInstance(first_call_arg, dict)
+        self.assertEqual(first_call_arg, {"collectl": "39.75", "fio": "0.288828"})
+        # Second call should receive the entire dict
+        second_call_arg = mock_cpu_plotter.add_y_data.call_args_list[1][0][0]
+        self.assertIsInstance(second_call_arg, dict)
+        self.assertEqual(second_call_arg, {"collectl": "45.5", "fio": "0.5"})
+
+    @patch("post_processing.plotter.common_format_plotter.log")
+    def test_extract_plot_data_multi_source_cpu_with_invalid_values(self, mock_log: MagicMock) -> None:
+        """Test _extract_plot_data handles multi-source CPU data with some invalid values"""
+        mock_axes = MagicMock(spec=Axes)
+        mock_io_plotter = MagicMock(spec=IOPlotter)
+        mock_cpu_plotter = MagicMock(spec=CPUPlotter)
+
+        sorted_plot_data = {  # type: ignore[arg-type]
+            "1": {
+                "blocksize": "4096",
+                "bandwidth_bytes": "1000000",
+                "iops": "250",
+                "latency": "5000000",
+                "cpu": {"collectl": "39.75", "fio": "invalid"},  # One invalid source
+            },
+        }
+
+        result = self.plotter._extract_plot_data(
+            sorted_plot_data, mock_axes, mock_io_plotter, mock_cpu_plotter, False, True
+        )
+
+        # Should log warning about invalid CPU value from specific source
+        mock_log.warning.assert_called()
+        warning_calls = [str(call) for call in mock_log.warning.call_args_list]
+        self.assertTrue(any("Invalid CPU value from source" in call for call in warning_calls))
+
+        # Should still pass the dict (with both valid and invalid values) to the plotter
+        # The plotter itself will handle filtering invalid values
+        self.assertEqual(len(result.x_data), 1)
+        self.assertTrue(result.plot_resource_usage)
+        mock_cpu_plotter.add_y_data.assert_called_once()
+        call_arg = mock_cpu_plotter.add_y_data.call_args[0][0]
+        self.assertIsInstance(call_arg, dict)
+        self.assertEqual(call_arg, {"collectl": "39.75", "fio": "invalid"})
+
+    @patch("post_processing.plotter.common_format_plotter.log")
+    def test_extract_plot_data_multi_source_cpu_all_invalid(self, mock_log: MagicMock) -> None:
+        """Test _extract_plot_data handles multi-source CPU data with all invalid values"""
+        mock_axes = MagicMock(spec=Axes)
+        mock_io_plotter = MagicMock(spec=IOPlotter)
+        mock_cpu_plotter = MagicMock(spec=CPUPlotter)
+
+        sorted_plot_data = {  # type: ignore[arg-type]
+            "1": {
+                "blocksize": "4096",
+                "bandwidth_bytes": "1000000",
+                "iops": "250",
+                "latency": "5000000",
+                "cpu": {"collectl": "invalid1", "fio": "invalid2"},  # All invalid
+            },
+        }
+
+        result = self.plotter._extract_plot_data(
+            sorted_plot_data, mock_axes, mock_io_plotter, mock_cpu_plotter, False, True
+        )
+
+        # Should log warnings about invalid CPU values
+        self.assertGreaterEqual(mock_log.warning.call_count, 2)
+        warning_calls = [str(call) for call in mock_log.warning.call_args_list]
+        # Should warn about no valid CPU values found
+        self.assertTrue(any("No valid CPU values found" in call for call in warning_calls))
+
+        # Should still process the data point but disable resource plotting
+        self.assertEqual(len(result.x_data), 1)
+        self.assertFalse(result.plot_resource_usage)
+        mock_cpu_plotter.add_y_data.assert_not_called()
 
 
 class TestCommonFormatPlotterTitleGeneration(unittest.TestCase):

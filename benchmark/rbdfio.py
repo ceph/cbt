@@ -1,6 +1,6 @@
 import common
 import settings
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import os
 import time
 import logging
@@ -59,9 +59,9 @@ class RbdFio(Benchmark):
         super(RbdFio, self).initialize()
 
         logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
+        MonitoringFactory.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
-        monitoring.stop()
+        MonitoringFactory.stop()
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
@@ -85,7 +85,7 @@ class RbdFio(Benchmark):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
-        monitoring.start(self.run_dir)
+        MonitoringFactory.start(self.run_dir)
 
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
@@ -129,7 +129,7 @@ class RbdFio(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        MonitoringFactory.stop(self.run_dir)
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
@@ -145,7 +145,7 @@ class RbdFio(Benchmark):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(RbdFio, self).__str__())
 
     def mkimages(self):
-        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        MonitoringFactory.start("%s/pool_monitoring" % self.run_dir)
         self.cluster.rmpool(self.poolname, self.pool_profile)
         self.cluster.mkpool(self.poolname, self.pool_profile, 'rbd')
         common.pdsh(settings.getnodes('clients'), '/usr/bin/rbd create cbt-kernelrbdfio-`hostname -s` --size %s --pool %s' % (self.vol_size, self.poolname)).communicate()
@@ -153,7 +153,7 @@ class RbdFio(Benchmark):
         common.pdsh(settings.getnodes('clients'), 'sudo mkfs.xfs /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s`').communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo mkdir -p -m0755 -- %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
         common.pdsh(settings.getnodes('clients'), 'sudo mount -t xfs -o noatime,inode64 /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s` %s/cbt-kernelrbdfio-`hostname -s`' % self.cluster.mnt_dir).communicate()
-        monitoring.stop()
+        MonitoringFactory.stop()
 
     def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo killall -9 fio').communicate()

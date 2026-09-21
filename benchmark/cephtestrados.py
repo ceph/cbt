@@ -1,7 +1,7 @@
 from .benchmark import Benchmark
 import common
 import settings
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import os
 import time
 import logging
@@ -74,7 +74,7 @@ class CephTestRados(Benchmark):
         self.mkpool()
         self.dropcaches()
         self.cluster.dump_config(self.run_dir)
-        monitoring.start(self.run_dir)
+        MonitoringFactory.start(self.run_dir)
         time.sleep(5)
         # Run the backfill testing thread if requested
         if 'recovery_test' in self.cluster.config:
@@ -92,7 +92,7 @@ class CephTestRados(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        MonitoringFactory.stop(self.run_dir)
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
@@ -117,10 +117,10 @@ class CephTestRados(Benchmark):
         return ' '.join(cmd)
 
     def mkpool(self):
-        monitoring.start("%s/pool_monitoring" % self.run_dir)
+        MonitoringFactory.start("%s/pool_monitoring" % self.run_dir)
         self.cluster.rmpool('ceph_test_rados', self.pool_profile)
         self.cluster.mkpool('ceph_test_rados', self.pool_profile, 'ceph_test_rados')
-        monitoring.stop()
+        MonitoringFactory.stop()
 
     def recovery_callback(self):
         common.pdsh(settings.getnodes('clients'), 'sudo pkill -f ceph_test_rados').communicate()

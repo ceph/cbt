@@ -1,6 +1,6 @@
 import common
 import settings
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import os
 import time
 import logging
@@ -228,7 +228,7 @@ class Fio(Benchmark):
             # Wait for signal to start client IO
             self.cluster.wait_start_io()
 
-        monitoring.start(self.run_dir)
+        MonitoringFactory.start(self.run_dir)
 
         logger.info('Running fio %s test.', self.mode)
         ps = []
@@ -241,7 +241,7 @@ class Fio(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        MonitoringFactory.stop(self.run_dir)
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)

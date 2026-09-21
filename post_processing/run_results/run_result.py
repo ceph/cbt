@@ -19,13 +19,12 @@ from post_processing.post_processing_types import (
 )
 from post_processing.run_results.benchmark_result import BenchmarkResult
 from post_processing.run_results.resource_result import ResourceResult
-
-# from post_processing.run_results.resources.resource_result import ResourceResult
+from post_processing.run_results.resource_result_factory import get_all_resources
 
 log: Logger = getLogger("formatter")
 
 
-class RunResult(ABC):
+class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
     """
     A result run file that needs processing
     """
@@ -39,6 +38,15 @@ class RunResult(ABC):
         self._processed_data: InternalFormattedOutputType = {}
         self._timeseries_data: dict[str, TimeSeriesFormatType] = {}
         self._timeseries_by_directory: dict[Path, dict[str, TimeSeriesFormatType]] = {}
+        # Tracks how many volume files have been merged per test configuration key
+        # (operation, blocksize, iodepth, numjobs) — used by _merge_resource_data.
+        self._resource_volume_counts: dict[tuple[str, str, str, str], int] = {}
+        # Tracks how many non-zero contributions have been seen per
+        # (test_config, source) pair for shared-directory sources (collectl, top).
+        # Only incremented when the source returned a non-zero value, so that
+        # volumes whose monitoring directory is absent (returning 0.00) are not
+        # counted in the denominator and do not dilute the running average.
+        self._resource_source_counts: dict[tuple[tuple[str, str, str, str], str], int] = {}
 
     @abstractmethod
     def _find_files_for_testrun(self, file_name_root: str) -> list[Path]:
@@ -218,7 +226,7 @@ class RunResult(ABC):
         test_config: tuple[str, str, str, str],
         io_details: IodepthDataType,
         global_details: dict[str, str],
-        resource_data: dict[str, str],
+        resource_data: dict[str, dict[str, str]],
     ) -> InternalNumJobsDataType:
         """
         Build the complete nested data structure for a test result.
@@ -227,7 +235,8 @@ class RunResult(ABC):
             test_config: Tuple of (operation, blocksize, iodepth, number_of_jobs)
             io_details: Merged IO performance details
             global_details: Global benchmark options
-            resource_data: Resource usage statistics
+            resource_data: Resource usage statistics with structure:
+                          {"cpu": {"source1": "value1", ...}, "memory": {...}}
 
         Returns:
             Nested dictionary structure: {numjobs: {blocksize: {iodepth: data}}}
@@ -235,10 +244,11 @@ class RunResult(ABC):
         _, blocksize, iodepth, number_of_jobs = test_config
 
         # Build from innermost to outermost level
+        # Merge all data including the nested resource data
         iodepth_data = {**global_details, **io_details, **resource_data}
         iodepth_details = {iodepth: iodepth_data}
         blocksize_details = cast(InternalBlocksizeDataType, {blocksize: iodepth_details})
-        numjobs_details = cast(InternalNumJobsDataType, {number_of_jobs: blocksize_details})
+        numjobs_details: InternalNumJobsDataType = {number_of_jobs: blocksize_details}
 
         return numjobs_details
 
@@ -384,6 +394,128 @@ class RunResult(ABC):
         self._timeseries_by_directory.clear()
         log.debug("Cleared timeseries data from memory")
 
+    # Sources where each volume file yields an independent CPU measurement that
+    # should be summed to get the total load across all volumes.  All other
+    # sources (collectl, top) capture a shared system view from one directory
+    # that is read once per volume file, so they are averaged instead.
+    _SUMMED_RESOURCE_SOURCES: frozenset[str] = frozenset({"fio"})
+
+    def _collect_multi_source_resources(self, resources: list[ResourceResult]) -> dict[str, dict[str, str]]:
+        """
+        Collect resource data from multiple sources into nested dict format.
+
+        Args:
+            resources: List of ResourceResult instances
+
+        Returns:
+            Dict with structure: {"cpu": {"source1": "value1", ...}, "memory": {...}}
+        """
+        cpu_data: dict[str, str] = {}
+        memory_data: dict[str, str] = {}
+
+        for resource in resources:
+            source = resource.source
+            resource_dict = resource.get()
+
+            cpu_data[source] = resource_dict.get("cpu", "0.00")
+            memory_data[source] = resource_dict.get("memory", "0.00")
+
+        return {"cpu": cpu_data, "memory": memory_data}
+
+    def _aggregate_metric(self, source: str, prev: float, new: float, source_count: int) -> str:
+        """
+        Aggregate a single CPU or memory metric value for one source across volumes.
+
+        Args:
+            source: Resource source identifier (e.g. "fio", "collectl", "top")
+            prev: Previously accumulated value
+            new: New value from the current volume
+            source_count: Number of non-zero contributions already accumulated
+                          for this source (used as denominator for shared-directory
+                          sources; ignored for summed sources).
+
+        Returns:
+            Aggregated value as a formatted string
+        """
+        if source in self._SUMMED_RESOURCE_SOURCES:
+            return f"{prev + new:.2f}"
+        # Shared-directory source: running_avg = (prev * n + new) / (n + 1)
+        return f"{(prev * source_count + new) / (source_count + 1):.2f}"
+
+    def _get_existing_iodepth(self, test_config: tuple[str, str, str, str]) -> Optional[Union[str, IodepthDataType]]:
+        """
+        Look up the already-stored iodepth entry for a test configuration.
+
+        Args:
+            test_config: Tuple of (operation, blocksize, iodepth, number_of_jobs)
+
+        Returns:
+            The stored iodepth data dict, a bare str, or None if not yet stored
+        """
+        operation, blocksize, iodepth, number_of_jobs = test_config
+        return self._processed_data.get(operation, {}).get(number_of_jobs, {}).get(blocksize, {}).get(iodepth)
+
+    def _merge_resource_data(
+        self,
+        test_config: tuple[str, str, str, str],
+        new_resource_data: dict[str, dict[str, str]],
+    ) -> dict[str, dict[str, str]]:
+        """
+        Merge new resource data with any previously stored data for the same test
+        configuration, aggregating correctly across multiple volumes.
+
+        Aggregation strategy per source:
+        - FIO: each volume file contains an independent per-job CPU measurement,
+          so values are **summed** across volumes.
+        - collectl / top: both point at a shared directory alongside the benchmark
+          files, so every volume file in the same directory reads the same data.
+          Values are **averaged** (divide running sum by volume count) so the
+          final figure is not artificially inflated.
+
+        Args:
+            test_config: Tuple of (operation, blocksize, iodepth, number_of_jobs)
+            new_resource_data: Resource data from the current volume file
+
+        Returns:
+            Merged resource data dict with the same structure as the input
+        """
+        if test_config not in self._resource_volume_counts:
+            # First volume — nothing to merge yet
+            return new_resource_data
+
+        existing_iodepth = self._get_existing_iodepth(test_config)
+        if not isinstance(existing_iodepth, dict):
+            return new_resource_data
+
+        raw_cpu = existing_iodepth.get("cpu", "")
+        raw_mem = existing_iodepth.get("memory", "")
+        existing_cpu: dict[str, str] = raw_cpu if isinstance(raw_cpu, dict) else {}
+        existing_mem: dict[str, str] = raw_mem if isinstance(raw_mem, dict) else {}
+        new_cpu_map = new_resource_data.get("cpu", {})
+        new_mem_map = new_resource_data.get("memory", {})
+        merged_cpu: dict[str, str] = {}
+        merged_mem: dict[str, str] = {}
+
+        for source in set(existing_cpu) | set(new_cpu_map):
+            new_cpu_val = float(new_cpu_map.get(source, "0.00"))
+            new_mem_val = float(new_mem_map.get(source, "0.00"))
+            source_count: int = self._resource_source_counts.get((test_config, source), 0)
+
+            if source not in self._SUMMED_RESOURCE_SOURCES and new_cpu_val == 0.0 and new_mem_val == 0.0:
+                # Missing monitoring directory — keep the accumulated value unchanged
+                # and do not increment _resource_source_counts for this source.
+                merged_cpu[source] = existing_cpu.get(source, "0.00")
+                merged_mem[source] = existing_mem.get(source, "0.00")
+            else:
+                merged_cpu[source] = self._aggregate_metric(
+                    source, float(existing_cpu.get(source, "0.00")), new_cpu_val, source_count
+                )
+                merged_mem[source] = self._aggregate_metric(
+                    source, float(existing_mem.get(source, "0.00")), new_mem_val, source_count
+                )
+
+        return {"cpu": merged_cpu, "memory": merged_mem}
+
     def _convert_file(self, file_path: Path) -> None:
         """
         Convert an individual benchmark result file to the common intermediate format.
@@ -391,6 +523,11 @@ class RunResult(ABC):
         This method reads the benchmark output file, extracts IO and resource usage
         statistics, and stores them in the internal data structure organized by
         operation type, blocksize, and IO depth.
+
+        Now supports multiple resource sources (FIO, Collectl, etc.) simultaneously.
+        Resource values are aggregated across multiple volumes: sources that report
+        independent per-volume measurements (e.g. FIO) are summed; sources that
+        capture a shared system view (e.g. collectl, top) are averaged.
 
         If include_timeseries is True, also extracts time-series data from log files.
 
@@ -402,20 +539,38 @@ class RunResult(ABC):
             KeyError: If required data fields are missing from results
         """
         try:
-            # Use factory methods to get the correct classes
+            # Use factory method for benchmark result
             io: BenchmarkResult = self._create_benchmark_result(file_path)
-            resource: ResourceResult = self._create_resource_result(file_path)
+
+            # Get ALL available resource sources using factory
+            resources: list[ResourceResult] = get_all_resources(file_path)
 
             test_config = self._extract_test_configuration(io)
 
             # Merge IO details with existing data if present
             io_details = self._merge_io_details(test_config, io.io_details)
 
+            # Collect resource data from all sources then merge with any
+            # previously accumulated data for the same test configuration
+            resource_data = self._collect_multi_source_resources(resources)
+            resource_data = self._merge_resource_data(test_config, resource_data)
+
             # Build complete test result data structure
-            numjobs_details = self._build_test_result_data(test_config, io_details, io.global_options, resource.get())
+            numjobs_details = self._build_test_result_data(test_config, io_details, io.global_options, resource_data)
 
             # Update internal processed data
             self._update_processed_data(test_config, numjobs_details)
+
+            # Increment the per-configuration volume counter (all sources).
+            self._resource_volume_counts[test_config] = self._resource_volume_counts.get(test_config, 0) + 1
+
+            # Increment the per-(config, source) counter only for non-zero
+            # shared-directory sources, so that volumes whose monitoring
+            # directory is absent are not counted in the averaging denominator.
+            for source, cpu_val in resource_data.get("cpu", {}).items():
+                if source not in self._SUMMED_RESOURCE_SOURCES and float(cpu_val) != 0.0:
+                    key = (test_config, source)
+                    self._resource_source_counts[key] = self._resource_source_counts.get(key, 0) + 1
 
             # Process time-series data if requested
             if self._include_timeseries:

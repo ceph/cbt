@@ -45,7 +45,9 @@ and the details for read operations
 import json
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
+
+from typing_extensions import override
 
 from post_processing.formatter.base_formatter import BaseFormatter
 from post_processing.post_processing_types import CommonFormatDataType, InternalFormattedOutputType
@@ -259,6 +261,7 @@ class CommonOutputFormatter(BaseFormatter):
                     except OSError as e:
                         self.log.error("Failed to write hockey-stick file %s: %s", filename, e)
 
+    @override
     def process(self) -> None:
         """
         Process input data and convert to intermediate format.
@@ -290,13 +293,13 @@ class CommonOutputFormatter(BaseFormatter):
                 self.log.debug(
                     "We have more than one directory for test run %s so using the compatibility method", testrun_id
                 )
-                self._process_compatibility_mode()
+                _ = self._process_compatibility_mode()
                 # For compatibility mode, still need to add metadata and write
                 self._add_common_metadata()
                 self._add_peak_metrics()
             else:
                 # Memory-efficient mode: results written during _process_single_testrun
-                self._process_single_testrun(testrun_directories[0])
+                _ = self._process_single_testrun(testrun_directories[0])
 
     def _find_maximum_bandwidth_and_iops_with_latency(
         self, test_run_data: CommonFormatDataType
@@ -344,7 +347,35 @@ class CommonOutputFormatter(BaseFormatter):
 
         for _, data in test_run_data.items():
             if isinstance(data, dict):
-                max_cpu = max(max_cpu, float(data["cpu"]))
-                # max memory here, when we start recording it
+                # Handle multi-source resource data structure
+                # data["cpu"] is a dict like {"fio": "10.5", "collectl": "12.3"}
+                cpu_data: Union[dict[str, str], str, int, float] = data.get("cpu", {})
+                if isinstance(cpu_data, dict):
+                    # Find max across all sources
+                    for source_cpu in cpu_data.values():
+                        try:
+                            max_cpu = max(max_cpu, float(source_cpu))
+                        except (ValueError, TypeError):
+                            self.log.warning("Invalid CPU value: %s", source_cpu)
+                else:
+                    # Backward compatibility: handle old single-value format
+                    try:
+                        max_cpu = max(max_cpu, float(cpu_data))
+                    except (ValueError, TypeError):
+                        self.log.warning("Invalid CPU value: %s", cpu_data)
+
+                # Handle memory similarly (when implemented)
+                memory_data: Union[dict[str, str], str, int, float] = data.get("memory", {})
+                if isinstance(memory_data, dict):
+                    for source_memory in memory_data.values():
+                        try:
+                            max_memory = max(max_memory, float(source_memory))
+                        except (ValueError, TypeError):
+                            self.log.warning("Invalid memory value: %s", source_memory)
+                else:
+                    try:
+                        max_memory = max(max_memory, float(memory_data))
+                    except (ValueError, TypeError):
+                        self.log.warning("Invalid memory value: %s", memory_data)
 
         return f"{max_cpu}", f"{max_memory}"

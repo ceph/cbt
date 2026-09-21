@@ -1,6 +1,6 @@
 import common
 import settings
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import os
 import logging
 import pathlib
@@ -141,7 +141,7 @@ class Hsbench(Benchmark):
             recovery_callback = self.recovery_callback
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
-        monitoring.start(self.run_dir)
+        MonitoringFactory.start(self.run_dir)
         logger.info('Running hsbench %s test.' % self.modes)
         ps = []
         for i in range(self.endpoints_per_client):
@@ -153,7 +153,7 @@ class Hsbench(Benchmark):
         if 'recovery_test' in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        MonitoringFactory.stop(self.run_dir)
 
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:

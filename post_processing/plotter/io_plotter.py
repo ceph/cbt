@@ -9,7 +9,7 @@ from post_processing.plotter.axis_plotter import AxisPlotter
 
 log: Logger = getLogger("plotter")
 
-IO_PLOT_DEFAULT_COLOUR: str = "xkcd:leaf green"  # Leaf green from xkcd color survey
+IO_PLOT_DEFAULT_COLOUR: str = "xkcd:cerulean"  # Cerulean from xkcd color survey; distinct from CPU/memory lines
 IO_Y_LABEL: str = "Latency (ms)"
 IO_PLOT_LABEL: str = "IO Details"
 
@@ -48,5 +48,12 @@ class IOPlotter(AxisPlotter):
         io_axis.set_ylabel(self.y_label)
         # io_axis.tick_params(axis="y")  # pyright: ignore[reportUnknownMemberType]
         io_axis.errorbar(  # pyright: ignore[reportUnknownMemberType]
-            x_data, self._y_data, yerr=error_data, fmt="+-", capsize=cap_size, ecolor="red", label=self._label
+            x_data,
+            self._y_data,
+            yerr=error_data,
+            fmt="+-",
+            capsize=cap_size,
+            color=IO_PLOT_DEFAULT_COLOUR,
+            ecolor="xkcd:red",
+            label=self._label,
         )

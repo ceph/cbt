@@ -1,6 +1,6 @@
 import common
 import settings
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import os
 import time
 import logging
@@ -58,9 +58,9 @@ class Getput(Benchmark):
         common.make_remote_dir(self.run_dir)
 
         logger.info('Pausing for 60s for idle monitoring.')
-        monitoring.start("%s/idle_monitoring" % self.run_dir)
+        MonitoringFactory.start("%s/idle_monitoring" % self.run_dir)
         time.sleep(60)
-        monitoring.stop()
+        MonitoringFactory.stop()
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
 
@@ -125,7 +125,7 @@ class Getput(Benchmark):
             self.cluster.create_recovery_test(self.run_dir, recovery_callback)
 
         # Run getput
-        monitoring.start(self.run_dir)
+        MonitoringFactory.start(self.run_dir)
         logger.info('Running getput %s test.' % self.test)
 
         ps = []
@@ -135,7 +135,7 @@ class Getput(Benchmark):
             ps.append(p)
         for p in ps:
             p.wait()
-        monitoring.stop(self.run_dir)
+        MonitoringFactory.stop(self.run_dir)
 
         # If we were doing recovery, wait until it's done.
         if 'recovery_test' in self.cluster.config:

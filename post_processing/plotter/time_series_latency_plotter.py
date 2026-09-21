@@ -15,9 +15,9 @@ from post_processing.plotter.time_series_metric_plotter import (
 log: Logger = getLogger("plotter")
 
 LATENCY_MEAN_COLOR: str = "xkcd:orange"  # Orange from xkcd color survey
-LATENCY_P50_COLOR: str = "xkcd:green"  # Green from xkcd color survey
+LATENCY_P50_COLOR: str = "xkcd:blue"  # Blue from xkcd color survey
 LATENCY_P95_COLOR: str = "xkcd:red"  # Red from xkcd color survey
-LATENCY_P99_COLOR: str = "xkcd:dark red"  # Dark red from xkcd color survey
+LATENCY_P99_COLOR: str = "xkcd:purple"  # Purple from xkcd color survey
 LATENCY_MAX_COLOR: str = "xkcd:dark grey"  # Dark grey from xkcd color survey
 LATENCY_Y_LABEL: str = "Latency (ms)"
 LATENCY_PLOT_LABEL: str = "Mean Latency"

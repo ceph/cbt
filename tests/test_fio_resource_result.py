@@ -12,6 +12,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from post_processing.run_results.resources.fio_resource import FIOResource
 
@@ -46,13 +47,15 @@ class TestFIOResource(unittest.TestCase):
         self.assertEqual(resource._resource_file_path, self.test_file)
 
     def test_parse_cpu_usage(self) -> None:
-        """Test parsing CPU usage from FIO output"""
-        resource = FIOResource(self.test_file)
+        """Test CPU usage is normalised by cpu_count.
 
-        cpu = resource.cpu
+        sys_cpu (25.5) + usr_cpu (30.2) = 55.7 per-core; divided by 4 = 13.925
+        """
+        with mock.patch("post_processing.run_results.resources.fio_resource.os.cpu_count", return_value=4):
+            resource = FIOResource(self.test_file)
+            cpu = resource.cpu
 
-        # Should be sum of sys_cpu (25.5) and usr_cpu (30.2) = 55.7
-        self.assertAlmostEqual(float(cpu), 55.7, places=1)
+        self.assertAlmostEqual(float(cpu), 55.7 / 4, places=3)
 
     def test_parse_memory_usage(self) -> None:
         """Test parsing memory usage (currently returns 0)"""
@@ -65,14 +68,14 @@ class TestFIOResource(unittest.TestCase):
 
     def test_get_method(self) -> None:
         """Test get method returns formatted resource data"""
-        resource = FIOResource(self.test_file)
-
-        data = resource.get()
+        with mock.patch("post_processing.run_results.resources.fio_resource.os.cpu_count", return_value=4):
+            resource = FIOResource(self.test_file)
+            data = resource.get()
 
         self.assertEqual(data["source"], "fio")
         self.assertIn("cpu", data)
         self.assertIn("memory", data)
-        self.assertAlmostEqual(float(data["cpu"]), 55.7, places=1)
+        self.assertAlmostEqual(float(data["cpu"]), 55.7 / 4, places=3)
 
 
 # Made with Bob

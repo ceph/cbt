@@ -136,7 +136,7 @@ class TestWorkloads(unittest.TestCase):
 
     @patch("workloads.workloads.pdsh")
     @patch("workloads.workloads.make_remote_dir")
-    @patch("workloads.workloads.monitoring")
+    @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
     @patch("workloads.workloads.sleep")
     def test_run_with_workloads(
@@ -164,7 +164,7 @@ class TestWorkloads(unittest.TestCase):
 
     @patch("workloads.workloads.pdsh")
     @patch("workloads.workloads.make_remote_dir")
-    @patch("workloads.workloads.monitoring")
+    @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
     def test_run_with_script(
         self,
@@ -226,7 +226,7 @@ class TestWorkloads(unittest.TestCase):
 
     @patch("workloads.workloads.pdsh")
     @patch("workloads.workloads.make_remote_dir")
-    @patch("workloads.workloads.monitoring")
+    @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
     @patch("workloads.workloads.sleep")
     def test_run_with_ramp_time(

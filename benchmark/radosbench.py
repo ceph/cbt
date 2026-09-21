@@ -1,6 +1,6 @@
 import common
 import settings
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import os
 import time
 import logging
@@ -60,7 +60,7 @@ class Radosbench(Benchmark):
         super(Radosbench, self).initialize()
 
         logger.info('Pausing for 60s for idle monitoring.')
-        with monitoring.monitor("%s/idle_monitoring" % self.run_dir):
+        with MonitoringFactory.monitor("%s/idle_monitoring" % self.run_dir):
             time.sleep(60)
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
@@ -150,7 +150,7 @@ class Radosbench(Benchmark):
             self.cluster.create_recovery_test(run_dir, recovery_callback)
 
         # Run rados bench
-        with monitoring.monitor(run_dir) as monitor:
+        with MonitoringFactory.monitor(run_dir) as monitor:
             logger.info('Running radosbench %s test.' % mode)
             ps = []
             for i in range(self.concurrent_procs):
@@ -204,7 +204,7 @@ class Radosbench(Benchmark):
         self.analyze(out_dir)
 
     def mkpools(self):
-        with monitoring.monitor("%s/pool_monitoring" % self.run_dir):
+        with MonitoringFactory.monitor("%s/pool_monitoring" % self.run_dir):
             if self.pool_per_proc:  # allow use of a separate storage pool per process
                 for i in range(self.concurrent_procs):
                     for node in settings.getnodes('clients').split(','):
@@ -264,7 +264,7 @@ class RadosBenchAnalyzer(DataAnalyzer):
         return res[0]
 
     def get_cpu_cycles(self):
-        return monitoring.get_cpu_cycles(self.out_dir)
+        return MonitoringFactory.get_cpu_cycles(self.out_dir)
 
     def get_cpu_cycles_per_op(self):
         num_cpu_cycles = self.get_cpu_cycles()

@@ -2,6 +2,7 @@
 Process the CPU statistics as provided by FIO
 """
 
+import os
 from logging import Logger, getLogger
 from pathlib import Path
 from typing import Any
@@ -43,17 +44,20 @@ class FIOResource(ResourceResult):
         Extract CPU and memory usage from FIO output data.
 
         Combines system CPU and user CPU percentages to get total CPU usage.
+        FIO reports usr_cpu/sys_cpu as a percentage of one CPU core
+        (100% = one core fully busy), so the sum is divided by os.cpu_count()
+        to normalise to system capacity (0-100% = all cores fully busy).
         Memory usage is currently not extracted from FIO output.
 
         Args:
             data: Dictionary containing parsed FIO JSON output
         """
         memory_usage: float = 0.0
-        cpu_usage: float = 0.0
 
         sys_cpu: float = float(f"{data['jobs'][0]['sys_cpu']}")
         user_cpu: float = float(f"{data['jobs'][0]['usr_cpu']}")
-        cpu_usage = sys_cpu + user_cpu
+        cpu_count: int = os.cpu_count() or 1
+        cpu_usage: float = (sys_cpu + user_cpu) / cpu_count
 
         self._cpu = f"{cpu_usage:02f}"
         self._memory = f"{memory_usage:02f}"

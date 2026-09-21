@@ -1,21 +1,24 @@
 """
-    lirbdfio.py -- module to support the FIO benchmark exercising RBD.
+lirbdfio.py -- module to support the FIO benchmark exercising RBD.
 """
-import os
-import time
+
 import logging
-import common
-import settings
-import monitoring
+import os
 import re
+import time
 from pathlib import Path
 from typing import Union
 
+import common
+from monitoring.monitoring_factory import MonitoringFactory
+import settings
+from post_processing.post_processing_types import ReportType
 from post_processing.report import Report, ReportOptions
 
 from .benchmark import Benchmark
 
 logger = logging.getLogger("cbt")
+
 
 class LibrbdFio(Benchmark):
     """
@@ -26,32 +29,32 @@ class LibrbdFio(Benchmark):
         super(LibrbdFio, self).__init__(archive_dir, cluster, config)
 
         # FIXME there are too many permutations, need to put results in SQLITE3
-        self.cmd_path = config.get('cmd_path', '/usr/bin/fio')
-        self.pool_profile = config.get('pool_profile', 'default')
-        self.recov_pool_profile = config.get('recov_pool_profile', 'default')
-        self.recov_test_type = config.get('recov_test_type', 'blocking')
-        self.data_pool_profile = config.get('data_pool_profile', None)
-        self.time = config.get('time', None)
+        self.cmd_path = config.get("cmd_path", "/usr/bin/fio")
+        self.pool_profile = config.get("pool_profile", "default")
+        self.recov_pool_profile = config.get("recov_pool_profile", "default")
+        self.recov_test_type = config.get("recov_test_type", "blocking")
+        self.data_pool_profile = config.get("data_pool_profile", None)
+        self.time = config.get("time", None)
         # Global FIO options can be overwritten for specific workload options
         # would be nice to have them as a separate class -- future PR
-        self.time_based = bool(config.get('time_based', False))
-        self.ramp = config.get('ramp', None)
-        self.numjobs = config.get('numjobs', 1)
-        self.end_fsync = config.get('end_fsync', 0)
-        self.mode = config.get('mode', 'write')
-        self.rwmixread = config.get('rwmixread', 50)
+        self.time_based = bool(config.get("time_based", False))
+        self.ramp = config.get("ramp", None)
+        self.numjobs = config.get("numjobs", 1)
+        self.end_fsync = config.get("end_fsync", 0)
+        self.mode = config.get("mode", "write")
+        self.rwmixread = config.get("rwmixread", 50)
         self.rwmixwrite = 100 - self.rwmixread
-        self.log_avg_msec = config.get('log_avg_msec', None)
-        self.op_size = config.get('op_size', 4194304)
+        self.log_avg_msec = config.get("log_avg_msec", None)
+        self.op_size = config.get("op_size", 4194304)
 
-        self.pgs = config.get('pgs', 2048)
-        self.vol_size = config.get('vol_size', 65536)
-        self.vol_object_size = config.get('vol_object_size', 22)
-        self.volumes_per_client : int = int(config.get('volumes_per_client', 1))
-        self.procs_per_volume = config.get('procs_per_volume', 1)
-        self.random_distribution = config.get('random_distribution', None)
-        self.rate_iops = config.get('rate_iops', None)
-        self.fio_out_format = config.get('fio_out_format', 'json,normal')
+        self.pgs = config.get("pgs", 2048)
+        self.vol_size = config.get("vol_size", 65536)
+        self.vol_object_size = config.get("vol_object_size", 22)
+        self.volumes_per_client: int = int(config.get("volumes_per_client", 1))
+        self.procs_per_volume = config.get("procs_per_volume", 1)
+        self.random_distribution = config.get("random_distribution", None)
+        self.rate_iops = config.get("rate_iops", None)
+        self.fio_out_format = config.get("fio_out_format", "json,normal")
         self.data_pool = None
 
         iodepth_key: str = self._get_iodepth_key(config.keys())  # type: ignore[arg-type]
@@ -61,61 +64,61 @@ class LibrbdFio(Benchmark):
         )
 
         # use_existing_volumes needs to be true to set the pool and rbd names
-        self.use_existing_volumes = bool(config.get('use_existing_volumes', False))
-        self.no_sudo = bool(config.get('no_sudo', False))
-        self.idle_monitor_sleep = config.get('idle_monitor_sleep', 60)
+        self.use_existing_volumes = bool(config.get("use_existing_volumes", False))
+        self.no_sudo = bool(config.get("no_sudo", False))
+        self.idle_monitor_sleep = config.get("idle_monitor_sleep", 60)
         self.pool_name = config.get("poolname", "cbt-librbdfio")
         self.recov_pool_name = config.get("recov_pool_name", "cbt-rbdfio-recov")
-        self.rbdname = config.get('rbdname', '')
-        self.prefill_vols = config.get('prefill', {'blocksize': '4M',
-                                              'numjobs': '1'})
-        self.total_procs =  (self.procs_per_volume * self.volumes_per_client *
-                             len(settings.getnodes('clients').split(',')))
+        self.rbdname = config.get("rbdname", "")
+        self.prefill_vols = config.get("prefill", {"blocksize": "4M", "numjobs": "1"})
+        self.total_procs = (
+            self.procs_per_volume * self.volumes_per_client * len(settings.getnodes("clients").split(","))
+        )
         if not self._workloads.exist():
-            self.run_dir +=  ( f'op_size-{int(self.op_size):08d}/'
-                            f'concurrent_procs-{int(self.total_procs):03d}/'
-                            f'iodepth-{int(self.iodepth):03d}/{self.mode}' )
+            self.run_dir += (
+                f"op_size-{int(self.op_size):08d}/"
+                f"concurrent_procs-{int(self.total_procs):03d}/"
+                f"iodepth-{int(self.iodepth):03d}/{self.mode}"
+            )
 
         self.out_dir = self.archive_dir
 
         self.norandommap = config.get("norandommap", False)
         self.wait_pgautoscaler_timeout = config.get("wait_pgautoscaler_timeout", -1)
         # Make the file names string (repeated across volumes)
-        self.names = ''
+        self.names = ""
         for proc_num in range(self.procs_per_volume):
-            rbd_name = f'cbt-rbdfio-`{common.get_fqdn_cmd()}`-file-{proc_num:d}'
-            self.names += f'--name={rbd_name} '
+            rbd_name = f"cbt-rbdfio-`{common.get_fqdn_cmd()}`-file-{proc_num:d}"
+            self.names += f"--name={rbd_name} "
 
     def exists(self):
         """
         Verify whether the out_dir exists
         """
         if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
+            logger.info("Skipping existing test in %s.", self.out_dir)
             return True
         return False
-
 
     def initialize(self):
         super(LibrbdFio, self).initialize()
         # Clean and Create the run directory
         common.clean_remote_dir(self.run_dir)
         common.make_remote_dir(self.run_dir)
-        logger.info('Pausing for %ds for idle monitoring.', self.idle_monitor_sleep)
-        monitoring.start( f"{self.run_dir}idle_monitoring" )
+        logger.info("Pausing for %ds for idle monitoring.", self.idle_monitor_sleep)
+        MonitoringFactory.start(f"{self.run_dir}idle_monitoring")
         time.sleep(self.idle_monitor_sleep)
-        monitoring.stop()
-        common.sync_files( f'{self.run_dir}/', self.out_dir)
+        MonitoringFactory.stop()
+        common.sync_files(f"{self.run_dir}/", self.out_dir)
         # Create the recovery image based on test type requested
-        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+        if "recovery_test" in self.cluster.config and self.recov_test_type == "background":
             self.mkrecovimage()
         if self._workloads.exist():
             logger.info("Workloads:\n    %s", self._workloads.get_names().replace(" ", "\n"))
-        logger.info('Creating fio images...')
+        logger.info("Creating fio images...")
         self.mkimages()
-        logger.info('Attempting to prefill fio images...')
+        logger.info("Attempting to prefill fio images...")
         self.prefill()
-
 
     def run(self):
         super(LibrbdFio, self).run()
@@ -128,20 +131,18 @@ class LibrbdFio(Benchmark):
         time.sleep(5)
         # If the pg autoscaler kicks in before starting the test,
         # wait for it to complete. Otherwise, results may be skewed.
-        ret = self.cluster.check_pg_autoscaler(self.wait_pgautoscaler_timeout,
-                                               f"{self.run_dir}pgautoscaler.log")
+        ret = self.cluster.check_pg_autoscaler(self.wait_pgautoscaler_timeout, f"{self.run_dir}pgautoscaler.log")
         if ret == 1:
-            logger.warn("PG autoscaler taking longer to complete."
-                        "Continuing anyway...results may be skewed.")
+            logger.warn("PG autoscaler taking longer to complete.Continuing anyway...results may be skewed.")
         # Start the recovery thread if requested
-        if 'recovery_test' in self.cluster.config:
-            if self.recov_test_type == 'blocking':
+        if "recovery_test" in self.cluster.config:
+            if self.recov_test_type == "blocking":
                 recovery_callback = self.recovery_callback_blocking
-            elif self.recov_test_type == 'background':
+            elif self.recov_test_type == "background":
                 recovery_callback = self.recovery_callback_background
             self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
 
-        if 'recovery_test' in self.cluster.config and self.recov_test_type == 'background':
+        if "recovery_test" in self.cluster.config and self.recov_test_type == "background":
             # Wait for a signal from the recovery thread to initiate client IO
             self.cluster.wait_start_io()
 
@@ -151,26 +152,26 @@ class LibrbdFio(Benchmark):
             self._workloads.run()
         else:
             # Original style
-            monitoring.start(self.run_dir)
-            logger.info('Running rbd fio %s test.', self.mode)
+            MonitoringFactory.start(self.run_dir)
+            logger.info("Running rbd fio %s test.", self.mode)
             ps = []
             number_of_volumes: int = len(self._iodepth_per_volume.keys())
             for i in range(number_of_volumes):
                 fio_cmd = self.mkfiocmd(i)
-                p = common.pdsh(settings.getnodes('clients'), fio_cmd)
+                p = common.pdsh(settings.getnodes("clients"), fio_cmd)
                 ps.append(p)
             for p in ps:
                 p.wait()
-        
+
         # If we were doing recovery, wait until it's done.
-        if 'recovery_test' in self.cluster.config:
+        if "recovery_test" in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        monitoring.stop(self.run_dir)
+        MonitoringFactory.stop(self.run_dir)
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
-        source_directory: str = f'{self.run_dir}/*'
+        source_directory: str = f"{self.run_dir}/*"
         if self._workloads.exist():
             source_directory = f"{self._workloads.get_base_run_directory()}/*"
         common.sync_files(source_directory, self.out_dir)
@@ -178,20 +179,19 @@ class LibrbdFio(Benchmark):
 
         if self._create_report:
             report_config: dict[str, Union[str, bool]] = settings.report
-            output_directory: str = report_config.get('output_directory', f"{self.out_dir}/report")
+            output_directory: str = report_config.get("output_directory", f"{self.out_dir}/report")
             report_options: ReportOptions = ReportOptions(
-                archives = [f"{self.archive_dir}"],
-                output_directory = output_directory,
-                results_file_root = "json_output",
-                create_pdf = report_config.get("create_pdf", False),
-                force_refresh = report_config.get("force_refresh", False),
-                no_error_bars = report_config.get("no_error_bars", False),
-                comparison = False,
-                plot_resources = report_config.get("plot_resource", False)
+                archives=[f"{self.archive_dir}"],
+                output_directory=output_directory,
+                results_file_root="json_output",
+                create_pdf=report_config.get("create_pdf", False),
+                force_refresh=report_config.get("force_refresh", False),
+                no_error_bars=report_config.get("no_error_bars", False),
+                report_type=ReportType.SIMPLE,
+                plot_resources=report_config.get("plot_resources", False),
             )
             report: Report = Report(report_options)
             report.generate()
-
 
     def mkfiocmd(self, volnum: int) -> str:
         """
@@ -201,95 +201,100 @@ class LibrbdFio(Benchmark):
         if self.use_existing_volumes and len(self.rbdname):
             rbdname = self.rbdname
         else:
-            rbdname = f'cbt-rbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}'
+            rbdname = f"cbt-rbdfio-`{common.get_fqdn_cmd()}`-{volnum:d}"
 
-        logger.debug('Using rbdname %s', rbdname)
-        out_file = f'{self.run_dir}/output.{volnum:d}'
+        logger.debug("Using rbdname %s", rbdname)
+        out_file = f"{self.run_dir}/output.{volnum:d}"
 
-        fio_cmd: str = ''
+        fio_cmd: str = ""
         if not self.no_sudo:
-            fio_cmd = 'sudo '
-        fio_cmd += '%s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0' % (self.cmd_path, self.pool_name, rbdname)
-        fio_cmd += ' --rw=%s' % self.mode
-        fio_cmd += ' --output-format=%s' % self.fio_out_format
-        if (self.mode == 'readwrite' or self.mode == 'randrw'):
-            fio_cmd += ' --rwmixread=%s --rwmixwrite=%s' % (self.rwmixread, self.rwmixwrite)
+            fio_cmd = "sudo "
+        fio_cmd += "%s --ioengine=rbd --clientname=admin --pool=%s --rbdname=%s --invalidate=0" % (
+            self.cmd_path,
+            self.pool_name,
+            rbdname,
+        )
+        fio_cmd += " --rw=%s" % self.mode
+        fio_cmd += " --output-format=%s" % self.fio_out_format
+        if self.mode == "readwrite" or self.mode == "randrw":
+            fio_cmd += " --rwmixread=%s --rwmixwrite=%s" % (self.rwmixread, self.rwmixwrite)
         if self.time is not None:
-            fio_cmd += ' --runtime=%d' % self.time
+            fio_cmd += " --runtime=%d" % self.time
         if self.time_based is True:
-            fio_cmd += ' --time_based'
+            fio_cmd += " --time_based"
         if self.ramp is not None:
-            fio_cmd += ' --ramp_time=%d' % self.ramp
-        fio_cmd += ' --numjobs=%s' % self.numjobs
-        fio_cmd += ' --direct=1'
-        fio_cmd += ' --bs=%dB' % self.op_size
+            fio_cmd += " --ramp_time=%d" % self.ramp
+        fio_cmd += " --numjobs=%s" % self.numjobs
+        fio_cmd += " --direct=1"
+        fio_cmd += " --bs=%dB" % self.op_size
 
         iodepth: str = f"{self._iodepth_per_volume[volnum]}"
-        
-        fio_cmd += ' --iodepth=%s' % iodepth
-        fio_cmd += ' --end_fsync=%d' % self.end_fsync
-#        if self.vol_size:
-#            fio_cmd += ' -- size=%dM' % self.vol_size
+
+        fio_cmd += " --iodepth=%s" % iodepth
+        fio_cmd += " --end_fsync=%d" % self.end_fsync
+        #        if self.vol_size:
+        #            fio_cmd += ' -- size=%dM' % self.vol_size
         if self.norandommap:
-            fio_cmd += ' --norandommap'
+            fio_cmd += " --norandommap"
         if self.log_iops:
-            fio_cmd += ' --write_iops_log=%s' % out_file
+            fio_cmd += " --write_iops_log=%s" % out_file
         if self.log_bw:
-            fio_cmd += ' --write_bw_log=%s' % out_file
+            fio_cmd += " --write_bw_log=%s" % out_file
         if self.log_lat:
-            fio_cmd += ' --write_lat_log=%s' % out_file
-        if 'recovery_test' in self.cluster.config:
-            fio_cmd += ' --time_based'
+            fio_cmd += " --write_lat_log=%s" % out_file
+        if "recovery_test" in self.cluster.config:
+            fio_cmd += " --time_based"
         if self.random_distribution is not None:
-            fio_cmd += ' --random_distribution=%s' % self.random_distribution
+            fio_cmd += " --random_distribution=%s" % self.random_distribution
         if self.log_avg_msec is not None:
-            fio_cmd += ' --log_avg_msec=%s' % self.log_avg_msec
+            fio_cmd += " --log_avg_msec=%s" % self.log_avg_msec
         if self.rate_iops is not None:
-            fio_cmd += ' --rate_iops=%s' % self.rate_iops
+            fio_cmd += " --rate_iops=%s" % self.rate_iops
 
         # End the fio_cmd
-        fio_cmd += ' %s > %s' % (self.names, out_file)
+        fio_cmd += " %s > %s" % (self.names, out_file)
         return fio_cmd
-
 
     def mkrecovimage(self):
         """
         Create a reecovery image
         """
-        logger.info('Creating recovery image...')
-        monitoring.start( f"{self.run_dir}/recovery_pool_monitoring" )
+        logger.info("Creating recovery image...")
+        MonitoringFactory.start(f"{self.run_dir}/recovery_pool_monitoring")
         if self.use_existing_volumes is False:
             self.cluster.rmpool(self.recov_pool_name, self.recov_pool_profile)
-            self.cluster.mkpool(self.recov_pool_name, self.recov_pool_profile, 'rbd')
-            for node in common.get_fqdn_list('clients'):
+            self.cluster.mkpool(self.recov_pool_name, self.recov_pool_profile, "rbd")
+            for node in common.get_fqdn_list("clients"):
                 for volnum in range(0, self.volumes_per_client):
                     node = node.rpartition("@")[2]
-                    self.cluster.mkimage( f'cbt-rbdfio-recov-{node}-{volnum:d}',
-                                         self.vol_size, self.recov_pool_name, self.data_pool,
-                                         self.vol_object_size )
-        monitoring.stop()
-
+                    self.cluster.mkimage(
+                        f"cbt-rbdfio-recov-{node}-{volnum:d}",
+                        self.vol_size,
+                        self.recov_pool_name,
+                        self.data_pool,
+                        self.vol_object_size,
+                    )
+        MonitoringFactory.stop()
 
     def mkimages(self):
         """
         Create an RBD pool and a number of volumes per client
         """
-        monitoring.start( f"{self.run_dir}/pool_monitoring" )
+        MonitoringFactory.start(f"{self.run_dir}/pool_monitoring")
         if self.use_existing_volumes is False:
             self.cluster.rmpool(self.pool_name, self.pool_profile)
-            self.cluster.mkpool(self.pool_name, self.pool_profile, 'rbd')
+            self.cluster.mkpool(self.pool_name, self.pool_profile, "rbd")
             if self.data_pool_profile:
                 self.data_pool = self.pool_name + "-data"
                 self.cluster.rmpool(self.data_pool, self.data_pool_profile)
-                self.cluster.mkpool(self.data_pool, self.data_pool_profile, 'rbd')
-        for node in common.get_fqdn_list('clients'):
+                self.cluster.mkpool(self.data_pool, self.data_pool_profile, "rbd")
+        for node in common.get_fqdn_list("clients"):
             for volnum in range(0, self.volumes_per_client):
                 node = node.rpartition("@")[2]
-                self.cluster.mkimage( f'cbt-rbdfio-{node}-{volnum:d}',
-                                     self.vol_size, self.pool_name, self.data_pool,
-                                     self.vol_object_size)
-        monitoring.stop()
-
+                self.cluster.mkimage(
+                    f"cbt-rbdfio-{node}-{volnum:d}", self.vol_size, self.pool_name, self.data_pool, self.vol_object_size
+                )
+        MonitoringFactory.stop()
 
     def prefill(self):
         """
@@ -299,32 +304,31 @@ class LibrbdFio(Benchmark):
         if not self.use_existing_volumes:
             rbd_base_name: str = self.config.get("rbdname", "cbt-rbdfio")
             for volnum in range(self.volumes_per_client):
-                rbd_name = f'{rbd_base_name}-`{common.get_fqdn_cmd()}`-{volnum:d}'
-                pre_cmd = ''
+                rbd_name = f"{rbd_base_name}-`{common.get_fqdn_cmd()}`-{volnum:d}"
+                pre_cmd = ""
                 if not self.no_sudo:
-                    pre_cmd += 'sudo '
-                numjobs = self.prefill_vols['numjobs']
-                bs = self.prefill_vols['blocksize']
-                pre_cmd += ( f'{self.cmd_path} --ioengine=rbd --clientname=admin'
-                            f' --pool={self.pool_name}'
-                            f' --rbdname={rbd_name} --invalidate=0  --rw=write'
-                            f' --numjobs={numjobs}'
-                            f' --bs={bs}'
-                            f' --size {self.vol_size:d}M {self.names}'
-                            f' --output-format={self.fio_out_format} > /dev/null' )
-                p = common.pdsh(settings.getnodes('clients'), pre_cmd)
+                    pre_cmd += "sudo "
+                numjobs = self.prefill_vols["numjobs"]
+                bs = self.prefill_vols["blocksize"]
+                pre_cmd += (
+                    f"{self.cmd_path} --ioengine=rbd --clientname=admin"
+                    f" --pool={self.pool_name}"
+                    f" --rbdname={rbd_name} --invalidate=0  --rw=write"
+                    f" --numjobs={numjobs}"
+                    f" --bs={bs}"
+                    f" --size {self.vol_size:d}M {self.names}"
+                    f" --output-format={self.fio_out_format} > /dev/null"
+                )
+                p = common.pdsh(settings.getnodes("clients"), pre_cmd)
                 ps.append(p)
             for p in ps:
                 p.wait()
 
-
     def recovery_callback_blocking(self):
-        common.pdsh(settings.getnodes('clients'), 'sudo killall -2 fio').communicate()
-
+        common.pdsh(settings.getnodes("clients"), "sudo killall -2 fio").communicate()
 
     def recovery_callback_background(self):
-        logger.info('Recovery thread completed!')
-
+        logger.info("Recovery thread completed!")
 
     def parse(self, out_dir):
         """
@@ -337,7 +341,7 @@ class LibrbdFio(Benchmark):
         ]
         for file in files_to_process:
             with file.open("r", encoding="utf-8") as input_file:
-                output_file_name: str = f"{file.parent}/json_output{file.name[file.name.find('.'):]}"
+                output_file_name: str = f"{file.parent}/json_output{file.name[file.name.find('.') :]}"
                 output_path = Path(output_file_name)
                 found: bool = False
                 with output_path.open("w", encoding="utf-8") as output_file:
@@ -349,13 +353,12 @@ class LibrbdFio(Benchmark):
                             output_file.write(line)
                             found = False
                             break
-                        
+
                         if found:
                             output_file.write(line)
 
-
     def analyze(self, out_dir):
-        logger.info('Convert results to json format.')
+        logger.info("Convert results to json format.")
         self.parse(out_dir)
 
     def _get_iodepth_key(self, configuration_keys: list[str]) -> str:
@@ -429,6 +432,6 @@ class LibrbdFio(Benchmark):
             queue_depths[volume_id] = iodepth
 
         return queue_depths
-    
+
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(LibrbdFio, self).__str__())

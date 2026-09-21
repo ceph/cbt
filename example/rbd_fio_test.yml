@@ -44,11 +44,11 @@ monitoring_profiles:
     # produce gnuplot file data format (aka csv) in output file (gziped)
     #
     args: '-c 30 -sZC -i 5:10 --procopts t --cpufilt 0-3 --procfilt cosd -P -f {collectl_dir}'
-  perf:
+  osd_perf:
     perf_cmd: 'perf'
     # This collects 10 secs of data to produce flame graphs
     args: 'record -e cycles:u --call-graph dwarf -i -p {pid} -o {perf_dir}/{pid}_osd_perf.out sleep 10'
-  top:
+  osd_top:
     top_cmd: 'top'
       # This collects 30 samples, Core and thread CPU utilisation
     args: '-b -H -1 -p {pid} -n 30 > {top_dir}/{pid}_osd_top.out'
@@ -77,7 +77,6 @@ benchmarks:
     poolname: 'rbd'
     mode: 'randwrite'
     iodepth: [1, 4 ,16]
-    numjobs: [1, 4, 8]
     op_size: [4096] # block IO size in bytes
     procs_per_client: [1]
     volumes_per_client: [1] # volumes per ceph node

@@ -148,9 +148,9 @@ class TestTimeSeriesLatencyPlotter(unittest.TestCase):
     def test_latency_constants(self) -> None:
         """Test latency plotter constants"""
         self.assertEqual(LATENCY_MEAN_COLOR, "xkcd:orange")
-        self.assertEqual(LATENCY_P50_COLOR, "xkcd:green")
+        self.assertEqual(LATENCY_P50_COLOR, "xkcd:blue")
         self.assertEqual(LATENCY_P95_COLOR, "xkcd:red")
-        self.assertEqual(LATENCY_P99_COLOR, "xkcd:dark red")
+        self.assertEqual(LATENCY_P99_COLOR, "xkcd:purple")
         self.assertEqual(LATENCY_Y_LABEL, "Latency (ms)")
         self.assertEqual(LATENCY_PLOT_LABEL, "Mean Latency")
 

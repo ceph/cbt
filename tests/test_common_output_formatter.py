@@ -106,8 +106,7 @@ class TestCommonOutputFormatter(unittest.TestCase):
         max_cpu, max_memory = self.formatter._find_max_resource_usage(test_data)
 
         self.assertEqual(max_cpu, "45.8")
-        # Note: max_memory is not currently implemented in the code
-        self.assertEqual(max_memory, "0")
+        self.assertEqual(max_memory, "2048.0")
 
     def test_find_max_resource_usage_with_empty_data(self) -> None:
         """Test finding maximum resource usage with empty data"""

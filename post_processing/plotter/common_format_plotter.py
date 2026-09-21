@@ -10,7 +10,7 @@ from pathlib import Path
 # the ModuleType does exists in the types module, so no idea why pylint is
 # flagging this
 from types import ModuleType
-from typing import Optional
+from typing import Any, Optional, Union, cast
 
 from matplotlib.axes import Axes
 
@@ -41,8 +41,8 @@ class CommonFormatPlotter(ABC):
     The base class for plotting results curves
     """
 
-    def __init__(self, plotter: ModuleType):
-        self._plotter = plotter
+    def __init__(self, plotter: ModuleType) -> None:
+        self._plotter: ModuleType = plotter
 
     @abstractmethod
     def draw_and_save(self) -> None:
@@ -70,7 +70,7 @@ class CommonFormatPlotter(ABC):
         else:
             title = self._construct_title_from_list_of_file_names(source_files)
 
-        self._plotter.title(title)
+        _: Any = self._plotter.title(title)
 
     def _construct_title_from_list_of_file_names(self, file_paths: list[Path]) -> str:
         """
@@ -142,8 +142,8 @@ class CommonFormatPlotter(ABC):
             maximum_x = maximum_values[0]
             maximum_y = maximum_values[1]
 
-        self._plotter.xlim(0, maximum_x)
-        self._plotter.ylim(0, maximum_y)
+        _: Any = self._plotter.xlim(0, maximum_x)
+        _: Any = self._plotter.ylim(0, maximum_y)
 
     def _sort_plot_data(self, unsorted_data: CommonFormatDataType) -> PlotDataType:
         """
@@ -255,6 +255,74 @@ class CommonFormatPlotter(ABC):
         if not sorted_plot_data:
             raise ValueError("Cannot extract plot data from empty dataset")
 
+    def _process_cpu_data(
+        self,
+        data: dict[str, str],
+        queue_depth: str,
+        cpu_plotter: CPUPlotter,
+        resource_plotting_enabled: bool,
+    ) -> bool:
+        """
+        Process CPU data from a data point, handling both single-value and multi-source formats.
+
+        Args:
+            data: Data dictionary containing CPU information
+            queue_depth: Queue depth identifier for error messages
+            cpu_plotter: CPU plotter to receive CPU data
+            resource_plotting_enabled: Whether resource plotting is requested
+
+        Returns:
+            True if CPU data was successfully processed, False otherwise
+        """
+        if not resource_plotting_enabled:
+            return False
+
+        cpu_value: Union[dict[str, str], str, None] = data.get("cpu")
+        if cpu_value is None:
+            return False
+
+        # Pass CPU data directly to plotter - it handles both dict and single value formats
+        try:
+            if isinstance(cpu_value, dict):
+                # Validate that dict contains at least one valid numeric value
+                valid_sources = 0
+                cpu_dict = cast(dict[str, str], cpu_value)
+                for source, value in cpu_dict.items():
+                    try:
+                        _ = float(value)  # Validate it's convertible to float
+                        valid_sources += 1
+                    except (ValueError, TypeError):
+                        log.warning(
+                            "Invalid CPU value from source '%s' for queue depth %s: %s. Skipping this source.",
+                            source,
+                            queue_depth,
+                            value,
+                        )
+
+                if valid_sources == 0:
+                    log.warning(
+                        "No valid CPU values found for queue depth %s: %s. Skipping CPU data.",
+                        queue_depth,
+                        cpu_value,
+                    )
+                    return False
+
+                # Pass the entire dict to plotter so it can plot separate lines
+                cpu_plotter.add_y_data(cpu_value)
+                return True
+
+            # Single value format (backward compatibility)
+            _ = float(cpu_value)  # Validate it's convertible to float
+            cpu_plotter.add_y_data(cpu_value)
+            return True
+        except (ValueError, TypeError):
+            log.warning(
+                "Invalid CPU value for queue depth %s: %s. Skipping CPU data.",
+                queue_depth,
+                cpu_value,
+            )
+            return False
+
     def _process_data_point(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         data: dict[str, str],
@@ -291,7 +359,7 @@ class CommonFormatPlotter(ABC):
         # Validate latency is numeric
         latency_value = data["latency"]
         try:
-            float(latency_value)  # Validate it's convertible to float
+            _ = float(latency_value)  # Validate it's convertible to float
         except (ValueError, TypeError) as e:
             raise ValueError(f"Invalid latency value for queue depth {queue_depth}: {latency_value}") from e
 
@@ -302,23 +370,7 @@ class CommonFormatPlotter(ABC):
         io_plotter.add_y_data(latency_value)
 
         # Handle CPU data with proper validation
-        resource_available = resource_plotting_enabled
-        if resource_plotting_enabled:
-            cpu_value = data.get("cpu")
-            if cpu_value is None:
-                resource_available = False
-            else:
-                # Validate CPU value is numeric
-                try:
-                    float(cpu_value)
-                    cpu_plotter.add_y_data(cpu_value)
-                except (ValueError, TypeError):
-                    log.warning(
-                        "Invalid CPU value for queue depth %s: %s. Skipping CPU data.",
-                        queue_depth,
-                        cpu_value,
-                    )
-                    resource_available = False
+        resource_available = self._process_cpu_data(data, queue_depth, cpu_plotter, resource_plotting_enabled)
 
         # Calculate error bars
         error_bar = self._calculate_error_bar(data, plot_error_bars, resource_available)
@@ -380,14 +432,13 @@ class CommonFormatPlotter(ABC):
                 # Set x-axis label once (from first valid data point)
                 if x_label is None:
                     x_label = point_result.x_label
-                    main_axes.set_xlabel(x_label)  # pyright: ignore[reportUnknownMemberType]
+                    _: Any = main_axes.set_xlabel(x_label)  # pyright: ignore[reportUnknownMemberType]
 
                 # Disable resource plotting if CPU data unavailable (only check once)
                 if resource_plotting_enabled and not point_result.resource_available:
                     if not cpu_warning_logged:
                         log.warning(
-                            "Unable to plot CPU usage: CPU data not found in intermediate files. "
-                            "Disabling resource usage plotting."
+                            "Unable to plot CPU usage: CPU data not found in intermediate files. Disabling resource usage plotting."
                         )
                         cpu_warning_logged = True
                     resource_plotting_enabled = False
@@ -474,11 +525,11 @@ class CommonFormatPlotter(ABC):
         The bbox_inches="tight" option makes sure that the legend is included
         in the plot and not cut off
         """
-        self._plotter.savefig(file_path, format=f"{PLOT_FILE_EXTENSION}", bbox_inches="tight")
+        _: Any = self._plotter.savefig(file_path, format=f"{PLOT_FILE_EXTENSION}", bbox_inches="tight")
 
     def _clear_plot(self) -> None:
         """
         Clear the plot data
         """
-        self._plotter.close()
+        _: Any = self._plotter.close()
         # self._plotter.clf()
