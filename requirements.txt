@@ -3,3 +3,4 @@ lxml
 matplotlib
 mdutils
 pandas
+typing-extensions
