@@ -8,7 +8,7 @@ import os
 
 import yaml
 
-import monitoring
+from monitoring.monitoring_factory import MonitoringFactory
 import settings
 from remote.async_ssh import AsyncSSHExecutor
 from remote.remote_executor import RemoteExecutor
@@ -153,10 +153,10 @@ class Elbencho(Benchmark):
 
             self._remote.make_remote_dir(settings.getnodes('clients'), output_directory)
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
-            monitoring.start(output_directory)
+            MonitoringFactory.start(output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
                 self._remote.run_command(clients, cmd, continue_if_error=False)
-            monitoring.stop()
+            MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")

@@ -253,7 +253,10 @@ class TestRunLoop(unittest.TestCase):
     def setUp(self):
         # _run_workloads() wraps each command group in monitoring; stub it so
         # the run-loop tests don't touch real monitors.
-        for target in ("monitoring.start", "monitoring.stop"):
+        for target in (
+            "monitoring.monitoring_factory.MonitoringFactory.start",
+            "monitoring.monitoring_factory.MonitoringFactory.stop",
+        ):
             patcher = patch(target)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -417,8 +420,8 @@ class TestElbenchoNoPdsh(unittest.TestCase):
         with patch.object(b, "dropcaches"), \
              patch.object(b.cluster, "dump_config"), \
              patch.object(b.cluster, "set_osd_param"), \
-             patch("monitoring.start"), \
-             patch("monitoring.stop"), \
+             patch("monitoring.monitoring_factory.MonitoringFactory.start"), \
+             patch("monitoring.monitoring_factory.MonitoringFactory.stop"), \
              patch.object(b, "_run_workloads"):
             with patch.object(_common, "pdsh", side_effect=AssertionError("pdsh called")):
                 b.run()
