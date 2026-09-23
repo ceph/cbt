@@ -1,7 +1,7 @@
-var keys = d3.keys(dataSet[0]);
+var keys = d3.keys(dataSet[0]),
 
-var mins = {}
-var maxes = {}
+    mins = {},
+   maxes = {};
 dataSet.forEach(function(item) {
   var mean = d3.mean(d3.values(item).slice(3));
   var deviation = d3.deviation(d3.values(item).slice(3));
@@ -13,16 +13,16 @@ dataSet.forEach(function(item) {
 //console.log(mins);
 //console.log(maxes);
 
-var thead = d3.select("#view > thead")
-var th = thead.selectAll("th")
+var thead = d3.select("#view > thead"),
+    th = thead.selectAll("th")
         .data(keys)
         .enter()
         .append('th')
-        .text(function(d){ return d })
+        .text(function(d){ return d }),
 
-var tbody = d3.select("#view > tbody");
+    tbody = d3.select("#view > tbody"),
 
-var tr = tbody.selectAll("tr")
+   tr = tbody.selectAll("tr")
     .data(dataSet)
     .enter()
     .append('tr')
@@ -56,8 +56,8 @@ var tr = tbody.selectAll("tr")
         });
 
 function makecolor(val, min, max) {
-    var red = 255;
-    var green = 255;
+    var red = 255,
+        green = 255;
     if(val < min) {
         green = 0;
     } else if(val < min+((max-min)/2.0)) {
