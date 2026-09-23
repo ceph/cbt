@@ -1,0 +1,54 @@
+cluster:
+  user: 'root'
+  head: "xxxxx.front.sepia.ceph.com"
+  clients: ["xxxxx.front.sepia.ceph.com"]
+  osds: ["xxxxx.front.sepia.ceph.com"]
+
+  use_existing: True
+  osds_per_node: 6
+  clients: [xxxxx.front.sepia.ceph.com]
+  iterations: 1
+  tmp_dir: "/tmp/cbt"
+  pdsh_ssh_args: "-a -x -l%u %h"
+
+    # Workload support to come - For now this only supports a single workload
+    # 4krandomwrite:
+    #    jobname: 'randwrite'
+    #    mode: 'randwrite'
+    #    op_size: 4096
+    #    numjobs: [ 1 ]
+    #    total_iodepth: [ 2, 4, 8, 16, 32, 64, 128, 256, 384, 512, 768 ]
+    # 4krandomread:
+    #    jobname: 'randread'
+    #    mode: 'randread'
+    #    op_size: 4096
+    #    numjobs: [ 1 ]
+    #    total_iodepth: [ 4, 8, 12, 16, 32, 48, 64, 128, 256, 384, 588, 768 ]
+
+monitoring_profiles:
+    collectl:
+           args: '-c 18 -sCD -i 10 -P -oz -F0 --rawtoo --sep ";" -f {collectl_dir}'
+
+benchmarks:
+  rawfio:
+      iterations: 1
+      time: 10
+      ramp: 10
+      iodepth: [1,2,3,4,5,6,7,8,9,10,16,24,32,48]
+      numjobs: 1
+      osd_ra: [4096]
+      mode: [ randwrite ]
+      ioengine: libaio
+      # Block Size
+      op_size: [4096]
+      # size o volume test
+      # vol_size: 100000
+      vol_size: 100 
+      direct: 1
+      # Readahead settings
+      client_ra: 128
+      # Number of concurrent processes, if this number is greater than the number of block_devices, multiple instances of FIO will be started for that device  
+      concurrent_procs: 16
+      fio_cmd: '/usr/local/bin/fio'
+ 
+      block_devices: [ /dev/nvme8n1, /dev/nvme8n2, /dev/nvme8n3, /dev/nvme8n4, /dev/nvme8n5, /dev/nvme8n6, /dev/nvme8n7, /dev/nvme8n8, /dev/nvme8n9, /dev/nvme8n10, /dev/nvme8n11, /dev/nvme8n12, /dev/nvme8n13, /dev/nvme8n14, /dev/nvme8n15, /dev/nvme8n16 ]

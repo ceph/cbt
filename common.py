@@ -29,6 +29,8 @@ def all_configs(config):
         # the set for permutation
         if param == "acceptable":
             default[param] = value
+        elif param == "block_devices":
+            default[param] = value
         elif isinstance(value, list):
             cycle_over_lists.append(value)
             cycle_over_names.append(param)
