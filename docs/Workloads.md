@@ -7,7 +7,8 @@ of jobs (or threads, or processes), such that the increase number of these cause
 increase in the I/O. Specifiying workloads in this way permits to generate *response latency curves*
 from the results.
 
-The workload feature is currently supported for `librbdfio` only.
+The workload feature is currently supported for `librbdfio` and `elbencho`. For Elbencho-specific
+usage, see [docs/workloads/elbencho-s3.md](workloads/elbencho-s3.md).
 
 ![workloads](./workloads.png)
 

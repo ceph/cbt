@@ -8,6 +8,7 @@ from logging import Logger, getLogger
 from typing import Optional
 
 from command.command import Command
+from command.elbencho_command import ElbenchoCommand
 from command.rbd_fio_command import RbdFioCommand
 from common import all_configs  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload_types import WorkloadType
@@ -131,6 +132,11 @@ class Workload:
         """
         if self._parent_benchmark_type == "rbdfio":
             return RbdFioCommand(options, f"{self._base_run_directory}{self._name}")
+
+        if self._parent_benchmark_type == "elbencho":
+            # Elbencho builds its own output path (mode/blocksize-bytes/threads/
+            # iodepth) from the base run directory, with no workload-name segment.
+            return ElbenchoCommand(options, self._base_run_directory)
 
         log.error("Benchmark Class %s is not supported by workloads yet", self._parent_benchmark_type)
         raise NotImplementedError

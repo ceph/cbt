@@ -2,6 +2,7 @@
 The workloads class that contains all the Workloads for a given Benchmark run
 """
 
+from collections.abc import Generator
 from logging import Logger, getLogger
 from time import sleep
 from typing import Optional, Union
@@ -116,6 +117,32 @@ class Workloads:
             log.info("Workload '%s' complete (%d/%d).", workload_name, workload_index, total_workloads)
 
         log.info("== Workloads completed ==")
+
+    def command_groups(self) -> Generator[tuple[str, list[str]], None, None]:
+        """Yield (output_directory, [command, ...]) for every run cell without executing.
+
+        This factors the (pdsh-free) command-generation bookkeeping out of
+        run() so a caller can choose how to fan the commands out — e.g. via a
+        remote.RemoteExecutor for benchmarks that have moved off pdsh.
+
+        set_benchmark_type() and set_executable() must be called first.
+
+        TODO: pre_workload_script and ramp_time are not yet yielded here.
+        TODO: collapse with run() once the rbdfio path is also executor-driven,
+        so we have a single place where we set up and execute command lists.
+        """
+        if not self._benchmark_type:
+            log.error("Benchmark type has not been set, set_benchmark_type() must be called first.")
+            return
+
+        if not self._executable:
+            log.error("Executable path has not been set, set_executable() must be called first.")
+            return
+
+        for workload in self._workloads:
+            workload.set_benchmark_type(self._benchmark_type)
+            workload.set_executable(self._executable)
+            yield from workload.get_commands_list()
 
     def get_names(self) -> str:
         """

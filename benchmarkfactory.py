@@ -1,6 +1,7 @@
 import settings
 from common import all_configs
 from benchmark.radosbench import Radosbench
+from benchmark.elbencho import Elbencho
 from benchmark.fio import Fio
 from benchmark.hsbench import Hsbench
 from benchmark.rbdfio import RbdFio
@@ -32,7 +33,8 @@ def get_object(archive, cluster, benchmark, bconfig):
         'librbdfio': LibrbdFio,
         'cosbench': Cosbench,
         'cephtestrados': CephTestRados,
-        'getput': Getput}
+        'getput': Getput,
+        'elbencho': Elbencho}
     try:
         return benchmarks[benchmark](archive, cluster, bconfig)
     except KeyError:

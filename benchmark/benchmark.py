@@ -162,7 +162,7 @@ class Benchmark(object):
             with open(config_file, "w") as fd:
                 yaml.dump(config_dict, fd, default_flow_style=False)
 
-    def exists(self):
+    def exists(self) -> bool:
         return False
 
     def compare(self, baseline):
