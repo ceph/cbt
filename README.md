@@ -271,6 +271,18 @@ useful to generate *Response latency curves*.
 * Automatic unit test [generation](docs/AutomaticUnitTestGeneration.md) for the Benchmark classes, intended to help
 refactoring to detect regressions.
 
+### FIO benchmark output directory structure
+
+The five FIO benchmark classes (`librbdfio`, `rbdfio`, `kvmrbdfio`, `rawfio`, `fio`) now write
+output to a unified directory structure for both the workloads and non-workloads execution paths:
+
+```
+{tmp_dir}/{iteration}/{BenchmarkClass}/osd_ra-{N}/{benchmark}/numjobs-{N}/[total_iodepth-{T}/]iodepth-{N}/output.{i}
+```
+
+Previously each class used a bespoke path that included segments such as
+`op_size-`, `concurrent_procs-`, `client_ra-`, and `raw_ra-`.
+
 
 ## CONCLUSION
 

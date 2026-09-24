@@ -1,74 +1,135 @@
-import common
-import settings
-from monitoring.monitoring_factory import MonitoringFactory
-import os
-import time
+"""fio.py -- Endpoint-based FIO benchmark (libaio / librbd engines)."""
+
 import logging
 import pathlib
-import client_endpoints_factory
+from typing import Any, Optional
 
-from .benchmark import Benchmark
+import client_endpoints_factory
+import common
+import settings
+from benchmark.base_fio import FioBenchmark
+from command.endpoint_fio_command import EndpointFioCommand
 
 logger = logging.getLogger("cbt")
 
 
-class Fio(Benchmark):
-    def __init__(self, archive_dir, cluster, config):
-        super(Fio, self).__init__(archive_dir, cluster, config)
+class Fio(FioBenchmark):  # pylint: disable=too-many-instance-attributes
+    """FIO benchmark using client endpoint abstractions (directory, rbd, etc.)."""
 
-        # FIXME there are too many permutations, need to put results in SQLITE3
-        self.cmd_path = config.get("cmd_path", "/usr/bin/fio")
-        self.direct = str(config.get("direct", 1))
-        self.time = config.get("time", None)
-        self.time_based = bool(config.get("time_based", False))
-        self.ramp = config.get("ramp", None)
-        self.iodepth = config.get("iodepth", 16)
-        self.prefill_iodepth = config.get("prefill_iodepth", 16)
-        self.numjobs = config.get("numjobs", 1)
+    def __init__(self, archive_dir: str, cluster: Any, config: dict[str, Any]) -> None:
+        super().__init__(archive_dir, cluster, config)
+
+        # Fio-specific parameters not covered by FioBenchmark
+        self.prefill_iodepth: int = config.get("prefill_iodepth", 16)
         self.sync = config.get("sync", None)
-        self.end_fsync = config.get("end_fsync", 0)
-        self.mode = config.get("mode", "write")
-        self.rwmixread = config.get("rwmixread", 50)
-        self.rwmixwrite = 100 - self.rwmixread
-        self.logging = config.get("logging", True)
-        self.log_avg_msec = config.get("log_avg_msec", None)
-        self.ioengine = config.get("ioengine", "libaio")
+        # Map the Fio-specific 'logging' key onto the base-class per-channel booleans
+        # so that _populate_common_io_options() handles log suppression uniformly.
+        _logging: bool = config.get("logging", True)
+        self.log_iops = _logging
+        self.log_bw = _logging
+        self.log_lat = _logging
+        self.ioengine: str = config.get("ioengine", "libaio")
         self.bssplit = config.get("bssplit", None)
         self.bsrange = config.get("bsrange", None)
         self.bs = config.get("bs", None)
-        self.op_size = config.get("op_size", 4194304)  # Deprecated, please use bs
-        self.size = config.get("size", 4096)
-        self.procs_per_endpoint = config.get("procs_per_endpoint", 1)
-        self.random_distribution = config.get("random_distribution", None)
-        self.rate_iops = config.get("rate_iops", None)
-        self.fio_out_format = "json,normal"
-        self.prefill_flag = config.get("prefill", True)
-        self.norandommap = config.get("norandommap", False)
-        self.out_dir = self.archive_dir
+        # op_size is set by FioBenchmark; bs is the preferred key going forward
+        self.size: int = config.get("size", 4096)
+        self.procs_per_endpoint: int = config.get("procs_per_endpoint", 1)
+        self.prefill_flag: bool = config.get("prefill", True)
+        self.out_dir: str = self.archive_dir
         self.client_endpoints = config.get("client_endpoints", None)
-        self.recov_test_type = config.get("recov_test_type", "blocking")
+        # Populated by create_endpoints(); declared here to satisfy pylint
+        self.client_endpoints_object: Any = None
+        self.endpoint_type: str = ""
+        self.endpoints_per_client: int = 0
+        self.endpoints: list[Any] = []
 
-    def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info("Skipping existing test in %s.", self.out_dir)
-            return True
-        return False
+    # ---------------------------------------------------------------------- #
+    # FioBenchmark abstract interface
+    # ---------------------------------------------------------------------- #
 
-    def estimate_duration(self) -> int:
-        """Estimate run-phase seconds: runtime + ramp time."""
-        total = int(self.time) if self.time is not None else 0
-        total += int(self.ramp) if self.ramp is not None else 0
-        return total
+    @property
+    def num_targets(self) -> int:
+        """Number of I/O endpoints per client."""
+        return getattr(self, "endpoints_per_client", 1)
 
-    def initialize(self):
-        super(Fio, self).initialize()
+    @property
+    def benchmark_type(self) -> str:
+        """Benchmark name for the workloads path."""
+        return "fio"
+
+    def setup_targets(self) -> None:
+        """Endpoint setup is handled by initialize_endpoints()."""
+
+    def prefill_targets(self) -> None:
+        """Prefill is driven by prefill()."""
+
+    def cleanup_targets(self) -> None:
+        """Endpoint cleanup is handled by cleanup()."""
+
+    def _apply_blocksize_option(self, options: dict[str, Optional[str]]) -> None:
+        """Resolve bssplit > bsrange > bs > op_size and set the winning key in options."""
+        if self.bssplit is not None:
+            options["bssplit"] = self.bssplit
+        elif self.bsrange is not None:
+            options["bsrange"] = self.bsrange
+        elif self.bs is not None:
+            options["bs"] = self.bs
+        else:
+            options["op_size"] = str(self.op_size)
+
+    def _build_io_options(self, ep_num: int, iodepth: int) -> dict[str, Optional[str]]:
+        """Build the fio options dict for a single endpoint."""
+        options: dict[str, Optional[str]] = {
+            "target_number": str(ep_num),
+            "endpoint_type": self.endpoint_type,
+            "endpoint_path": self.endpoints[ep_num],
+            "ioengine": self.ioengine,
+            "mode": self.mode,
+            "iodepth": str(iodepth),
+            "numjobs": str(self.numjobs),
+            "end_fsync": str(self.end_fsync),
+            "fio_out_format": self.fio_out_format,
+            "procs_per_endpoint": str(self.procs_per_endpoint),
+            "procs_per_volume": str(self.procs_per_endpoint),
+            "name": f"ep{ep_num}",
+        }
+        if self.size:
+            options["size"] = str(self.size)
+        if self.sync is not None:
+            options["sync"] = str(self.sync)
+        self._apply_blocksize_option(options)
+        # Delegate all common options (direct, rwmixread, time, ramp, iodepth
+        # distribution, logging flags, recovery_test, etc.) to the base method.
+        self._populate_common_io_options(options)
+        return options
+
+    def _run_io_loop(self) -> None:
+        """Non-workloads I/O loop: run fio against each endpoint."""
+        logger.info("Running fio %s test.", self.mode)
+        iodepth_per_endpoint = self.calculate_iodepth_per_target(self.endpoints_per_client, self._iodepth_key)
+        ps = []
+        for i, iodepth in iodepth_per_endpoint.items():
+            cmd = EndpointFioCommand(self._build_io_options(i, iodepth), self.run_dir)
+            cmd.set_executable(self.cmd_path_full)
+            ps.append(common.pdsh(settings.getnodes("clients"), cmd.get()))
+        for p in ps:
+            p.wait()
+        logger.info("fio %s test complete.", self.mode)
+
+    # ---------------------------------------------------------------------- #
+    # Lifecycle
+    # ---------------------------------------------------------------------- #
+
+    def initialize(self) -> None:
+        super().initialize()
 
         # Clean and Create the run directory
         common.clean_remote_dir(self.run_dir)
         common.make_remote_dir(self.run_dir)
 
-    def initialize_endpoints(self):
-        super(Fio, self).initialize_endpoints()
+    def initialize_endpoints(self) -> None:
+        super().initialize_endpoints()
 
         # Get the client_endpoints and set them up
         if self.client_endpoints is None:
@@ -80,10 +141,10 @@ class Fio(Benchmark):
             self.client_endpoints_object.create_recovery_image()
         self.create_endpoints()
 
-    def create_endpoints(self):
+    def create_endpoints(self) -> None:  # pylint: disable=attribute-defined-outside-init
+        """Initialise endpoint objects and populate endpoint metadata attributes."""
         if not self.client_endpoints_object.get_initialized():
             self.client_endpoints_object.initialize()
-            new_ep = True
 
         self.endpoint_type = self.client_endpoints_object.get_endpoint_type()
         self.endpoints_per_client = self.client_endpoints_object.get_endpoints_per_client()
@@ -94,51 +155,16 @@ class Fio(Benchmark):
         endpoint_size = self.client_endpoints_object.get_endpoint_size()
         if aggregate_size > endpoint_size:
             raise ValueError(
-                "Aggregate fio data size (%dKB) exceeds end_point size (%dKB)! Please check numjobs, procs_per_endpoint, and size settings."
-                % (aggregate_size, endpoint_size)
+                f"Aggregate fio data size ({aggregate_size}KB) exceeds end_point size ({endpoint_size}KB)!"
+                " Please check numjobs, procs_per_endpoint, and size settings."
             )
 
         if self.endpoint_type == "rbd" and self.ioengine != "rbd":
             logger.warning("rbd endpoints must use the librbd fio engine! Setting ioengine=rbd")
             self.ioengine = "rbd"
-        if self.endpoint_type == "rbd" and self.direct != "1":
-            logger.warning("rbd endpoints must use O_DIRECT. Setting direct=1")
-            self.direct = "1"
 
-    def fio_command_extra(self, ep_num):
-        cmd = ""
-
-        # typical directory endpoints
-        if self.endpoint_type == "directory":
-            for proc_num in range(self.procs_per_endpoint):
-                cmd += " --name=%s/`%s`-%s-%s" % (self.endpoints[ep_num], common.get_fqdn_cmd(), ep_num, proc_num)
-
-        # handle rbd endpoints with the librbbd engine.
-        elif self.endpoint_type == "rbd":
-            pool_name, rbd_name = self.endpoints[ep_num].split("/")
-            cmd += " --clientname=admin"
-            cmd += " --pool=%s" % pool_name
-            cmd += " --rbdname=%s" % rbd_name
-            cmd += " --invalidate=0"
-            for proc_num in range(self.procs_per_endpoint):
-                rbd_name = "%s-%d" % (self.endpoints[ep_num], proc_num)
-                cmd += " --name=%s" % rbd_name
-        return cmd
-
-    def prefill_command(self, ep_num):
-        cmd = "sudo %s" % self.cmd_path
-        cmd += " --ioengine=%s" % self.ioengine
-        cmd += " --rw=write"
-        cmd += " --numjobs=%d" % self.numjobs
-        cmd += " --bs=4M"
-        cmd += " --iodepth=%d" % self.prefill_iodepth
-        cmd += " --size %dM" % self.size
-        cmd += " --output-format=%s" % self.fio_out_format
-        cmd += self.fio_command_extra(ep_num)
-        return cmd
-
-    def prefill(self):
-        super(Fio, self).prefill()
+    def prefill(self) -> None:
+        super().prefill()
         if not self.prefill_flag:
             return
         # populate the fio files
@@ -146,150 +172,35 @@ class Fio(Benchmark):
         logger.info("Attempting to prefill fio files...")
         for ep_num in range(self.endpoints_per_client):
             logger.info("Prefilling endpoint %d/%d...", ep_num + 1, self.endpoints_per_client)
-            p = common.pdsh(settings.getnodes("clients"), self.prefill_command(ep_num))
-            ps.append(p)
+            options: dict[str, Optional[str]] = {
+                "target_number": str(ep_num),
+                "endpoint_type": self.endpoint_type,
+                "endpoint_path": self.endpoints[ep_num],
+                "ioengine": self.ioengine,
+                "mode": "write",
+                "op_size": str(4 * 1024 * 1024),  # 4M prefill block size
+                "iodepth": str(self.prefill_iodepth),
+                "numjobs": str(self.numjobs),
+                "end_fsync": "0",
+                "fio_out_format": self.fio_out_format,
+                "procs_per_endpoint": str(self.procs_per_endpoint),
+                "procs_per_volume": str(self.procs_per_endpoint),
+                "name": f"prefill-ep{ep_num}",
+                # Suppress all logging for prefill
+                "log_iops": "false",
+                "log_bw": "false",
+                "log_lat": "false",
+            }
+            if self.size:
+                options["size"] = str(self.size)
+            cmd = EndpointFioCommand(options, self.run_dir)
+            cmd.set_executable(self.cmd_path)
+            ps.append(common.pdsh(settings.getnodes("clients"), cmd.get()))
         for p in ps:
             p.wait()
         logger.info("Prefill complete.")
 
-    def run_command(self, ep_num):
-        out_file = "%s/output.%d" % (self.run_dir, ep_num)
-
-        # cmd_path_full includes any valgrind or other preprocessors vs cmd_path
-        cmd = "sudo %s" % self.cmd_path_full
-
-        # IO options
-        cmd += " --ioengine=%s" % self.ioengine
-        cmd += " --direct=%s" % self.direct
-        if self.bssplit is not None:
-            cmd += " --bssplit=%s" % self.bssplit
-        if self.bsrange is not None:
-            cmd += " --bsrange=%s" % self.bsrange
-        if self.bs is not None:
-            cmd += " --bs=%s" % self.bs
-        elif self.op_size is not None:
-            logger.warning("op_size is deprecated, please use bs in the future")
-            cmd += " --bs=%s" % self.op_size
-        cmd += " --iodepth=%d" % self.iodepth
-        if self.sync is not None:
-            cmd += " --sync=%s" % self.sync
-        cmd += " --end_fsync=%d" % self.end_fsync
-        cmd += " --rw=%s" % self.mode
-        if self.mode == "readwrite" or self.mode == "randrw":
-            cmd += " --rwmixread=%s --rwmixwrite=%s" % (self.rwmixread, self.rwmixwrite)
-        if self.random_distribution is not None:
-            cmd += " --random_distribution=%s" % self.random_distribution
-        if self.rate_iops is not None:
-            cmd += " --rate_iops=%d" % self.rate_iops
-        if self.norandommap:
-            cmd += " --norandommap"
-
-        # Set the output size
-        if self.size:
-            cmd += " --size=%dM" % self.size
-        cmd += " --numjobs=%d" % self.numjobs
-
-        # Time options
-        if self.time is not None:
-            cmd += " --runtime=%d" % self.time
-        if self.time_based is True:
-            cmd += " --time_based"
-        if self.ramp is not None:
-            cmd += " --ramp_time=%d" % self.ramp
-
-        # Put extra options before logging and output for conveneince of debugging
-        cmd += self.fio_command_extra(ep_num)
-
-        # Logging and output options
-        if self.logging:
-            cmd += " --write_iops_log=%s" % out_file
-            cmd += " --write_bw_log=%s" % out_file
-            cmd += " --write_lat_log=%s" % out_file
-            if self.log_avg_msec is not None:
-                cmd += " --log_avg_msec=%d" % self.log_avg_msec
-        cmd += " --output-format=%s" % self.fio_out_format
-
-        # End the fio_cmd
-        cmd += " > %s" % (out_file)
-        return cmd
-
-    def run(self):
-        super(Fio, self).run()
-
-        # We'll always drop caches for rados bench
-        self.dropcaches()
-
-        # Create the run directory
-        common.make_remote_dir(self.run_dir)
-
-        # dump the cluster config
-        self.cluster.dump_config(self.run_dir)
-
-        logger.debug("Waiting 5s before starting test...")
-        time.sleep(5)
-
-        # Run the backfill testing thread if requested
-        if "recovery_test" in self.cluster.config:
-            if self.recov_test_type == "blocking":
-                recovery_callback = self.recovery_callback_blocking
-            elif self.recov_test_type == "background":
-                recovery_callback = self.recovery_callback_background
-            self.cluster.create_recovery_test(self.run_dir, recovery_callback, self.recov_test_type)
-
-        if "recovery_test" in self.cluster.config and self.recov_test_type == "background":
-            # Wait for signal to start client IO
-            self.cluster.wait_start_io()
-
-        MonitoringFactory.start(self.run_dir)
-
-        logger.info("Running fio %s test.", self.mode)
-        ps = []
-        for i in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes("clients"), self.run_command(i))
-            ps.append(p)
-        for p in ps:
-            p.wait()
-        logger.info("fio %s test complete.", self.mode)
-        # If we were doing recovery, wait until it's done.
-        if "recovery_test" in self.cluster.config:
-            self.cluster.wait_recovery_done()
-
-        MonitoringFactory.stop(self.run_dir)
-
-        # Finally, get the historic ops
-        self.cluster.dump_historic_ops(self.run_dir)
-        common.sync_files("%s/*" % self.run_dir, self.out_dir)
-        self.analyze(self.out_dir)
-
-    def cleanup(self):
+    def cleanup(self) -> None:
+        """Send SIGINT to fio on all clients."""
         cmd_name = pathlib.PurePath(self.cmd_path).name
-        common.pdsh(settings.getnodes("clients"), "sudo killall -2 %s" % cmd_name).communicate()
-
-    def recovery_callback_blocking(self):
-        self.cleanup()
-
-    def recovery_callback_background(self):
-        logger.info("Recovery thread completed!")
-
-    def analyze(self, out_dir):
-        logger.info("Convert results to json format.")
-        for client in settings.getnodes("clients").split(","):
-            host = settings.host_info(client)["host"]
-            for i in range(self.endpoints_per_client):
-                found = 0
-                out_file = "%s/output.%d.%s" % (out_dir, i, host)
-                json_out_file = "%s/json_output.%d.%s" % (out_dir, i, host)
-                with open(out_file) as fd:
-                    with open(json_out_file, "w") as json_fd:
-                        for line in fd.readlines():
-                            if len(line.strip()) == 0:
-                                found = 0
-                                break
-                            if found == 1:
-                                json_fd.write(line)
-                            if found == 0:
-                                if "Starting" in line:
-                                    found = 1
-
-    def __str__(self):
-        return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Fio, self).__str__())
+        common.pdsh(settings.getnodes("clients"), f"sudo killall -2 {cmd_name}").communicate()
