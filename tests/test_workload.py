@@ -10,6 +10,7 @@ from typing import Optional
 from unittest.mock import MagicMock, patch
 
 from command.command import Command
+from iodepth import calculate_iodepth_per_target, get_iodepth_key
 from workloads.workload import Workload
 from workloads.workload_types import WorkloadType
 
@@ -139,29 +140,26 @@ class TestWorkload(unittest.TestCase):
 
     def test_get_iodepth_key_default(self) -> None:
         """Test getting iodepth key when only iodepth is present"""
-        workload = self._create_workload()
         configuration_keys = ["mode", "iodepth", "numjobs"]
 
-        iodepth_key = workload._get_iodepth_key(configuration_keys)
+        iodepth_key = get_iodepth_key(configuration_keys)
 
         self.assertEqual(iodepth_key, "iodepth")
 
     def test_get_iodepth_key_total(self) -> None:
         """Test getting iodepth key when total_iodepth is present"""
-        workload = self._create_workload()
         configuration_keys = ["mode", "iodepth", "total_iodepth", "numjobs"]
 
-        iodepth_key = workload._get_iodepth_key(configuration_keys)
+        iodepth_key = get_iodepth_key(configuration_keys)
 
         self.assertEqual(iodepth_key, "total_iodepth")
 
     def test_calculate_iodepth_per_target_equal_distribution(self) -> None:
-        """Test calculating iodepth per target with equal distribution"""
-        workload = self._create_workload()
+        """Test calculating iodepth per target with equal distribution (total_iodepth key)"""
         number_of_targets = 4
         total_iodepth = 16
 
-        result = workload._calculate_iodepth_per_target_from_total_iodepth(number_of_targets, total_iodepth)
+        result = calculate_iodepth_per_target(number_of_targets, total_iodepth, "total_iodepth")
 
         self.assertEqual(len(result), number_of_targets)
         self.assertEqual(sum(result.values()), total_iodepth)
@@ -169,12 +167,11 @@ class TestWorkload(unittest.TestCase):
             self.assertEqual(iodepth, 4)
 
     def test_calculate_iodepth_per_target_unequal_distribution(self) -> None:
-        """Test calculating iodepth per target with unequal distribution"""
-        workload = self._create_workload()
+        """Test calculating iodepth per target with unequal distribution (total_iodepth key)"""
         number_of_targets = 3
         total_iodepth = 10
 
-        result = workload._calculate_iodepth_per_target_from_total_iodepth(number_of_targets, total_iodepth)
+        result = calculate_iodepth_per_target(number_of_targets, total_iodepth, "total_iodepth")
 
         self.assertEqual(len(result), number_of_targets)
         self.assertEqual(sum(result.values()), total_iodepth)
@@ -184,11 +181,10 @@ class TestWorkload(unittest.TestCase):
 
     def test_calculate_iodepth_per_target_insufficient_iodepth(self) -> None:
         """Test calculating iodepth when total is less than number of targets"""
-        workload = self._create_workload()
         number_of_targets = 10
         total_iodepth = 5
 
-        result = workload._calculate_iodepth_per_target_from_total_iodepth(number_of_targets, total_iodepth)
+        result = calculate_iodepth_per_target(number_of_targets, total_iodepth, "total_iodepth")
 
         # Should reduce number of targets to match iodepth
         self.assertEqual(len(result), total_iodepth)
@@ -197,12 +193,11 @@ class TestWorkload(unittest.TestCase):
             self.assertEqual(iodepth, 1)
 
     def test_set_iodepth_for_every_target(self) -> None:
-        """Test setting same iodepth for all targets"""
-        workload = self._create_workload()
+        """Test setting same iodepth for all targets (plain iodepth key)"""
         number_of_targets = 5
         iodepth = 8
 
-        result = workload._set_iodepth_for_every_target(number_of_targets, iodepth)
+        result = calculate_iodepth_per_target(number_of_targets, iodepth, "iodepth")
 
         self.assertEqual(len(result), number_of_targets)
         for target_iodepth in result.values():

@@ -21,13 +21,13 @@ class Command(ABC):
     system
     """
 
-    def __init__(self, options: dict[str, str]) -> None:
+    def __init__(self, options: dict[str, Optional[str]]) -> None:
         self._executable: Optional[str] = None
         self._output_directory: str = ""
         self._options: CliOptions = self._parse_options(options)
 
     @abstractmethod
-    def _parse_options(self, options: dict[str, str]) -> CliOptions:
+    def _parse_options(self, options: dict[str, Optional[str]]) -> CliOptions:
         """
         Take the options passed in from the configuration yaml file and
         convert them to a list of key/value pairs that match the parameters
@@ -42,7 +42,7 @@ class Command(ABC):
         """
 
     @abstractmethod
-    def _parse_global_options(self, options: dict[str, str]) -> CliOptions:
+    def _parse_global_options(self, options: dict[str, Optional[str]]) -> CliOptions:
         """
         Parse the set of global options into the correct format for the command type
         """
@@ -89,13 +89,13 @@ class Command(ABC):
         """
         self._executable = executable_path
 
-    def set_global_options(self, global_options: dict[str, str]) -> None:
+    def set_global_options(self, global_options: dict[str, Optional[str]]) -> None:
         """
         Update the global options
         """
         self._options.update(self._parse_global_options(global_options))
 
-    def update_options(self, new_options: dict[str, str]) -> None:
+    def update_options(self, new_options: dict[str, Optional[str]]) -> None:
         """
         Update the command with the new_options dictionary
         """

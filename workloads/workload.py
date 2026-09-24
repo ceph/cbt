@@ -9,8 +9,11 @@ from typing import Optional
 
 from command.command import Command
 from command.elbencho_command import ElbenchoCommand
+from command.endpoint_fio_command import EndpointFioCommand
+from command.libaio_fio_command import LibaioFioCommand
 from command.rbd_fio_command import RbdFioCommand
 from common import all_configs  # pyright: ignore[reportUnknownVariableType]
+from iodepth import calculate_iodepth_per_target, get_iodepth_key
 from workloads.workload_types import WorkloadType
 
 log: Logger = getLogger("cbt")
@@ -165,7 +168,7 @@ class Workload:
             if key not in self._all_options.keys():
                 self._all_options[key] = value
 
-    def _create_command_class(self, options: dict[str, str]) -> Command:
+    def _create_command_class(self, options: dict[str, Optional[str]]) -> Command:
         """
         Create the concrete command classes for each command for this workload
         """
@@ -177,21 +180,25 @@ class Workload:
             # iodepth) from the base run directory, with no workload-name segment.
             return ElbenchoCommand(options, self._base_run_directory)
 
+        if self._parent_benchmark_type in ("kvmrbdfio", "rawfio", "rbdfiokrbd"):
+            return LibaioFioCommand(options, f"{self._base_run_directory}{self._name}")
+
+        if self._parent_benchmark_type == "fio":
+            return EndpointFioCommand(options, f"{self._base_run_directory}{self._name}")
+
         log.error("Benchmark Class %s is not supported by workloads yet", self._parent_benchmark_type)
         raise NotImplementedError
 
     def _create_commands_from_options(self) -> None:
-        unique_options: dict[str, str]
+        unique_options: dict[str, Optional[str]]
 
         set_number: int = 0
         for unique_options in all_configs(self._all_options):  # type: ignore[no-untyped-call]
-            iodepth_key: str = self._get_iodepth_key(list(unique_options.keys()))
+            iodepth_key: str = get_iodepth_key(list(unique_options.keys()))
             unique_options["iodepth_key"] = iodepth_key
-            iodepth: int = int(unique_options.get(iodepth_key, 16))
-            number_of_volumes: int = int(unique_options.get("volumes_per_client", 1))
-            iodepth_per_target: dict[int, int] = self._calculate_iodepth_per_target(
-                number_of_volumes, iodepth, iodepth_key
-            )
+            iodepth: int = int(unique_options.get(iodepth_key) or 16)
+            number_of_volumes: int = int(unique_options.get("volumes_per_client") or 1)
+            iodepth_per_target: dict[int, int] = calculate_iodepth_per_target(number_of_volumes, iodepth, iodepth_key)
             unique_options["name"] = self._name
 
             command_list: list[Command] = []
@@ -208,78 +215,6 @@ class Workload:
             # while still retaining a total_iodepth value if one is passed. We can then
             # use the total_iodepth value to add into the output_dir so we can read it
             # in post-processing.
-
-    def _get_iodepth_key(self, configuration_keys: list[str]) -> str:
-        """
-        Get the range of iodepth values to use for this test. This will either
-        be the list of total_iodepth values if the total_iodepth key exists,
-        or the iodepth value if it does not
-        """
-        iodepth_key: str = "iodepth"
-        if "total_iodepth" in configuration_keys:
-            iodepth_key = "total_iodepth"
-
-        return iodepth_key
-
-    def _calculate_iodepth_per_target(self, number_of_targets: int, iodepth: int, iodepth_key: str) -> dict[int, int]:
-        """
-        Calculate the desired iodepth per target for a single benchmark run.
-        If total_iodepth is to be used calculate what the iodepth per target
-        should be and return that, otherwise return the iodepth value for each
-        target
-        """
-        if iodepth_key == "total_iodepth":
-            return self._calculate_iodepth_per_target_from_total_iodepth(number_of_targets, iodepth)
-
-        return self._set_iodepth_for_every_target(number_of_targets, iodepth)
-
-    def _calculate_iodepth_per_target_from_total_iodepth(
-        self, number_of_targets: int, total_desired_iodepth: int
-    ) -> dict[int, int]:
-        """
-        Given the total desired iodepth and the number of targets from the
-        configuration yaml file, calculate the iodepth for each target
-
-        If the iodepth specified in total_iodepth is too small to allow
-        an iodepth of 1 per target, then reduce the number of targets
-        used to allow an iodepth of 1 per volume.
-        """
-        queue_depths: dict[int, int] = {}
-
-        if number_of_targets > total_desired_iodepth:
-            log.warning(
-                "The total iodepth requested: %s is less than 1 per target (%s)",
-                total_desired_iodepth,
-                number_of_targets,
-            )
-            log.warning(
-                "Number of volumes per client will be reduced from %s to %s", number_of_targets, total_desired_iodepth
-            )
-            number_of_targets = total_desired_iodepth
-
-        iodepth_per_target: int = total_desired_iodepth // number_of_targets
-        remainder: int = total_desired_iodepth % number_of_targets
-
-        for target_id in range(number_of_targets):
-            iodepth: int = iodepth_per_target
-
-            if remainder > 0:
-                iodepth += 1
-                remainder -= 1
-            queue_depths[target_id] = iodepth
-
-        return queue_depths
-
-    def _set_iodepth_for_every_target(self, number_of_targets: int, iodepth: int) -> dict[int, int]:
-        """
-        Given an iodepth value and the number of targets return a dictionary
-        that contains the desired iodepth value for each target
-        """
-        queue_depths: dict[int, int] = {}
-        for target_id in range(number_of_targets):
-            queue_depths[target_id] = iodepth
-
-        return queue_depths
 
     def __str__(self) -> str:
         return f"Name: {self._name}."

@@ -166,6 +166,59 @@ class TestWorkloads(unittest.TestCase):
     @patch("workloads.workloads.make_remote_dir")
     @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
+    @patch("workloads.workloads.sleep")
+    def test_each_process_waited_exactly_once(
+        self,
+        mock_sleep: MagicMock,
+        mock_getnodes: MagicMock,
+        mock_monitoring: MagicMock,
+        mock_make_remote_dir: MagicMock,
+        mock_pdsh: MagicMock,
+    ) -> None:
+        """Each pdsh process must be waited exactly once, not re-waited across param sets.
+
+        The bug: declaring 'processes = []' outside the parameter-set loop caused
+        completed processes from earlier sets to accumulate and be re-waited on
+        every subsequent iteration.  This test uses a config that produces multiple
+        parameter sets (iodepth has two values) and asserts that every mock process
+        returned by pdsh has wait() called exactly once.
+        """
+        mock_getnodes.return_value = "client1"
+        # Each call to pdsh() returns a distinct mock so we can track wait() independently.
+        process_mocks: list[MagicMock] = [MagicMock() for _ in range(10)]
+        mock_pdsh.side_effect = process_mocks
+
+        # One workload, two iodepth values → two parameter sets, one fio command each.
+        config: dict[str, Any] = {
+            "workloads": {
+                "wl": {
+                    "mode": "randwrite",
+                    "iodepth": ["4", "8"],
+                    "volumes_per_client": "1",
+                },
+            },
+        }
+
+        workloads: Workloads = self._create_workloads(config)
+        workloads.set_benchmark_type("rbdfio")
+        workloads.set_executable("/usr/bin/fio")
+
+        workloads.run()
+
+        # Count how many distinct process mocks were actually consumed by pdsh.
+        processes_used = [m for m in process_mocks if m.wait.called]
+        # Every consumed process must have been waited exactly once.
+        for proc in processes_used:
+            self.assertEqual(
+                proc.wait.call_count,
+                1,
+                f"Expected wait() called exactly once per process, got {proc.wait.call_count}",
+            )
+
+    @patch("workloads.workloads.pdsh")
+    @patch("workloads.workloads.make_remote_dir")
+    @patch("workloads.workloads.MonitoringFactory")
+    @patch("workloads.workloads.getnodes")
     def test_run_with_script(
         self,
         mock_getnodes: MagicMock,

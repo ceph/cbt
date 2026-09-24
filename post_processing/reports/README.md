@@ -1,5 +1,21 @@
 # Reports
 
+## Limitations
+
+### `bssplit` and `bsrange` are not supported by report generation
+
+The post-processing report pipeline reads `global_options['bs']` directly from FIO's
+JSON output to determine the block size for each run.  When FIO is invoked with
+`--bssplit` or `--bsrange` instead of `--bs`, that key is absent from the JSON and
+report generation will fail with a `KeyError`.
+
+Do not use `bssplit` or `bsrange` in benchmark configurations where report generation
+is required.  Use a plain `bs` (or `op_size`) value instead.
+
+Support for multi-block-size runs in report generation is tracked as Phase E of the
+FIO benchmark refactor plan (`docs/fio_refactor_completion_plan.md`).
+
+
 Produces a report in github markdown, and optionally pdf format that includes a summary table and the relevant
 plots from the CBT run.
 

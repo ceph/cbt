@@ -1,36 +1,37 @@
 """Builds the elbencho command line for a single S3 workload instance.
 
 It returns the full executable string that can be used to run a cli command.
-It is instantiated by ``Workload._create_command_class`` as part of the 
+It is instantiated by ``Workload._create_command_class`` as part of the
 shared Workloads pipeline."""
 
 import os
 import re
 import shlex
 from logging import Logger, getLogger
+from typing import ClassVar, Optional
 
 from cli_options import CliOptions
 from command.command import Command
 
 log: Logger = getLogger("cbt")
 
-_BS_SUFFIXES = {"k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
+_BS_SUFFIXES = {"k": 1024, "m": 1024**2, "g": 1024**3}
 
 
 class ElbenchoCommand(Command):
     """A single elbencho S3 command line for one run cell."""
 
-    _MODE_FLAGS = {
-        "write":     ["--write"],
-        "read":      ["--read"],
+    _MODE_FLAGS: ClassVar[dict[str, list[str]]] = {
+        "write": ["--write"],
+        "read": ["--read"],
         "readwrite": ["--write", "--read"],
-        "stat":      ["--stat"],
-        "list":      ["--s3listobjpar"],
+        "stat": ["--stat"],
+        "list": ["--s3listobjpar"],
     }
 
-    _MODES_NO_BLOCKSIZE = {"stat", "list"}
+    _MODES_NO_BLOCKSIZE: ClassVar[set[str]] = {"stat", "list"}
 
-    def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
+    def __init__(self, options: dict[str, Optional[str]], workload_output_directory: str) -> None:
         # Must be set before super().__init__() because the base constructor calls _parse_options().
         self._workload_output_directory: str = workload_output_directory
         super().__init__(options)
@@ -42,6 +43,7 @@ class ElbenchoCommand(Command):
 
     @staticmethod
     def parse_blocksize_to_bytes(blocksize: str) -> int:
+        """Convert a blocksize string with optional suffix (e.g. '4k', '1m') to integer bytes."""
         s = str(blocksize).strip().lower()
         m = re.fullmatch(r"(\d+(?:\.\d+)?)([kmg]?)", s)
         if not m:
@@ -56,11 +58,7 @@ class ElbenchoCommand(Command):
 
         config_str = auth.get("config", "")
         if config_str:
-            pairs = dict(
-                kv.split("=", 1)
-                for kv in config_str.split(";")
-                if "=" in kv
-            )
+            pairs = dict(kv.split("=", 1) for kv in config_str.split(";") if "=" in kv)
             if "url" in pairs:
                 flags += ["--s3endpoints", pairs["url"]]
             if "access_key" in pairs:
@@ -78,16 +76,16 @@ class ElbenchoCommand(Command):
     # Command ABC implementation
     # ------------------------------------------------------------------
 
-    def _parse_options(self, options: dict[str, str]) -> CliOptions:
+    def _parse_options(self, options: dict[str, Optional[str]]) -> CliOptions:
         # Populate CliOptions with parsed options and defaults.
         parsed_options: CliOptions = CliOptions()
 
         parsed_options["mode"] = options.get("mode")
         parsed_options["s3_bucket"] = options.get("s3_bucket")
-        parsed_options["s3_region"] = options.get("s3_region", "default")
-        parsed_options["threads"] = str(options.get("threads", 1))
-        parsed_options["blocksize"] = str(options.get("blocksize", "4k"))
-        parsed_options["iodepth"] = str(options.get("iodepth", 1))
+        parsed_options["s3_region"] = options.get("s3_region") or "default"
+        parsed_options["threads"] = str(options.get("threads") or 1)
+        parsed_options["blocksize"] = str(options.get("blocksize") or "4k")
+        parsed_options["iodepth"] = str(options.get("iodepth") or 1)
 
         # Optional value flags
         for key in ("size", "num_objects", "num_dirs", "duration", "hosts"):
@@ -98,12 +96,12 @@ class ElbenchoCommand(Command):
         for key in ("deldirs", "s3nompcheck", "mkdirs"):
             parsed_options[key] = "true" if options.get(key) else None
 
-        parsed_options["s3_auth_config"] = options.get("s3_auth_config", "")
-        parsed_options["s3_session_token"] = options.get("s3_session_token", "")
+        parsed_options["s3_auth_config"] = options.get("s3_auth_config") or ""
+        parsed_options["s3_session_token"] = options.get("s3_session_token") or ""
 
         return parsed_options
 
-    def _parse_global_options(self, options: dict[str, str]) -> CliOptions:
+    def _parse_global_options(self, options: dict[str, Optional[str]]) -> CliOptions:
         return CliOptions(options)
 
     def _generate_output_directory_path(self) -> str:
@@ -136,7 +134,10 @@ class ElbenchoCommand(Command):
             log.warning(
                 "Elbencho: mode '%s' is not yet supported by the formatter. "
                 "Skipping run (blocksize=%s, threads=%s, iodepth=%s).",
-                mode, options["blocksize"], options["threads"], options["iodepth"],
+                mode,
+                options["blocksize"],
+                options["threads"],
+                options["iodepth"],
             )
             return ""
 
@@ -165,10 +166,12 @@ class ElbenchoCommand(Command):
         if options["hosts"] is not None:
             cmd_parts += ["--hosts", str(options["hosts"])]
 
-        cmd_parts += self.build_auth_flags({
-            "config": options["s3_auth_config"] or "",
-            "s3_session_token": options["s3_session_token"] or "",
-        })
+        cmd_parts += self.build_auth_flags(
+            {
+                "config": options["s3_auth_config"] or "",
+                "s3_session_token": options["s3_session_token"] or "",
+            }
+        )
         cmd_parts += ["--s3region", str(options["s3_region"])]
         cmd_parts += ["--resfile", os.path.join(self._generate_output_directory_path(), "result.csv")]
 
