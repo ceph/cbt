@@ -77,6 +77,45 @@ class Workload:
 
         yield from unique_output_directories
 
+    def phase_duration_secs(self) -> Optional[int]:
+        """Return the estimated duration in seconds for a single parameter-set run.
+
+        Uses the workload's own resolved options (workload-level values take
+        precedence over global benchmark values via :meth:`add_global_options`),
+        so this matches the ``--runtime`` and ``--ramp_time`` values that will
+        actually be passed to the I/O exerciser.
+
+        Benchmarks that express run length as ``duration`` (e.g. elbencho) are
+        supported.  Setting both ``time`` and ``duration`` in the same workload
+        is a configuration error and raises :exc:`ValueError`.
+
+        Returns ``None`` when neither ``time`` nor ``duration`` is configured.
+        """
+        has_time = self._all_options.get("time") is not None
+        has_duration = self._all_options.get("duration") is not None
+        if has_time and has_duration:
+            raise ValueError(f"Workload '{self._name}': 'time' and 'duration' are mutually exclusive — set only one.")
+        if has_time:
+            run_secs = int(str(self._all_options["time"]))
+            ramp_secs = int(str(self._all_options.get("ramp", 0))) or 0
+            return run_secs + ramp_secs
+        if has_duration:
+            return int(str(self._all_options["duration"]))
+        return None
+
+    def param_set_count(self) -> int:
+        """Return the number of parameter-set iterations this workload will run.
+
+        This is the product of the lengths of all list-valued options — the
+        same expansion that ``all_configs`` performs — without constructing
+        full config objects.  Used by :meth:`Workloads.estimate_duration`.
+        """
+        count = 1
+        for value in self._all_options.values():
+            if isinstance(value, list):
+                count *= len(value)
+        return max(count, 1)
+
     def get_name(self) -> str:
         """
         Return the name of this workload

@@ -54,6 +54,12 @@ class Fio(Benchmark):
             return True
         return False
 
+    def estimate_duration(self) -> int:
+        """Estimate run-phase seconds: runtime + ramp time."""
+        total = int(self.time) if self.time is not None else 0
+        total += int(self.ramp) if self.ramp is not None else 0
+        return total
+
     def initialize(self):
         super(Fio, self).initialize()
 
