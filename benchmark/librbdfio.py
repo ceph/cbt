@@ -92,6 +92,20 @@ class LibrbdFio(Benchmark):
             rbd_name = f"cbt-rbdfio-`{common.get_fqdn_cmd()}`-file-{proc_num:d}"
             self.names += f"--name={rbd_name} "
 
+    def estimate_duration(self) -> int:
+        """Estimate run-phase seconds.
+
+        When workloads are configured, delegates to
+        :meth:`~workloads.workloads.Workloads.estimate_duration` which accounts
+        for the number of parameter-set combinations across all workloads.
+        Falls back to plain ``time + ramp`` for non-workload runs.
+        """
+        if self._workloads.exist():
+            return self._workloads.estimate_duration()
+        total = int(self.time) if self.time is not None else 0
+        total += int(self.ramp) if self.ramp is not None else 0
+        return total
+
     def exists(self):
         """
         Verify whether the out_dir exists

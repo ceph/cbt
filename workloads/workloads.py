@@ -7,6 +7,7 @@ from logging import Logger, getLogger
 from time import sleep
 from typing import Optional, Union
 
+import progress
 from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
 from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
@@ -50,7 +51,21 @@ class Workloads:
         """
         return bool(self._workloads)
 
-    def run(self) -> None:
+    def estimate_duration(self) -> int:
+        """Estimate total wall-clock seconds for all workloads.
+
+        For each workload, delegates to :meth:`~workloads.workload.Workload.phase_duration_secs`
+        and multiplies by the number of parameter-set combinations.  Returns 0
+        when no workloads are configured or when no duration is set on any workload.
+        """
+        total = 0
+        for workload in self._workloads:
+            per_set_secs = workload.phase_duration_secs()
+            if per_set_secs:
+                total += workload.param_set_count() * per_set_secs
+        return total
+
+    def run(self) -> None:  # pylint: disable=too-many-locals
         """
         Run all the I/O exerciser commands for each workload in turn, including
         any scripts that should be run between workloads
@@ -70,7 +85,6 @@ class Workloads:
         ramp_time: str = f"{self._benchmark_configuration.get('ramp', '')}"
 
         total_workloads = len(self._workloads)
-        processes: list[Union[CheckedPopen, CheckedPopenLocal]] = []
         for workload_index, workload in enumerate(self._workloads, start=1):
             workload_name = workload.get_name()
             log.info("Starting workload '%s' (%d/%d)...", workload_name, workload_index, total_workloads)
@@ -95,23 +109,31 @@ class Workloads:
                     total_param_sets,
                     output_directory,
                 )
-                if script_command:
-                    pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
+                phase_desc = f"Workload '{workload_name}' {param_index}/{total_param_sets}"
+                # Use the workload's own resolved time+ramp so the bar matches
+                # the --runtime/--ramp_time values actually passed to the exerciser.
+                phase_secs: Optional[int] = workload.phase_duration_secs()
 
-                for fio_command in fio_command_list:
-                    processes.append(pdsh(getnodes("clients"), fio_command))  # type: ignore[no-untyped-call]
+                with progress.phase_bar(phase_desc, phase_secs, overall=progress.get_overall_bar()):
+                    if script_command:
+                        pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
 
-                # Sleep for the ramp time and then collect stats
-                if ramp_time:
-                    log.info("Ramp time: waiting %ss before collecting stats...", ramp_time)
-                    sleep(int(ramp_time))
+                    processes: list[Union[CheckedPopen, CheckedPopenLocal]] = [
+                        pdsh(getnodes("clients"), fio_command)  # type: ignore[no-untyped-call]
+                        for fio_command in fio_command_list
+                    ]
 
-                MonitoringFactory.start(output_directory)
+                    # Sleep for the ramp time and then collect stats
+                    if ramp_time:
+                        log.info("Ramp time: waiting %ss before collecting stats...", ramp_time)
+                        sleep(int(ramp_time))
 
-                for process in processes:
-                    process.wait()  # type: ignore[no-untyped-call]
+                    MonitoringFactory.start(output_directory)
 
-                MonitoringFactory.stop()
+                    for process in processes:
+                        process.wait()  # type: ignore[no-untyped-call]
+
+                    MonitoringFactory.stop()
                 log.info("Workload '%s': parameter set %d/%d complete.", workload_name, param_index, total_param_sets)
 
             log.info("Workload '%s' complete (%d/%d).", workload_name, workload_index, total_workloads)

@@ -140,6 +140,15 @@ class Benchmark(object):
     def prefill(self):
         pass
 
+    def estimate_duration(self) -> int:
+        """Return estimated total wall-clock seconds for all run-phase work.
+
+        The base implementation returns 0.  Concrete benchmarks should override
+        this to sum up their configured ``time``, ``ramp``, and any prefill
+        durations so that :mod:`progress` can size the overall progress bar.
+        """
+        return 0
+
     def run(self):
         if self.osd_ra and self.osd_ra_changed:
             logger.info("Setting OSD Read Ahead to: %s", self.osd_ra)
