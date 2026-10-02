@@ -30,11 +30,13 @@ Both have been added to the requirements.txt file in the CBT project.
 ### Dependencies for pdf report generation
 To generate a report in pdf format there are 2 additional requirements
 
-A working install of tex is required on the base operating system, which can be installed using the package manager.
-For Red Hat based OSes this can be achieved by running `yum install texlive`
+A working install of tex (`texlive`) is required on the base operating system, which can be installed using the package manager.  
+For Red Hat based OSes this can be achieved by running `yum install texlive`  
+For Debian based OSes `apt install texlive-latex-extra` may be needed in addition to `apt install texlive`  
 
-[Pandoc](https://pandoc.org/), which can be installed on most Linux distributions using the included package manager.
-For Red Hat based OSes use `yum install pandoc`
+[Pandoc](https://pandoc.org/), which can be installed on most Linux distributions using the included package manager.  
+For Red Hat based OSes use `yum install pandoc`  
+For Debian based OSes use `apt install pandoc`  
 
 The minimum pandoc level fully tested is `2.14.0.3` which is available for RHEL 9.
 Previous versions of pandoc have been shown to be error prone.
