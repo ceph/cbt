@@ -20,6 +20,21 @@ from post_processing.common import (
 from post_processing.plotter.common_format_plotter import CommonFormatPlotter
 from post_processing.post_processing_types import CommonFormatDataType
 
+# A fixed palette of perceptually distinct xkcd colours used to give each
+# archive a unique line colour on comparison plots.  The list is intentionally
+# ordered so that the first few entries are easy to tell apart even for common
+# forms of colour-vision deficiency.
+COMPARISON_COLOUR_PALETTE: list[str] = [
+    "xkcd:cerulean",  # blue
+    "xkcd:orange",  # orange
+    "xkcd:green",  # green
+    "xkcd:red",  # red
+    "xkcd:purple",  # purple
+    "xkcd:brown",  # brown
+    "xkcd:magenta",  # magenta
+    "xkcd:teal",  # teal
+]
+
 log: Logger = getLogger("cbt.plotter")
 
 
@@ -71,40 +86,45 @@ class DirectoryComparisonPlotter(CommonFormatPlotter):
                 continue
 
             for file_name in common_file_names:
-                output_file_path: str = self._generate_output_file_name(files=[Path(file_name)])
+                self._plot_comparison_file(file_name=file_name, vis_directories=vis_directories)
 
-                figure: Figure
-                io_axis: Axes
-                figure, io_axis = self._plotter.subplots()
+    def _plot_comparison_file(self, file_name: str, vis_directories: list[Path]) -> None:
+        """Create and save a single comparison plot for all archives."""
+        output_file_path: str = self._generate_output_file_name(files=[Path(file_name)])
 
-                for vis_dir in vis_directories:
-                    file_path = vis_dir / file_name
-                    if not file_path.exists():
-                        continue
+        figure: Figure
+        io_axis: Axes
+        figure, io_axis = self._plotter.subplots()
 
-                    file_data: CommonFormatDataType = read_intermediate_file(f"{file_path}")
-                    # Use the archive directory name (2 levels up from visualisation) for the label
-                    archive_name = (
-                        vis_dir.parent.parent.name if vis_dir.parent.name != "visualisation" else vis_dir.parent.name
-                    )
-                    self._add_single_file_data_with_optional_errorbars(
-                        file_data=file_data,
-                        main_axes=io_axis,
-                        label=archive_name,
-                        plot_error_bars=False,
-                        plot_resource_usage=False,
-                    )
+        for idx, vis_dir in enumerate(vis_directories):
+            file_path = vis_dir / file_name
+            if not file_path.exists():
+                continue
 
-                # make sure we add the legend to the plot
-                figure.legend(  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable]
-                    bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2
-                )
+            file_data: CommonFormatDataType = read_intermediate_file(f"{file_path}")
+            archive_name = next(
+                (a.name for a in self._archive_directories if vis_dir.is_relative_to(a)),
+                vis_dir.parent.name,
+            )
+            self._add_single_file_data_with_optional_errorbars(
+                file_data=file_data,
+                main_axes=io_axis,
+                label=archive_name,
+                plot_error_bars=False,
+                plot_resource_usage=False,
+                colour=COMPARISON_COLOUR_PALETTE[idx % len(COMPARISON_COLOUR_PALETTE)],
+            )
 
-                self._add_title(source_files=[Path(file_name)])
-                self._set_axis()
+        # make sure we add the legend to the plot
+        figure.legend(  # pyright: ignore[reportUnknownMemberType, reportPossiblyUnboundVariable]
+            bbox_to_anchor=(0.5, -0.1), loc="upper center", ncol=2
+        )
 
-                self._save_plot(file_path=output_file_path)
-                self._clear_plot()
+        self._add_title(source_files=[Path(file_name)])
+        self._set_axis()
+
+        self._save_plot(file_path=output_file_path)
+        self._clear_plot()
 
     def _generate_output_file_name(self, files: list[Path]) -> str:
         # we know we will only ever be passed a single file name

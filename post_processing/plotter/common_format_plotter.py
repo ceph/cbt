@@ -438,7 +438,8 @@ class CommonFormatPlotter(ABC):
                 if resource_plotting_enabled and not point_result.resource_available:
                     if not cpu_warning_logged:
                         log.warning(
-                            "Unable to plot CPU usage: CPU data not found in intermediate files. Disabling resource usage plotting."
+                            "Unable to plot CPU usage: CPU data not found in intermediate files. "
+                            "Disabling resource usage plotting."
                         )
                         cpu_warning_logged = True
                     resource_plotting_enabled = False
@@ -474,10 +475,11 @@ class CommonFormatPlotter(ABC):
         io_plotter: IOPlotter,
         cpu_plotter: CPUPlotter,
         plot_result: PlotDataResult,
+        colour: str = "",
     ) -> None:
         """Render the IO and optional CPU plots."""
         io_plotter.plot_with_error_bars(
-            x_data=plot_result.x_data, error_data=plot_result.error_bars, cap_size=plot_result.cap_size
+            x_data=plot_result.x_data, error_data=plot_result.error_bars, cap_size=plot_result.cap_size, colour=colour
         )
 
         if plot_result.plot_resource_usage:
@@ -490,6 +492,7 @@ class CommonFormatPlotter(ABC):
         plot_error_bars: bool = False,
         plot_resource_usage: bool = False,
         label: Optional[str] = None,
+        colour: str = "",
     ) -> None:
         """
         Add data from a single file to the plot with optional error bars and resource usage.
@@ -503,6 +506,7 @@ class CommonFormatPlotter(ABC):
             plot_error_bars: Whether to include standard deviation error bars
             plot_resource_usage: Whether to include CPU usage on secondary axis
             label: Custom label for the IO plot line (defaults to "IO Details")
+            colour: The colour for the plot line. If empty, defaults to IO_PLOT_DEFAULT_COLOUR.
         """
         # Initialize plotters
         io_plotter, cpu_plotter = self._initialize_plotters(main_axes, label)
@@ -516,7 +520,7 @@ class CommonFormatPlotter(ABC):
         )
 
         # Render plots
-        self._render_plots(io_plotter, cpu_plotter, plot_result)
+        self._render_plots(io_plotter, cpu_plotter, plot_result, colour)
 
     def _save_plot(self, file_path: str) -> None:
         """
