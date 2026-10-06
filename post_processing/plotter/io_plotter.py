@@ -35,7 +35,9 @@ class IOPlotter(AxisPlotter):
         """
         raise NotImplementedError
 
-    def plot_with_error_bars(self, x_data: list[float], error_data: list[float], cap_size: int) -> None:
+    def plot_with_error_bars(
+        self, x_data: list[float], error_data: list[float], cap_size: int, colour: str = ""
+    ) -> None:
         """
         Plot IO data with error bars on the main axes.
 
@@ -43,6 +45,7 @@ class IOPlotter(AxisPlotter):
             x_data: The data for the x-axis (throughput values)
             error_data: The error bar data (standard deviations in milliseconds)
             cap_size: The size of the error bar caps in points. Use 0 for no caps.
+            colour: The colour for the plot line. Defaults to IO_PLOT_DEFAULT_COLOUR.
         """
         io_axis = self._main_axes
         io_axis.set_ylabel(self.y_label)
@@ -53,7 +56,7 @@ class IOPlotter(AxisPlotter):
             yerr=error_data,
             fmt="+-",
             capsize=cap_size,
-            color=IO_PLOT_DEFAULT_COLOUR,
+            color=colour if colour else IO_PLOT_DEFAULT_COLOUR,
             ecolor="xkcd:red",
             label=self._label,
         )

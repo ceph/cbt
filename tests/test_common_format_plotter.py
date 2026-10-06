@@ -318,7 +318,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         self.plotter._render_plots(mock_io_plotter, mock_cpu_plotter, plot_result)
 
         mock_io_plotter.plot_with_error_bars.assert_called_once_with(
-            x_data=[100.0, 200.0], error_data=[0.5, 0.6], cap_size=ERROR_BAR_CAP_SIZE
+            x_data=[100.0, 200.0], error_data=[0.5, 0.6], cap_size=ERROR_BAR_CAP_SIZE, colour=""
         )
         mock_cpu_plotter.plot.assert_not_called()
 
