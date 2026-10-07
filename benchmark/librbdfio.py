@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Union
 
 import common
-from monitoring.monitoring_factory import MonitoringFactory
+import monitoring
 import settings
 from post_processing.post_processing_types import ReportType
 from post_processing.report import Report, ReportOptions
@@ -106,9 +106,9 @@ class LibrbdFio(Benchmark):
         common.clean_remote_dir(self.run_dir)
         common.make_remote_dir(self.run_dir)
         logger.info("Pausing for %ds for idle monitoring.", self.idle_monitor_sleep)
-        MonitoringFactory.start(f"{self.run_dir}idle_monitoring")
+        monitoring.start(f"{self.run_dir}idle_monitoring")
         time.sleep(self.idle_monitor_sleep)
-        MonitoringFactory.stop()
+        monitoring.stop()
         common.sync_files(f"{self.run_dir}/", self.out_dir)
         # Create the recovery image based on test type requested
         if "recovery_test" in self.cluster.config and self.recov_test_type == "background":
@@ -152,7 +152,7 @@ class LibrbdFio(Benchmark):
             self._workloads.run()
         else:
             # Original style
-            MonitoringFactory.start(self.run_dir)
+            monitoring.start(self.run_dir)
             logger.info("Running rbd fio %s test.", self.mode)
             ps = []
             number_of_volumes: int = len(self._iodepth_per_volume.keys())
@@ -167,7 +167,7 @@ class LibrbdFio(Benchmark):
         if "recovery_test" in self.cluster.config:
             self.cluster.wait_recovery_done()
 
-        MonitoringFactory.stop(self.run_dir)
+        monitoring.stop(self.run_dir)
 
         # Finally, get the historic ops
         self.cluster.dump_historic_ops(self.run_dir)
@@ -260,7 +260,7 @@ class LibrbdFio(Benchmark):
         Create a reecovery image
         """
         logger.info("Creating recovery image...")
-        MonitoringFactory.start(f"{self.run_dir}/recovery_pool_monitoring")
+        monitoring.start(f"{self.run_dir}/recovery_pool_monitoring")
         if self.use_existing_volumes is False:
             self.cluster.rmpool(self.recov_pool_name, self.recov_pool_profile)
             self.cluster.mkpool(self.recov_pool_name, self.recov_pool_profile, "rbd")
@@ -274,13 +274,13 @@ class LibrbdFio(Benchmark):
                         self.data_pool,
                         self.vol_object_size,
                     )
-        MonitoringFactory.stop()
+        monitoring.stop()
 
     def mkimages(self):
         """
         Create an RBD pool and a number of volumes per client
         """
-        MonitoringFactory.start(f"{self.run_dir}/pool_monitoring")
+        monitoring.start(f"{self.run_dir}/pool_monitoring")
         if self.use_existing_volumes is False:
             self.cluster.rmpool(self.pool_name, self.pool_profile)
             self.cluster.mkpool(self.pool_name, self.pool_profile, "rbd")
@@ -294,7 +294,7 @@ class LibrbdFio(Benchmark):
                 self.cluster.mkimage(
                     f"cbt-rbdfio-{node}-{volnum:d}", self.vol_size, self.pool_name, self.data_pool, self.vol_object_size
                 )
-        MonitoringFactory.stop()
+        monitoring.stop()
 
     def prefill(self):
         """

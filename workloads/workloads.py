@@ -6,8 +6,8 @@ from logging import Logger, getLogger
 from time import sleep
 from typing import Optional, Union
 
+import monitoring
 from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
-from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import Workload
 from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, WorkloadYamlType
@@ -92,12 +92,12 @@ class Workloads:
                 if ramp_time:
                     sleep(int(ramp_time))
 
-                MonitoringFactory.start(output_directory)
+                monitoring.start(output_directory)  # type: ignore[no-untyped-call]
 
                 for process in processes:
                     process.wait()  # type: ignore[no-untyped-call]
 
-                MonitoringFactory.stop()
+                monitoring.stop()  # type: ignore[no-untyped-call]
 
         log.info("== Workloads completed ==")
 
