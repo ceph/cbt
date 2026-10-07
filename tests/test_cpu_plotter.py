@@ -71,9 +71,6 @@ class TestCPUPlotter(unittest.TestCase):
         # Should set y_label
         self.mock_twin_axes.set_ylabel.assert_called_once_with(CPU_Y_LABEL)
 
-        # Y-axis should always be fixed 0-100%
-        self.mock_twin_axes.set_ylim.assert_called_once_with(0, 100)
-
         # Should call plot on twin axes
         self.mock_twin_axes.plot.assert_called_once()
 
@@ -91,13 +88,11 @@ class TestCPUPlotter(unittest.TestCase):
         # Should set y_label
         self.mock_twin_axes.set_ylabel.assert_called_once_with(CPU_Y_LABEL)
 
-        # Y-axis should always be fixed 0-100%
-        self.mock_twin_axes.set_ylim.assert_called_once_with(0, 100)
-
         # Should call plot twice (once per source)
         self.assertEqual(self.mock_twin_axes.plot.call_count, 2)
-        # Should not add inline legend (legend appears below the plot)
-        self.mock_twin_axes.legend.assert_not_called()
+
+        # Should add legend for multiple sources
+        self.mock_twin_axes.legend.assert_called_once()
 
     def test_cpu_constants(self) -> None:
         """Test CPU plotter constants"""

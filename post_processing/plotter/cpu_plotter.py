@@ -15,15 +15,11 @@ log: Logger = getLogger("plotter")
 CPU_Y_LABEL: str = "System CPU use (%)"
 CPU_PLOT_LABEL: str = "CPU use"
 
-# Color mapping for different resource sources.
-# Colours are verified to be perceptually distinct under normal vision and the three
-# main forms of colour-blindness (deuteranopia, protanopia, tritanopia) using ΔE≥15
-# for every pair. Also distinct from IO lines (xkcd:cerulean) and memory lines.
+# Color mapping for different resource sources
 CPU_SOURCE_COLOURS: dict[str, str] = {
-    "fio": "xkcd:grass green",  # vivid green
-    "collectl": "xkcd:burnt orange",  # deep reddish-orange
-    "top": "xkcd:coral",  # warm pink-red
-    "default": "xkcd:goldenrod",  # bright yellow-gold (legacy single-source fallback)
+    "fio": "xkcd:leaf green",
+    "collectl": "xkcd:sky blue",
+    "default": "xkcd:orange",
 }
 
 
@@ -87,7 +83,6 @@ class CPUPlotter(AxisPlotter):
 
         cpu_axis = self._main_axes.twinx()
         cpu_axis.set_ylabel(CPU_Y_LABEL)
-        cpu_axis.set_ylim(0, 100)
 
         # Plot a line for each source
         for source in sorted(self._y_data_by_source.keys()):
@@ -103,3 +98,7 @@ class CPUPlotter(AxisPlotter):
 
             # Plot this source's data
             cpu_axis.plot(x_data, y_data, label=label, color=source_colour, linestyle="-", linewidth=1.5, marker="o")
+
+        # Add legend if multiple sources
+        if len(self._y_data_by_source) > 1:
+            cpu_axis.legend(loc="upper right")

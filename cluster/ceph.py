@@ -1,6 +1,6 @@
 import common
 import settings
-from monitoring.monitoring_factory import MonitoringFactory
+import monitoring
 import os
 import time
 import uuid
@@ -199,16 +199,16 @@ class Ceph(Cluster):
         self.setup_fs()
 
         # Build the cluster
-        MonitoringFactory.start('%s/creation' % self.monitoring_dir)
+        monitoring.start('%s/creation' % self.monitoring_dir)
         self.make_mons()
         self.start_mgrs()
         self.make_osds()
-        MonitoringFactory.stop()
+        monitoring.stop()
 
         # Check Health
-        MonitoringFactory.start('%s/initial_health_check' % self.monitoring_dir)
+        monitoring.start('%s/initial_health_check' % self.monitoring_dir)
         self.check_health()
-        MonitoringFactory.stop()
+        monitoring.stop()
 
         # Disable scrub and wait for any scrubbing to complete
         self.disable_scrub()
@@ -227,9 +227,9 @@ class Ceph(Cluster):
         self.start_mds()
         # Peform Idle Monitoring
         if self.idle_duration > 0:
-            MonitoringFactory.start("%s/idle_monitoring" % self.monitoring_dir)
+            monitoring.start("%s/idle_monitoring" % self.monitoring_dir)
             time.sleep(self.idle_duration)
-            MonitoringFactory.stop()
+            monitoring.stop()
 
         return True
 
@@ -248,7 +248,7 @@ class Ceph(Cluster):
         common.pdsh(nodes, 'sudo killall -9 radosgw-admin').communicate()
         common.pdsh(nodes, 'sudo /etc/init.d/apache2 stop').communicate()
         common.pdsh(nodes, 'sudo killall -9 pdsh').communicate()
-        MonitoringFactory.stop()
+        monitoring.stop()
 
     def cleanup(self):
         nodes = settings.getnodes('clients', 'osds', 'mons', 'rgws', 'mdss', 'mgrs')

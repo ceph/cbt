@@ -1,6 +1,6 @@
 import common
 import settings
-from monitoring.monitoring_factory import MonitoringFactory
+import monitoring
 import os
 import time
 import logging
@@ -94,7 +94,7 @@ class KvmRbdFio(Benchmark):
         # We'll always drop caches for rados bench
         self.dropcaches()
 
-        MonitoringFactory.start(self.run_dir)
+        monitoring.start(self.run_dir)
 
         time.sleep(5)
         # Run the backfill testing thread if requested
@@ -139,7 +139,7 @@ class KvmRbdFio(Benchmark):
             fio_process_list.append(common.pdsh(clnts, fio_cmd, continue_if_error=False))
         for p in fio_process_list:
             p.communicate()
-        MonitoringFactory.stop(self.run_dir)
+        monitoring.stop(self.run_dir)
         logger.info('Finished rbd fio test')
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)

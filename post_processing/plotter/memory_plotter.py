@@ -4,9 +4,10 @@ data line to a plot
 """
 
 from logging import Logger, getLogger
-from typing import Union
+from typing import Any, Union
 
 from matplotlib.axes import Axes
+from matplotlib.axes._axes import Axes
 from typing_extensions import override
 
 from post_processing.plotter.axis_plotter import AxisPlotter
@@ -16,15 +17,11 @@ log: Logger = getLogger("plotter")
 MEMORY_Y_LABEL: str = "Memory use (Mb)"
 MEMORY_PLOT_LABEL: str = "Memory use"
 
-# Color mapping for different resource sources.
-# Colours are verified to be perceptually distinct under normal vision and the three
-# main forms of colour-blindness (deuteranopia, protanopia, tritanopia) using ΔE≥15
-# for every pair. Also distinct from IO lines (xkcd:cerulean) and CPU lines.
+# Color mapping for different resource sources
 MEMORY_SOURCE_COLOURS: dict[str, str] = {
-    "fio": "xkcd:periwinkle",  # blue-purple
-    "collectl": "xkcd:magenta",  # vivid pink-purple
-    "top": "xkcd:slate blue",  # cool blue-grey
-    "default": "xkcd:moss green",  # muted earthy green (legacy single-source fallback)
+    "fio": "xkcd:purple",
+    "collectl": "xkcd:red",
+    "default": "xkcd:orange",
 }
 
 

@@ -12,7 +12,6 @@ from pathlib import Path
 from post_processing.run_results.resource_result import ResourceResult
 from post_processing.run_results.resources.collectl_resource import CollectlResource
 from post_processing.run_results.resources.fio_resource import FIOResource
-from post_processing.run_results.resources.top_resource import TopResource
 
 log: Logger = getLogger("formatter")
 
@@ -51,16 +50,6 @@ def get_all_resources(file_path: Path) -> list[ResourceResult]:
             log.debug("Added Collectl resource for %s", file_path)
         except Exception as e:
             log.warning("Could not create Collectl resource for %s: %s", file_path, e)
-
-    # Check for top monitoring data
-    top_dir = file_path.parent / "top"
-    if top_dir.exists() and top_dir.is_dir():
-        try:
-            top_resource = TopResource(file_path)
-            resources.append(top_resource)
-            log.debug("Added Top resource for %s", file_path)
-        except Exception as e:
-            log.warning("Could not create Top resource for %s: %s", file_path, e)
 
     if not resources:
         log.error("No resource parsers available for %s", file_path)
