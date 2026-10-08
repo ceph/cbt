@@ -486,5 +486,182 @@ class TestElbenchoEstimateDuration(unittest.TestCase):
         self.assertIn("mutually exclusive", str(ctx.exception))
 
 
+# ---------------------------------------------------------------------------
+# total_iodepth / num_buckets (multi-bucket) tests
+# ---------------------------------------------------------------------------
+
+
+class TestTotalIodepthValidation(unittest.TestCase):
+    """Construction-time validation for total_iodepth and num_buckets."""
+
+    archive_dir = "/tmp"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
+        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+
+    def _make(self, workloads: dict[str, Any]) -> Elbencho:
+        cfg = dict(_MINIMAL_CONFIG, workloads=workloads)
+        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
+        assert isinstance(b, Elbencho)
+        return b
+
+    def test_non_integer_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": "bad"}})
+        self.assertIn("total_iodepth value 'bad' is not an integer", str(ctx.exception))
+
+    def test_non_integer_num_buckets_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "num_buckets": "bad"}})
+        self.assertIn("num_buckets value 'bad' is not an integer", str(ctx.exception))
+
+    def test_iodepth_and_total_iodepth_mutually_exclusive(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "iodepth": 4, "total_iodepth": 16}})
+        self.assertIn("mutually exclusive", str(ctx.exception))
+
+    def test_valid_total_iodepth_and_num_buckets_accepted(self) -> None:
+        b = self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": [4, 8, 16], "num_buckets": 4}})
+        self.assertTrue(b._workloads.exist())
+
+    def test_zero_num_buckets_raises(self) -> None:
+        # num_buckets=0 with total_iodepth would otherwise divide by zero in the
+        # split; reject it at construction with a clear, key-named message.
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 8, "num_buckets": 0}})
+        self.assertIn("num_buckets", str(ctx.exception))
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+    def test_zero_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 0}})
+        self.assertIn("total_iodepth", str(ctx.exception))
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+    def test_negative_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": -4}})
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+
+class TestTotalIodepthRunLoop(unittest.TestCase):
+    """Run-loop fan-out when total_iodepth / num_buckets are set."""
+
+    archive_dir = "/tmp"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
+        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+
+    def setUp(self) -> None:
+        for target in (
+            "monitoring.monitoring_factory.MonitoringFactory.start",
+            "monitoring.monitoring_factory.MonitoringFactory.stop",
+        ):
+            patcher = patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _make(self, workloads: dict[str, Any]) -> Elbencho:
+        cfg = dict(
+            _MINIMAL_CONFIG,
+            cmd_path="/usr/local/bin/elbencho",
+            auth={},
+            workloads=workloads,
+        )
+        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
+        assert isinstance(b, Elbencho)
+        return b
+
+    @patch.object(AsyncSSHExecutor, "make_remote_dir")
+    @patch.object(AsyncSSHExecutor, "run_command")
+    def test_total_iodepth_splits_across_distinct_buckets(self, mock_exec: Any, mock_mkdir: Any) -> None:
+        """total_iodepth=8 over num_buckets=2 -> 2 commands, iodepth 4 each, distinct buckets."""
+        mock_exec.return_value = []
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k",
+                   "threads": 4, "total_iodepth": [8], "num_buckets": 2}}
+        )
+        b._run_workloads()
+        self.assertEqual(2, mock_exec.call_count, "one command per active bucket")
+        commands = [c.args[1] for c in mock_exec.call_args_list]
+        for cmd in commands:
+            self.assertIn("--iodepth 4", cmd, f"8 total / 2 buckets -> 4 each: {cmd}")
+        buckets = sorted(cmd.split("s3://")[-1] for cmd in commands)
+        self.assertEqual(["bkt-0", "bkt-1"], buckets, "buckets must be distinctly suffixed")
+
+    @patch.object(AsyncSSHExecutor, "make_remote_dir")
+    @patch.object(AsyncSSHExecutor, "run_command")
+    def test_multi_bucket_result_files_are_distinct(self, mock_exec: Any, mock_mkdir: Any) -> None:
+        """Each concurrent per-bucket process must write its own result file;
+        a shared result.csv would let the parallel processes clobber each other."""
+        mock_exec.return_value = []
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k",
+                   "threads": 4, "total_iodepth": [8], "num_buckets": 2}}
+        )
+        b._run_workloads()
+        commands = [c.args[1] for c in mock_exec.call_args_list]
+        resfiles = [cmd.split("--resfile ")[1].split(" ", 1)[0] for cmd in commands]
+        self.assertEqual(2, len(set(resfiles)), f"per-bucket resfiles must be distinct: {resfiles}")
+
+    @patch.object(AsyncSSHExecutor, "make_remote_dir")
+    @patch.object(AsyncSSHExecutor, "run_command")
+    def test_total_iodepth_directory_segment_present(self, mock_exec: Any, mock_mkdir: Any) -> None:
+        mock_exec.return_value = []
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k",
+                   "threads": 4, "total_iodepth": [8], "num_buckets": 2}}
+        )
+        b._run_workloads()
+        run_dirs = [c.args[1] for c in mock_mkdir.call_args_list]
+        self.assertTrue(
+            any("total_iodepth-8/iodepth-004" in d for d in run_dirs),
+            f"total_iodepth segment missing from: {run_dirs}",
+        )
+
+    @patch.object(AsyncSSHExecutor, "make_remote_dir")
+    @patch.object(AsyncSSHExecutor, "run_command")
+    def test_total_iodepth_below_num_buckets_caps_active_buckets(self, mock_exec: Any, mock_mkdir: Any) -> None:
+        """total_iodepth=2 < num_buckets=5 -> only 2 buckets run, iodepth 1 each."""
+        mock_exec.return_value = []
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k",
+                   "threads": 2, "total_iodepth": [2], "num_buckets": 5}}
+        )
+        b._run_workloads()
+        self.assertEqual(2, mock_exec.call_count, "active buckets capped to total_iodepth")
+        for c in mock_exec.call_args_list:
+            self.assertIn("--iodepth 1", c.args[1])
+
+    @patch.object(AsyncSSHExecutor, "make_remote_dir")
+    @patch.object(AsyncSSHExecutor, "run_command")
+    def test_total_iodepth_list_sweeps_one_cell_per_value(self, mock_exec: Any, mock_mkdir: Any) -> None:
+        """total_iodepth=[4, 8] x 2 buckets = 4 commands."""
+        mock_exec.return_value = []
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k",
+                   "threads": 2, "total_iodepth": [4, 8], "num_buckets": 2}}
+        )
+        b._run_workloads()
+        self.assertEqual(4, mock_exec.call_count, "2 total_iodepth values x 2 buckets")
+
+    @patch.object(AsyncSSHExecutor, "make_remote_dir")
+    @patch.object(AsyncSSHExecutor, "run_command")
+    def test_num_buckets_without_total_iodepth_runs_single_bucket(self, mock_exec: Any, mock_mkdir: Any) -> None:
+        """num_buckets is ignored without total_iodepth: one command, base bucket."""
+        mock_exec.return_value = []
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k",
+                   "threads": 2, "iodepth": 4, "num_buckets": 4}}
+        )
+        b._run_workloads()
+        self.assertEqual(1, mock_exec.call_count, "num_buckets alone must not fan out")
+        self.assertTrue(mock_exec.call_args.args[1].endswith("s3://bkt"))
+
+
 if __name__ == "__main__":
     unittest.main()

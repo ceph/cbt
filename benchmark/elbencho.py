@@ -146,15 +146,25 @@ class Elbencho(Benchmark):
             for field in ("mode", "s3_bucket"):
                 if field not in params:
                     raise ValueError(f"workload '{name}' missing required key '{field}'")
-            for field in ("threads", "iodepth"):
+            if "iodepth" in params and "total_iodepth" in params:
+                raise ValueError(
+                    f"workload '{name}': 'iodepth' and 'total_iodepth' are mutually exclusive — set only one"
+                )
+            # total_iodepth and num_buckets drive the per-bucket split, so a
+            # zero or negative value would divide by zero or yield no commands;
+            # require them to be >= 1.
+            positive_fields = ("total_iodepth", "num_buckets")
+            for field in ("threads", "iodepth", "total_iodepth", "num_buckets"):
                 values = params.get(field)
                 if values is None:
                     continue
                 for value in (values if isinstance(values, list) else [values]):
                     try:
-                        int(value)
+                        parsed = int(value)
                     except (TypeError, ValueError) as exc:
                         raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+                    if field in positive_fields and parsed < 1:
+                        raise ValueError(f"workload '{name}': {field} value {value!r} must be >= 1")
 
     # ------------------------------------------------------------------
     # Run loop

@@ -268,6 +268,53 @@ class TestWorkload(unittest.TestCase):
 
         self.assertIn(self.workload_name, str_repr)
         self.assertIn("Name:", str_repr)
+
+    def test_elbencho_total_iodepth_fans_out_one_command_per_bucket(self) -> None:
+        """total_iodepth split across num_buckets yields one command per active
+        bucket, each with the divided iodepth and its own bucket suffix."""
+        options: WorkloadType = {
+            "mode": "write",
+            "s3_bucket": "cbt-benchmark",
+            "blocksize": "4k",
+            "threads": "8",
+            "total_iodepth": "16",
+            "num_buckets": "4",
+        }
+        workload = Workload("multi_bucket", options, self.base_run_directory)
+        workload.set_benchmark_type("elbencho")
+        workload.set_executable("/usr/local/bin/elbencho")
+
+        param_sets = list(workload.get_commands_list())
+        self.assertEqual(1, len(param_sets), "expected a single run cell")
+        output_dir, commands = param_sets[0]
+        self.assertIn("total_iodepth-16/iodepth-004", output_dir)
+        self.assertEqual(4, len(commands), "expected one command per bucket")
+        for i, cmd in enumerate(commands):
+            self.assertIn(f"s3://cbt-benchmark-{i}", cmd)
+            self.assertIn("--iodepth 4", cmd, "16 total / 4 buckets -> 4 per bucket")
+
+    def test_elbencho_num_buckets_without_total_iodepth_is_single_command(self) -> None:
+        """Without total_iodepth, num_buckets is ignored: a single command runs
+        against the base bucket name (contract in yaml-config-reference.md)."""
+        options: WorkloadType = {
+            "mode": "write",
+            "s3_bucket": "cbt-benchmark",
+            "blocksize": "4k",
+            "threads": "8",
+            "iodepth": "4",
+            "num_buckets": "4",
+        }
+        workload = Workload("single", options, self.base_run_directory)
+        workload.set_benchmark_type("elbencho")
+        workload.set_executable("/usr/local/bin/elbencho")
+
+        param_sets = list(workload.get_commands_list())
+        self.assertEqual(1, len(param_sets))
+        _output_dir, commands = param_sets[0]
+        self.assertEqual(1, len(commands), "num_buckets must be ignored without total_iodepth")
+        self.assertTrue(commands[0].endswith("s3://cbt-benchmark"), commands[0])
+
+
 if __name__ == "__main__":
     unittest.main()
 
