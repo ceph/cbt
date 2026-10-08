@@ -1,13 +1,13 @@
 """Blktrace monitoring backend."""
 
-import logging
+from logging import Logger, getLogger
 from typing import Any, ClassVar, Optional, cast
 
 import common
 import settings
 from monitoring.monitoring import Monitoring
 
-logger = logging.getLogger("cbt")
+logger: Logger = getLogger("cbt")
 
 
 class BlktraceMonitoring(Monitoring):

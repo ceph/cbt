@@ -2,15 +2,15 @@
 
 # pylint: disable=duplicate-code
 
-import logging
 import os
 import re
+from logging import Logger, getLogger
 from typing import Any, ClassVar, Optional, cast
 
 import common
 from monitoring.monitoring import Monitoring
 
-logger = logging.getLogger("cbt")
+logger: Logger = getLogger("cbt")
 
 
 class PerfMonitoring(Monitoring):
@@ -40,7 +40,14 @@ class PerfMonitoring(Monitoring):
         self._make_remote_dir(perf_dir)
 
         perf_template = f"{self._perf_cmd} {self._args_template}"
-        perf_cmd = perf_template.format(perf_dir=perf_dir)
+        try:
+            perf_cmd = perf_template.format(perf_dir=perf_dir)
+        except KeyError as exc:
+            raise ValueError(
+                f"PerfMonitoring args template contains an unknown placeholder {{{exc.args[0]}}}. "
+                f"The only supported placeholder is {{perf_dir}}. "
+                f"If you need per-PID monitoring, use profile key 'osd_perf' instead of 'perf'."
+            ) from exc
         local_node = common.get_localnode(self._nodes)  # type: ignore[no-untyped-call]
         if local_node:
             runner = common.sh(local_node, perf_cmd)  # type: ignore[no-untyped-call]

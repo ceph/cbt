@@ -18,5 +18,12 @@ class OsdPerfMonitoring(OsdPidMonitoring, PerfMonitoring):
         perf_dir = f"{directory}/perf"
         self._perf_dir = perf_dir
         self._make_remote_dir(perf_dir)
-        cmd_template = f"{self._perf_cmd} {self._args_template}"
+        perf_template = f"{self._perf_cmd} {self._args_template}"
+        try:
+            cmd_template = perf_template.format(perf_dir=perf_dir, output_dir="{output_dir}", pid="{pid}")
+        except KeyError as exc:
+            raise ValueError(
+                f"OsdPerfMonitoring args template contains an unknown placeholder {{{exc.args[0]}}}. "
+                f"The supported placeholders are {{perf_dir}}, {{output_dir}}, and {{pid}}."
+            ) from exc
         self._start_per_pid(perf_dir, "perf", cmd_template, self._perf_runners)

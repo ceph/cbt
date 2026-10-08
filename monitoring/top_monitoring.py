@@ -1,13 +1,13 @@
 """Top monitoring backend."""
 
-import logging
 import re
+from logging import Logger, getLogger
 from typing import Any, ClassVar, Optional
 
 import common
 from monitoring.monitoring import Monitoring
 
-logger = logging.getLogger("cbt")
+logger: Logger = getLogger("cbt")
 
 
 def _estimate_top_duration(args: str) -> Optional[float]:
@@ -59,7 +59,14 @@ class TopMonitoring(Monitoring):
         self._make_remote_dir(top_dir)
 
         top_template = f"{self._top_cmd} {self._args}"
-        top_cmd = top_template.format(top_dir=top_dir)
+        try:
+            top_cmd = top_template.format(top_dir=top_dir)
+        except KeyError as exc:
+            raise ValueError(
+                f"TopMonitoring args template contains an unknown placeholder {{{exc.args[0]}}}. "
+                f"The only supported placeholder is {{top_dir}}. "
+                f"If you need per-PID monitoring, use profile key 'osd_top' instead of 'top'."
+            ) from exc
         self._running_cmd = top_cmd  # stored for use in stop()
         local_node = common.get_localnode(self._nodes)  # type: ignore[no-untyped-call]
         if local_node:
@@ -93,5 +100,5 @@ class TopMonitoring(Monitoring):
             common.pdsh(  # type: ignore[no-untyped-call]
                 self._nodes,
                 f"sudo find {directory}/top -maxdepth 1 -name '*top.out' -exec chown {self._user}:{self._user} {{}} +",
-            )
+            ).communicate()
         logger.info("Top monitoring stopped.")

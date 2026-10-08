@@ -1,8 +1,8 @@
 """Factory class for creating and managing monitoring backends."""
 
-import logging
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
+from logging import Logger, getLogger
 from typing import Any, ClassVar, Optional
 
 import settings
@@ -14,7 +14,7 @@ from monitoring.osd_top_monitoring import OsdTopMonitoring
 from monitoring.perf_monitoring import PerfMonitoring
 from monitoring.top_monitoring import TopMonitoring
 
-logger = logging.getLogger("cbt")
+logger: Logger = getLogger("cbt")
 
 
 class MonitoringFactory:
@@ -33,9 +33,27 @@ class MonitoringFactory:
     def get_object(cls, name: str, mconfig: dict[str, Any]) -> Monitoring:
         """Return a new monitoring instance for the given profile name.
 
+        When *name* is ``"perf"`` or ``"top"`` and *mconfig* contains a
+        ``pid_glob`` key, the request is automatically promoted to ``"osd_perf"``
+        or ``"osd_top"`` respectively, so that per-PID ``{pid}`` substitution is
+        handled correctly without requiring the user to rename their YAML profile.
+
         Raises:
             ValueError: If *name* is not a known monitoring backend key.
         """
+        if "pid_glob" in mconfig:
+            if name == "perf":
+                name = "osd_perf"
+                logger.warning(
+                    "'pid_glob' is not supported with the 'perf' profile; switching to 'osd_perf' automatically. "
+                    "Use 'osd_perf' directly to suppress this warning."
+                )
+            elif name == "top":
+                name = "osd_top"
+                logger.warning(
+                    "'pid_glob' is not supported with the 'top' profile; switching to 'osd_top' automatically. "
+                    "Use 'osd_top' directly to suppress this warning."
+                )
         try:
             return cls._REGISTRY[name](mconfig)
         except KeyError as exc:

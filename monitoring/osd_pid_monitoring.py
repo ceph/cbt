@@ -1,16 +1,16 @@
 """OsdPidMonitoring base class for per-OSD-PID monitoring backends."""
 
 import glob as _glob
-import logging
 import os
 from abc import ABC
+from logging import Logger, getLogger
 from typing import Any, cast
 
 import common
 import settings
 from monitoring.monitoring import Monitoring
 
-logger = logging.getLogger("cbt")
+logger: Logger = getLogger("cbt")
 
 
 class OsdPidMonitoring(Monitoring, ABC):
@@ -54,7 +54,14 @@ class OsdPidMonitoring(Monitoring, ABC):
             for pid_path in pid_paths:
                 with open(pid_path, encoding="utf-8") as pidfile:
                     pid = pidfile.read().strip()
-                    cmd = cmd_template.format(output_dir=output_dir, pid=pid)
+                    try:
+                        cmd = cmd_template.format(output_dir=output_dir, pid=pid)
+                    except KeyError as exc:
+                        raise ValueError(
+                            f"{type(self).__name__} args template contains an unknown placeholder "
+                            f"{{{exc.args[0]}}}. "
+                            f"The supported placeholders are {{output_dir}} and {{pid}}."
+                        ) from exc
                     runner = common.sh(local_node, cmd)  # type: ignore[no-untyped-call]
                     runners.append(runner)
         else:
@@ -68,6 +75,13 @@ class OsdPidMonitoring(Monitoring, ABC):
                     pid_glob_path,
                     tool_name,
                 )
-            cmd = cmd_template.format(output_dir=output_dir, pid='"$pid"')
+            try:
+                cmd = cmd_template.format(output_dir=output_dir, pid='"$pid"')
+            except KeyError as exc:
+                raise ValueError(
+                    f"{type(self).__name__} args template contains an unknown placeholder "
+                    f"{{{exc.args[0]}}}. "
+                    f"The supported placeholders are {{output_dir}} and {{pid}}."
+                ) from exc
             loop_cmd = f'for f in {pid_glob_path}; do pid=$(cat "$f"); {cmd} & done'
             runners.append(common.pdsh(self._nodes, loop_cmd))  # type: ignore[no-untyped-call]
