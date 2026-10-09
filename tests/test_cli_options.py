@@ -1,5 +1,9 @@
+"""
+Unit tests for the CliOptions configuration class.
+"""
+
 import unittest
-from typing import Optional
+from typing import ClassVar, Optional
 
 import pytest
 
@@ -11,13 +15,15 @@ class TestCliOptions(unittest.TestCase):
     Tests for the cli_options class
     """
 
-    DEFAULT_DATA: dict[str, str] = {"iodepth": "12", "mode": "randrw"}
-    DEFAULT_NEW_DATA: dict[str, str] = {"new": "value"}
+    DEFAULT_DATA: ClassVar[dict[str, Optional[str]]] = {"iodepth": "12", "mode": "randrw"}
+    DEFAULT_NEW_DATA: ClassVar[dict[str, Optional[str]]] = {"new": "value"}
 
-    def _init_cli_options(self, options: Optional[dict[str, str]] = DEFAULT_DATA) -> CliOptions:
+    def _init_cli_options(self, options: Optional[dict[str, Optional[str]]] = None) -> CliOptions:
         """
         Create an initial CliOptions class to test against
         """
+        if options is None:
+            options = self.DEFAULT_DATA
         return CliOptions(options)
 
     def _assert_cli_options_are_equal(self, actual_options: CliOptions, expected_options: CliOptions) -> None:
@@ -30,7 +36,7 @@ class TestCliOptions(unittest.TestCase):
         self.assertEqual(len(actual_options), len(expected_options))
         self.assertEqual(actual_options, expected_options)
 
-    def _test_update(self, update_data: dict[str, str], expected_options: dict[str, str]) -> None:
+    def _test_update(self, update_data: dict[str, Optional[str]], expected_options: dict[str, Optional[str]]) -> None:
         """
         Common code for testing the update function
         """
@@ -38,7 +44,9 @@ class TestCliOptions(unittest.TestCase):
         actual_options.update(update_data)
         self._assert_cli_options_are_equal(actual_options, self._init_cli_options(expected_options))
 
-    def _test_add(self, key_to_add: str, value_to_add: str, expected_options: dict[str, str]) -> None:
+    def _test_add(
+        self, key_to_add: str, value_to_add: Optional[str], expected_options: dict[str, Optional[str]]
+    ) -> None:
         """
         Common code for testing the add function
         """
@@ -50,9 +58,28 @@ class TestCliOptions(unittest.TestCase):
         """
         Test updating the CliOptions with a new value
         """
-        expected_options: dict[str, str] = self.DEFAULT_DATA | self.DEFAULT_NEW_DATA
+        expected_options: dict[str, Optional[str]] = self.DEFAULT_DATA | self.DEFAULT_NEW_DATA
 
         self._test_update(self.DEFAULT_NEW_DATA, expected_options)
+
+    def test_update_existing_key_does_not_overwrite(self) -> None:
+        """
+        update() with a pre-existing key must not overwrite the existing value.
+        The no-overwrite guard is implemented via __setitem__.
+        """
+        options = self._init_cli_options()
+        original_iodepth = options["iodepth"]
+        options.update({"iodepth": "999"})
+        self.assertEqual(options["iodepth"], original_iodepth, "Existing key must not be overwritten by update()")
+
+    def test_direct_setitem_existing_key_does_not_overwrite(self) -> None:
+        """
+        Direct assignment with [] on a pre-existing key must not overwrite.
+        """
+        options = self._init_cli_options()
+        original_mode = options["mode"]
+        options["mode"] = "newmode"
+        self.assertEqual(options["mode"], original_mode, "Existing key must not be overwritten by direct assignment")
 
     def test_add_new_value(self) -> None:
         """
@@ -60,7 +87,17 @@ class TestCliOptions(unittest.TestCase):
         """
         key: str = "added"
         value: str = "value"
-        expected_options: dict[str, str] = {key: value}
+        expected_options: dict[str, Optional[str]] = {key: value}
+        expected_options.update(self.DEFAULT_DATA)
+        self._test_add(key, value, expected_options)
+
+    def test_add_none_value(self) -> None:
+        """
+        Validate adding a key with None value to CliOptions works
+        """
+        key: str = "suppressed_flag"
+        value: Optional[str] = None
+        expected_options: dict[str, Optional[str]] = {key: value}
         expected_options.update(self.DEFAULT_DATA)
         self._test_add(key, value, expected_options)
 

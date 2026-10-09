@@ -118,22 +118,21 @@ class Workloads:
                     if script_command:
                         pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
 
-                    processes: list[Union[CheckedPopen, CheckedPopenLocal]] = [
-                        pdsh(getnodes("clients"), fio_command)  # type: ignore[no-untyped-call]
-                        for fio_command in fio_command_list
-                    ]
+                    processes: list[Union[CheckedPopen, CheckedPopenLocal]] = []
+                    for fio_command in fio_command_list:
+                        processes.append(pdsh(getnodes("clients"), fio_command))  # type: ignore[no-untyped-call]
 
-                    # Sleep for the ramp time and then collect stats
-                    if ramp_time:
-                        log.info("Ramp time: waiting %ss before collecting stats...", ramp_time)
-                        sleep(int(ramp_time))
+                        # Sleep for the ramp time and then collect stats
+                        if ramp_time:
+                            log.info("Ramp time: waiting %ss before collecting stats...", ramp_time)
+                            sleep(int(ramp_time))
 
-                    MonitoringFactory.start(output_directory)
+                        MonitoringFactory.start(output_directory)
 
-                    for process in processes:
-                        process.wait()  # type: ignore[no-untyped-call]
+                        for process in processes:
+                            process.wait()  # type: ignore[no-untyped-call]
 
-                    MonitoringFactory.stop()
+                        MonitoringFactory.stop()
                 log.info("Workload '%s': parameter set %d/%d complete.", workload_name, param_index, total_param_sets)
 
             log.info("Workload '%s' complete (%d/%d).", workload_name, workload_index, total_workloads)

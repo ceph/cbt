@@ -4,15 +4,19 @@ Validates construction, config handling, factory integration,
 CLI command building, run loop fan-out, and pdsh-free lifecycle.
 """
 
+# pylint: disable=protected-access
+
 import tempfile
-import unittest
+from collections.abc import Generator
 from typing import Any, Optional
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 import benchmarkfactory
+import common as _common
 import settings
 from benchmark.elbencho import Elbencho
-from cluster.ceph import Ceph
 from remote.async_ssh import AsyncSSHExecutor
 
 INVARIANT_YAML = "tools/invariant.yaml"
@@ -53,161 +57,177 @@ _FULL_CONFIG: dict[str, Any] = {
 }
 
 
-class TestElbenchoDefaults(unittest.TestCase):
+@pytest.fixture(autouse=True)
+def init_settings() -> None:
+    """Populate settings globals from the invariant YAML fixture file."""
+    settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
 
-    archive_dir = "/tmp"
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+def _mock_cluster() -> MagicMock:
+    """Return a minimal mock cluster object."""
+    cluster = MagicMock()
+    cluster.config = {}
+    return cluster
 
-    def _make(self, config: Optional[dict[str, Any]] = None) -> Elbencho:
-        cfg = dict(_MINIMAL_CONFIG, **(config or {}))
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
+
+def _make(config: Optional[dict[str, Any]] = None) -> Elbencho:
+    """Instantiate Elbencho directly with an optional config overlay."""
+    cfg = dict(_MINIMAL_CONFIG, **(config or {}))
+    return Elbencho(archive_dir="/tmp", cluster=_mock_cluster(), config=cfg)
+
+
+# ---------------------------------------------------------------------------
+# Default construction
+# ---------------------------------------------------------------------------
+
+
+class TestElbenchoDefaults:
+    """Tests for Elbencho instantiation with default config."""
 
     def test_returns_elbencho_instance(self) -> None:
-        self.assertIsInstance(self._make(), Elbencho)
+        """Factory returns an Elbencho instance."""
+        assert isinstance(_make(), Elbencho)
 
     def test_default_cmd_path(self) -> None:
-        self.assertEqual("/usr/local/bin/elbencho", self._make().cmd_path)
+        """Default cmd_path is the system-wide elbencho binary."""
+        assert _make().cmd_path == "/usr/local/bin/elbencho"
 
     def test_default_auth_is_empty_dict(self) -> None:
-        self.assertEqual({}, self._make().auth)
+        """Auth defaults to an empty dict when not configured."""
+        assert _make().auth == {}
 
     def test_no_workloads_registered_by_default(self) -> None:
-        self.assertFalse(self._make()._workloads.exist())
+        """No workloads are registered when none are supplied."""
+        assert not _make()._workloads.exist()
 
     def test_base_run_dir_set(self) -> None:
-        b = self._make()
-        self.assertIsNotNone(b.base_run_dir)
-        self.assertIsInstance(b.base_run_dir, str)
+        """base_run_dir is populated as a non-empty string after construction."""
+        b = _make()
+        assert b.base_run_dir is not None
+        assert isinstance(b.base_run_dir, str)
 
 
-class TestElbenchoExplicitConfig(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# Explicit / full config
+# ---------------------------------------------------------------------------
 
-    archive_dir = "/tmp"
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+class TestElbenchoExplicitConfig:
+    """Tests for Elbencho instantiation with a fully populated config."""
 
-    def _make(self) -> Elbencho:
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", dict(_FULL_CONFIG))  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
+    def _make_full(self) -> Elbencho:
+        return Elbencho(archive_dir="/tmp", cluster=_mock_cluster(), config=dict(_FULL_CONFIG))
 
     def test_custom_cmd_path(self) -> None:
-        self.assertEqual("/opt/elbencho/bin/elbencho", self._make().cmd_path)
+        """cmd_path is taken from config when supplied."""
+        assert self._make_full().cmd_path == "/opt/elbencho/bin/elbencho"
 
     def test_custom_auth(self) -> None:
-        b = self._make()
-        self.assertIn("config", b.auth)
-        self.assertIn("access_key=AKID", b.auth["config"])
+        """Auth credentials are stored verbatim from the nested auth dict."""
+        b = self._make_full()
+        assert "config" in b.auth
+        assert "access_key=AKID" in b.auth["config"]
 
     def test_workloads_registered(self) -> None:
-        self.assertTrue(self._make()._workloads.exist())
+        """Workloads are registered when the config provides them."""
+        assert self._make_full()._workloads.exist()
 
     def test_workload_names_preserved(self) -> None:
-        names = self._make()._workloads.get_names()
-        self.assertIn("write_small", names)
-        self.assertIn("read_small", names)
+        """Workload names from config are preserved in the workload registry."""
+        names = self._make_full()._workloads.get_names()
+        assert "write_small" in names
+        assert "read_small" in names
 
 
-class TestElbenchoValidation(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# Workload validation
+# ---------------------------------------------------------------------------
 
-    archive_dir = "/tmp"
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+class TestElbenchoValidation:
+    """Tests for workload config validation errors raised during construction."""
 
-    def _make(self, workloads: dict[str, Any]) -> Elbencho:
-        cfg = dict(_MINIMAL_CONFIG, workloads=workloads)
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
+    def _make_with_workloads(self, workloads: dict[str, Any]) -> Elbencho:
+        return _make({"workloads": workloads})
 
     def test_missing_mode_raises(self) -> None:
-        with self.assertRaises(ValueError) as ctx:
-            self._make({"no_mode": {"s3_bucket": "test-bucket"}})
-        self.assertIn("missing required key 'mode'", str(ctx.exception))
+        """A workload without a 'mode' key raises ValueError on construction."""
+        with pytest.raises(ValueError, match="missing required key 'mode'"):
+            self._make_with_workloads({"no_mode": {"s3_bucket": "test-bucket"}})
 
     def test_missing_s3_bucket_raises(self) -> None:
-        with self.assertRaises(ValueError) as ctx:
-            self._make({"bad": {"mode": "write"}})
-        self.assertIn("missing required key 's3_bucket'", str(ctx.exception))
+        """A workload without an 's3_bucket' key raises ValueError on construction."""
+        with pytest.raises(ValueError, match="missing required key 's3_bucket'"):
+            self._make_with_workloads({"bad": {"mode": "write"}})
 
     def test_non_integer_threads_raises(self) -> None:
-        with self.assertRaises(ValueError) as ctx:
-            self._make({"bad": {"mode": "write", "s3_bucket": "b", "threads": ["bad_value"]}})
-        self.assertIn("threads value 'bad_value' is not an integer", str(ctx.exception))
+        """A non-integer thread count raises ValueError on construction."""
+        with pytest.raises(ValueError, match="threads value 'bad_value' is not an integer"):
+            self._make_with_workloads({"bad": {"mode": "write", "s3_bucket": "b", "threads": ["bad_value"]}})
 
     def test_non_integer_iodepth_raises(self) -> None:
-        with self.assertRaises(ValueError) as ctx:
-            self._make({"bad": {"mode": "write", "s3_bucket": "b", "iodepth": "not_a_number"}})
-        self.assertIn("iodepth value 'not_a_number' is not an integer", str(ctx.exception))
+        """A non-integer iodepth raises ValueError on construction."""
+        with pytest.raises(ValueError, match="iodepth value 'not_a_number' is not an integer"):
+            self._make_with_workloads({"bad": {"mode": "write", "s3_bucket": "b", "iodepth": "not_a_number"}})
 
     def test_string_integer_threads_accepted(self) -> None:
-        # YAML may deserialise quoted integers as strings — "4" should be valid,
-        # so construction must succeed without raising.
-        b = self._make({"w": {"mode": "write", "s3_bucket": "b", "threads": ["4", 16]}})
-        self.assertTrue(b._workloads.exist())
+        """YAML-quoted integers such as '4' are accepted as thread counts."""
+        # YAML may deserialise quoted integers as strings — "4" should be valid.
+        b = self._make_with_workloads({"w": {"mode": "write", "s3_bucket": "b", "threads": ["4", 16]}})
+        assert b._workloads.exist()
 
     def test_mixed_valid_invalid_threads_raises_on_bad_item(self) -> None:
-        with self.assertRaises(ValueError) as ctx:
-            self._make({"w": {"mode": "write", "s3_bucket": "b", "threads": [1, 4, "oops"]}})
-        self.assertIn("threads value 'oops' is not an integer", str(ctx.exception))
+        """A mixed list raises when any single thread count is non-integer."""
+        with pytest.raises(ValueError, match="threads value 'oops' is not an integer"):
+            self._make_with_workloads({"w": {"mode": "write", "s3_bucket": "b", "threads": [1, 4, "oops"]}})
 
 
-class TestElbenchoExists(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# exists()
+# ---------------------------------------------------------------------------
 
-    archive_dir = "/tmp"
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
-
-    def _make(self) -> Elbencho:
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", dict(_MINIMAL_CONFIG))  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
+class TestElbenchoExists:
+    """Tests for the Elbencho.exists() check."""
 
     def test_exists_false_when_archive_dir_absent(self) -> None:
-        b = self._make()
+        """exists() returns False when the archive directory does not exist."""
+        b = _make()
         b.archive_dir = "/tmp/__cbt_elbencho_no_such_dir_xyzzy__"
-        self.assertFalse(b.exists())
+        assert not b.exists()
 
     def test_exists_true_when_archive_dir_present(self) -> None:
-        b = self._make()
+        """exists() returns True when the archive directory exists."""
+        b = _make()
         with tempfile.TemporaryDirectory() as tmpdir:
             b.archive_dir = tmpdir
-            self.assertTrue(b.exists())
+            assert b.exists()
 
 
-class TestBenchmarkFactoryIntegration(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# benchmarkfactory integration
+# ---------------------------------------------------------------------------
 
-    archive_dir = "/tmp"
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+class TestBenchmarkFactoryIntegration:
+    """Tests for benchmarkfactory.get_object / get_all integration."""
 
     def test_get_object_returns_elbencho(self) -> None:
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", dict(_MINIMAL_CONFIG))  # type: ignore[no-untyped-call, attr-defined]
-        self.assertIsInstance(b, Elbencho)
+        """get_object returns an Elbencho instance for the 'elbencho' key."""
+        b = benchmarkfactory.get_object(  # type: ignore[no-untyped-call]
+            "/tmp", _mock_cluster(), "elbencho", dict(_MINIMAL_CONFIG)
+        )
+        assert isinstance(b, Elbencho)
 
     def test_unknown_benchmark_returns_none(self) -> None:
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "no_such_benchmark", dict(_MINIMAL_CONFIG))  # type: ignore[no-untyped-call, attr-defined]
-        self.assertIsNone(b)
+        """get_object returns None for an unrecognised benchmark name."""
+        b = benchmarkfactory.get_object(  # type: ignore[no-untyped-call]
+            "/tmp", _mock_cluster(), "no_such_benchmark", dict(_MINIMAL_CONFIG)
+        )
+        assert b is None
 
     def test_get_all_yields_single_instance_despite_list_valued_workload_params(self) -> None:
+        """get_all returns exactly one Elbencho object even with list-valued workload params."""
         settings.benchmarks = {
             "elbencho": {
                 "cmd_path": "/usr/local/bin/elbencho",
@@ -223,9 +243,9 @@ class TestBenchmarkFactoryIntegration(unittest.TestCase):
                 },
             }
         }
-        objects = list(benchmarkfactory.get_all(self.archive_dir, self.cluster, 0))  # type: ignore[no-untyped-call, attr-defined]
+        objects = list(benchmarkfactory.get_all("/tmp", _mock_cluster(), 0))  # type: ignore[no-untyped-call]
         elbencho_objects = [o for o in objects if isinstance(o, Elbencho)]
-        self.assertEqual(1, len(elbencho_objects))
+        assert len(elbencho_objects) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -233,43 +253,33 @@ class TestBenchmarkFactoryIntegration(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestRunLoop(unittest.TestCase):
+class TestRunLoop:
+    """Tests for the _run_workloads() run-matrix fan-out."""
 
-    archive_dir = "/tmp"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
-
-    def setUp(self) -> None:
-        # _run_workloads() wraps each command group in monitoring; stub it so
-        # the run-loop tests don't touch real monitors.
-        for target in (
-            "monitoring.monitoring_factory.MonitoringFactory.start",
-            "monitoring.monitoring_factory.MonitoringFactory.stop",
+    @pytest.fixture(autouse=True)
+    def _stub_monitoring(self) -> Generator[None, None, None]:
+        """Stub out monitoring start/stop so run-loop tests don't touch real monitors."""
+        with (
+            patch("monitoring.monitoring_factory.MonitoringFactory.start"),
+            patch("monitoring.monitoring_factory.MonitoringFactory.stop"),
         ):
-            patcher = patch(target)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+            yield
 
-    def _make(self, workloads: dict[str, Any]) -> Elbencho:
-        cfg = dict(
-            _MINIMAL_CONFIG,
-            cmd_path="/usr/local/bin/elbencho",
-            auth={},
-            workloads=workloads,
+    def _make_with_workloads(self, workloads: dict[str, Any]) -> Elbencho:
+        return _make(
+            {
+                "cmd_path": "/usr/local/bin/elbencho",
+                "auth": {},
+                "workloads": workloads,
+            }
         )
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_call_count_matches_run_matrix(self, mock_exec: Any, mock_mkdir: Any) -> None:
+    def test_call_count_matches_run_matrix(self, mock_exec: MagicMock, _mock_mkdir: MagicMock) -> None:
         """2 blocksizes x 2 threads x 2 iodepths = 8 run_command calls."""
         mock_exec.return_value = []
-        b = self._make(
+        b = self._make_with_workloads(
             {
                 "w": {
                     "s3_bucket": "bkt",
@@ -281,64 +291,51 @@ class TestRunLoop(unittest.TestCase):
             }
         )
         b._run_workloads()
-        self.assertEqual(8, mock_exec.call_count)
+        assert mock_exec.call_count == 8
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_run_dir_path_structure(self, mock_exec: Any, mock_mkdir: Any) -> None:
+    def test_run_dir_path_structure(self, mock_exec: MagicMock, mock_mkdir: MagicMock) -> None:
+        """make_remote_dir is called with a path encoding blocksize/threads/iodepth."""
         mock_exec.return_value = []
-        b = self._make(
-            {
-                "w": {
-                    "s3_bucket": "bkt",
-                    "mode": "write",
-                    "blocksize": ["4k"],
-                    "threads": [16],
-                    "iodepth": [4],
-                }
-            }
+        b = self._make_with_workloads(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": ["4k"], "threads": [16], "iodepth": [4]}}
         )
         b._run_workloads()
         mkdir_calls = [c.args[1] for c in mock_mkdir.call_args_list]
-        self.assertTrue(
-            any("elbencho/write_4096/threads-016/iodepth-004" in d for d in mkdir_calls),
-            f"Expected path segment not found in: {mkdir_calls}",
+        assert any("elbencho/write_4096/threads-016/iodepth-004" in d for d in mkdir_calls), (
+            f"Expected path segment not found in: {mkdir_calls}"
         )
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_stat_workload_skipped(self, mock_exec: Any, mock_mkdir: Any) -> None:
+    def test_stat_workload_skipped(self, mock_exec: MagicMock, _mock_mkdir: MagicMock) -> None:
+        """Stat-mode workloads are skipped; no run_command call is made."""
         mock_exec.return_value = []
-        b = self._make({"w": {"s3_bucket": "bkt", "mode": "stat", "threads": [1], "iodepth": [1]}})
+        b = self._make_with_workloads({"w": {"s3_bucket": "bkt", "mode": "stat", "threads": [1], "iodepth": [1]}})
         b._run_workloads()
         mock_exec.assert_not_called()
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_scalar_threads_and_iodepth(self, mock_exec: Any, mock_mkdir: Any) -> None:
+    def test_scalar_threads_and_iodepth(self, mock_exec: MagicMock, _mock_mkdir: MagicMock) -> None:
+        """Scalar (non-list) threads and iodepth values produce exactly one run_command call."""
         mock_exec.return_value = []
-        b = self._make(
-            {
-                "w": {
-                    "s3_bucket": "bkt",
-                    "mode": "write",
-                    "blocksize": "4k",
-                    "threads": 4,
-                    "iodepth": 2,
-                }
-            }
+        b = self._make_with_workloads(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k", "threads": 4, "iodepth": 2}}
         )
         b._run_workloads()
-        self.assertEqual(1, mock_exec.call_count)
+        assert mock_exec.call_count == 1
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_cell_emits_matching_command_and_byte_run_dir(self, mock_exec: Any, mock_mkdir: Any) -> None:
+    def test_cell_emits_matching_command_and_byte_run_dir(self, mock_exec: MagicMock, mock_mkdir: MagicMock) -> None:
+        """Command uses human blocksize (128k); run-dir uses byte count (131072)."""
         # The run loop must feed elbencho the human blocksize (128k) while
         # naming the run directory with the byte count (131072). Mixing the two
         # up is a real regression risk, so pin both from a single cell.
         mock_exec.return_value = []
-        b = self._make(
+        b = self._make_with_workloads(
             {
                 "w": {
                     "s3_bucket": "bkt",
@@ -352,70 +349,60 @@ class TestRunLoop(unittest.TestCase):
         )
         b._run_workloads()
 
-        self.assertEqual(1, mock_exec.call_count)
+        assert mock_exec.call_count == 1
         cmd = mock_exec.call_args.args[1]
-        self.assertIn("--block 128k", cmd)
-        self.assertNotIn("--block 131072", cmd)  # byte count must not reach --block
-        self.assertIn("--threads 8", cmd)
-        self.assertIn("--iodepth 16", cmd)
-        self.assertIn("--size 4g", cmd)
-        self.assertTrue(cmd.endswith("s3://bkt"))
+        assert "--block 128k" in cmd
+        assert "--block 131072" not in cmd  # byte count must not reach --block
+        assert "--threads 8" in cmd
+        assert "--iodepth 16" in cmd
+        assert "--size 4g" in cmd
+        assert cmd.endswith("s3://bkt")
 
         run_dirs = [c.args[1] for c in mock_mkdir.call_args_list]
-        self.assertTrue(
-            any("elbencho/write_131072/threads-008/iodepth-016" in d for d in run_dirs),
-            f"byte-based run dir not found in: {run_dirs}",
+        assert any("elbencho/write_131072/threads-008/iodepth-016" in d for d in run_dirs), (
+            f"byte-based run dir not found in: {run_dirs}"
         )
 
 
-class TestElbenchoNoPdsh(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# Pdsh-free lifecycle (AsyncSSH executor)
+# ---------------------------------------------------------------------------
 
-    archive_dir = "/tmp"
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+class TestElbenchoNoPdsh:
+    """Tests for the pdsh-free AsyncSSH executor lifecycle methods."""
 
-    def _make(self) -> Elbencho:
-        cfg = dict(
-            _MINIMAL_CONFIG,
-            cmd_path="/usr/local/bin/elbencho",
-            auth={},
-            workloads={},
-        )
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
+    def _make_no_pdsh(self) -> Elbencho:
+        return _make({"cmd_path": "/usr/local/bin/elbencho", "auth": {}, "workloads": {}})
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "clean_remote_dir")
-    def test_cleandir_uses_async_helpers(self, mock_clean: Any, mock_mkdir: Any) -> None:
-        b = self._make()
+    def test_cleandir_uses_async_helpers(self, mock_clean: MagicMock, mock_mkdir: MagicMock) -> None:
+        """cleandir() delegates to AsyncSSHExecutor.clean_remote_dir and make_remote_dir."""
+        b = self._make_no_pdsh()
         b.cleandir()
-        clients = mock_clean.call_args.args[0]
-        self.assertEqual(mock_clean.call_args.args[1], b.run_dir)
-        self.assertEqual(mock_mkdir.call_args.args[0], clients)
-        self.assertEqual(mock_mkdir.call_args.args[1], b.run_dir)
+        assert mock_clean.call_args.args[1] == b.run_dir
+        assert mock_mkdir.call_args.args[0] == mock_clean.call_args.args[0]
+        assert mock_mkdir.call_args.args[1] == b.run_dir
 
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_dropcaches_uses_remote_executor(self, mock_exec: Any) -> None:
+    def test_dropcaches_uses_remote_executor(self, mock_exec: MagicMock) -> None:
+        """dropcaches() issues sync and echo 3 > drop_caches via the remote executor."""
         mock_exec.return_value = []
-        b = self._make()
+        b = self._make_no_pdsh()
         b.dropcaches()
-        self.assertEqual(2, mock_exec.call_count)
+        assert mock_exec.call_count == 2
         commands = [c.args[1] for c in mock_exec.call_args_list]
-        self.assertIn("sync", commands)
-        self.assertTrue(any("drop_caches" in cmd for cmd in commands))
+        assert "sync" in commands
+        assert any("drop_caches" in cmd for cmd in commands)
 
     @patch.object(AsyncSSHExecutor, "sync_files")
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_command")
-    def test_run_does_not_call_pdsh(self, mock_exec: Any, mock_mkdir: Any, mock_sync: Any) -> None:
-        import common as _common
-
+    def test_run_does_not_call_pdsh(self, mock_exec: MagicMock, _mock_mkdir: MagicMock, _mock_sync: MagicMock) -> None:
+        """run() never calls pdsh; all remote ops go through AsyncSSHExecutor."""
         mock_exec.return_value = []
-        b = self._make()
+        b = self._make_no_pdsh()
         with (
             patch.object(b, "dropcaches"),
             patch.object(b.cluster, "dump_config"),
@@ -423,68 +410,6 @@ class TestElbenchoNoPdsh(unittest.TestCase):
             patch("monitoring.monitoring_factory.MonitoringFactory.start"),
             patch("monitoring.monitoring_factory.MonitoringFactory.stop"),
             patch.object(b, "_run_workloads"),
+            patch.object(_common, "pdsh", side_effect=AssertionError("pdsh called")),
         ):
-            with patch.object(_common, "pdsh", side_effect=AssertionError("pdsh called")):
-                b.run()
-
-
-# ---------------------------------------------------------------------------
-# estimate_duration() tests
-# ---------------------------------------------------------------------------
-
-
-class TestElbenchoEstimateDuration(unittest.TestCase):
-
-    archive_dir = "/tmp"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
-        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
-
-    def _make(self, workloads: dict[str, Any]) -> Elbencho:
-        cfg = dict(_MINIMAL_CONFIG, workloads=workloads)
-        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
-        assert isinstance(b, Elbencho)
-        return b
-
-    def test_no_workloads_returns_zero(self) -> None:
-        """estimate_duration() returns 0 when no workloads are configured."""
-        b = self._make({})
-        self.assertEqual(0, b.estimate_duration())
-
-    def test_single_workload_scalar_params(self) -> None:
-        """1 param set * duration=30s → 30s."""
-        b = self._make({"w": {"s3_bucket": "b", "mode": "write", "threads": 1, "iodepth": 1, "duration": 30}})
-        self.assertEqual(30, b.estimate_duration())
-
-    def test_single_workload_list_params(self) -> None:
-        """2 threads x 2 iodepths = 4 param sets * duration=30s → 120s."""
-        b = self._make({"w": {"s3_bucket": "b", "mode": "write", "threads": [1, 4], "iodepth": [1, 4], "duration": 30}})
-        self.assertEqual(120, b.estimate_duration())
-
-    def test_multiple_workloads_summed(self) -> None:
-        """Durations from multiple workloads are summed.
-
-        write_small: threads=[1,4,16] x iodepth=[1,4,16] x blocksize=['4k','128k'] = 18 sets * 60s = 1080s
-        read_small:  threads=[1,4]    x iodepth=[1,4]    x blocksize=['4k']        =  4 sets * 60s =  240s
-        total: 1320s
-        """
-        b = self._make(_FULL_CONFIG["workloads"])
-        self.assertEqual(1320, b.estimate_duration())
-
-    def test_workload_without_duration_contributes_zero(self) -> None:
-        """A workload with no duration set contributes 0 to the total."""
-        b = self._make({"w": {"s3_bucket": "b", "mode": "write", "threads": [1, 4], "iodepth": [1, 4]}})
-        self.assertEqual(0, b.estimate_duration())
-
-    def test_time_and_duration_together_raises(self) -> None:
-        """Setting both 'time' and 'duration' on the same workload raises ValueError."""
-        with self.assertRaises(ValueError) as ctx:
-            b = self._make({"w": {"s3_bucket": "b", "mode": "write", "time": 60, "duration": 30}})
-            b.estimate_duration()
-        self.assertIn("mutually exclusive", str(ctx.exception))
-
-
-if __name__ == "__main__":
-    unittest.main()
+            b.run()

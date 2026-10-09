@@ -12,7 +12,7 @@ should be created that parses these options
 
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
-from typing import Optional
+from typing import ClassVar, Optional
 
 from cli_options import CliOptions
 from command.command import Command
@@ -26,39 +26,45 @@ class FioCommand(Command, ABC):
     line that can be run on a local or remote client system.
     """
 
-    _REQUIRED_OPTIONS = {"invalidate": "0", "direct": "1"}
-    _DIRECT_TRANSLATIONS: list[str] = ["numjobs", "iodepth"]
+    _REQUIRED_OPTIONS: ClassVar[dict[str, Optional[str]]] = {"invalidate": "0"}
 
-    def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
-        self._target_number: int = int(options["target_number"])
+    def __init__(self, options: dict[str, Optional[str]], workload_output_directory: str) -> None:
+        self._target_number: int = int(str(options["target_number"]))
         self._total_iodepth: Optional[str] = options.get("total_iodepth", None)
         self._workload_output_directory: str = workload_output_directory
         super().__init__(options)
 
     @abstractmethod
-    def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:
+    def _parse_ioengine_specific_parameters(self, options: dict[str, Optional[str]]) -> dict[str, Optional[str]]:
         """
         Get any options that are specific to the I/O engine being used
-        for this fio run and add them to the CliOptons for this workload
+        for this fio run and add them to the CliOptions for this workload.
+
+        Values may be ``None`` to suppress a key that the base class would
+        otherwise set unconditionally (e.g. setting ``"bs": None`` prevents
+        the base ``op_size``→``bs`` assignment from firing via the
+        ``CliOptions`` no-overwrite rule).
         """
 
-    def _parse_global_options(self, options: dict[str, str]) -> CliOptions:
+    def _parse_global_options(self, options: dict[str, Optional[str]]) -> CliOptions:
         global_options: CliOptions = CliOptions(options)
 
         return global_options
 
-    def _parse_options(self, options: dict[str, str]) -> CliOptions:
+    def _parse_options(self, options: dict[str, Optional[str]]) -> CliOptions:
         fio_cli_options: CliOptions = CliOptions()
 
         fio_cli_options.update(self._parse_ioengine_specific_parameters(options))
         fio_cli_options.update(self._REQUIRED_OPTIONS)
-        for option in self._DIRECT_TRANSLATIONS:
-            fio_cli_options[option] = options[option] if option in options.keys() else ""
 
+        fio_cli_options["direct"] = options.get("direct", "1")
         fio_cli_options["rw"] = options.get("mode", "write")
         fio_cli_options["output-format"] = options.get("fio_out_format", "json,normal")
 
         fio_cli_options["numjobs"] = options.get("numjobs", "1")
+        # iodepth is always pre-computed per-target by Workload._create_commands_from_options()
+        # before reaching here; the default "16" is defensive only.
+        fio_cli_options["iodepth"] = options.get("iodepth", "16")
         fio_cli_options["bs"] = options.get("op_size", "4194304")
         fio_cli_options["end_fsync"] = f"{options.get('end_fsync', '0')}"
 
@@ -91,23 +97,18 @@ class FioCommand(Command, ABC):
 
         # Secondary options
         if fio_cli_options["rw"] == "readwrite" or fio_cli_options["rw"] == "randrw":
-            read_percent: str = options.get("rwmixread", "50")
+            read_percent: str = options.get("rwmixread") or "50"
             write_percent: str = f"{100 - int(read_percent)}"
             fio_cli_options["rwmixread"] = read_percent
             fio_cli_options["rwmixwrite"] = write_percent
 
-        if options.get("log_iops", "true") != "false":
-            fio_cli_options["log_iops"] = ""
+        for log_flag in ("log_iops", "log_bw", "log_lat"):
+            if options.get(log_flag, "true") != "false":
+                fio_cli_options[log_flag] = ""
 
-        if options.get("log_bw", "true") != "false":
-            fio_cli_options["log_bw"] = ""
+        processes_per_volume: int = int(options.get("procs_per_volume") or 1)
 
-        if options.get("log_lat", "true") != "false":
-            fio_cli_options["log_lat"] = ""
-
-        processes_per_volume: int = int(options.get("procs_per_volume", 1))
-
-        fio_cli_options["name"] = self._get_job_name(options["name"], processes_per_volume)
+        fio_cli_options["name"] = self._get_job_name(str(options["name"]), processes_per_volume)
 
         return fio_cli_options
 
@@ -127,10 +128,12 @@ class FioCommand(Command, ABC):
             if name == "name" and value is not None:
                 for jobname in value.strip().split(" "):
                     command += f"--{name}={jobname} "
-            elif value != "":
-                command += f"--{name}={value} "
+            elif value is None:
+                pass  # suppressed option — emit nothing
+            elif value == "":
+                command += f"--{name} "  # boolean presence flag (e.g. --time_based)
             else:
-                command += f"--{name} "
+                command += f"--{name}={value} "
 
         command += f"> {output_file}"
 
@@ -138,10 +141,10 @@ class FioCommand(Command, ABC):
 
     def _generate_output_directory_path(self) -> str:
         """
-        For an FIO command the output format is:
-        numjobs-<numjobs>/total_iodepth-<total_iodepth>/iodepth-<iodepth>
-        if total_iodepth was used in the options, otherwise:
-        numjobs-<numjobs>/iodepth-<iodepth>
+        Generate the output directory path using the canonical workloads naming scheme:
+        ``{workload_output_directory}/{benchmark}/numjobs-N/[total_iodepth-T/]iodepth-N``
+
+        This scheme is used by both the workloads path and the non-workloads path.
         """
         output_path: str = (
             f"{self._workload_output_directory}/{self.benchmark}/numjobs-{int(str(self._options['numjobs'])):03d}/"

@@ -29,14 +29,9 @@ class BenchGenerator(object):
 
     all_benchmarks = [
         "nullbench",
-        "fio",
         "hsbench",
         "radosbench",
-        "kvmrbdfio",
-        "rawfio",
-        "librbdfio",
         "cephtestrados",
-        "rbdfio",
         "getput",
     ]
     archive_dir = "/tmp"
