@@ -113,7 +113,8 @@ class TestGenerateFullCommand(unittest.TestCase):
             "/usr/local/bin/elbencho --write --threads 1 --block 4k --iodepth 1 "
             "--s3endpoints http://rgw:7480 --s3key AK --s3secret SK "
             "--s3region default "
-            "--resfile /tmp/run/elbencho/write_4096/threads-001/iodepth-001/result.csv s3://bkt",
+            "--resfile /tmp/run/elbencho/write_4096/threads-001/iodepth-001/result.csv "
+            "s3://bkt/$(hostname -s)",
             cmd,
         )
 
@@ -136,7 +137,7 @@ class TestGenerateFullCommand(unittest.TestCase):
             "--hosts c1,c2 --s3endpoints http://rgw:7480 --s3key AK --s3secret SK "
             "--s3authtoken tok --s3region us-east-1 "
             "--resfile /tmp/myrun/elbencho/write_131072/threads-008/iodepth-016/result.csv "
-            "--mkdirs s3://bkt",
+            "--mkdirs s3://bkt/$(hostname -s)",
             cmd,
         )
 
@@ -216,14 +217,14 @@ class TestTotalIodepthAndMultiBucket(unittest.TestCase):
             {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 4, "target_number": 2},
             iodepth=4,
         )
-        self.assertTrue(cmd.endswith("s3://cbt-2"), f"expected bucket suffix -2 in: {cmd}")
+        self.assertTrue(cmd.endswith("s3://cbt-2/$(hostname -s)"), f"expected bucket suffix -2 in: {cmd}")
 
     def test_single_bucket_uses_base_name_even_with_total_iodepth(self):
         cmd = _cmd(
             {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 1, "target_number": 0},
             iodepth=16,
         )
-        self.assertTrue(cmd.endswith("s3://cbt"), f"expected unsuffixed bucket in: {cmd}")
+        self.assertTrue(cmd.endswith("s3://cbt/$(hostname -s)"), f"expected unsuffixed bucket in: {cmd}")
 
     def test_num_buckets_without_total_iodepth_is_ignored(self):
         # num_buckets is only meaningful alongside total_iodepth; on its own it
@@ -232,7 +233,7 @@ class TestTotalIodepthAndMultiBucket(unittest.TestCase):
             {"s3_bucket": "cbt", "mode": "write", "num_buckets": 4, "target_number": 3},
             iodepth=4,
         )
-        self.assertTrue(cmd.endswith("s3://cbt"), f"expected unsuffixed bucket in: {cmd}")
+        self.assertTrue(cmd.endswith("s3://cbt/$(hostname -s)"), f"expected unsuffixed bucket in: {cmd}")
         self.assertNotIn("total_iodepth-", cmd)
 
     def test_mkdirs_precedes_suffixed_bucket(self):
@@ -241,7 +242,7 @@ class TestTotalIodepthAndMultiBucket(unittest.TestCase):
              "num_buckets": 2, "target_number": 1, "mkdirs": True},
             iodepth=4,
         )
-        self.assertIn("--mkdirs s3://cbt-1", cmd)
+        self.assertIn("--mkdirs s3://cbt-1/$(hostname -s)", cmd)
 
     def test_non_integer_num_buckets_raises_naming_key(self):
         with self.assertRaises(ValueError) as ctx:

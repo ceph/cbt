@@ -222,7 +222,13 @@ class ElbenchoCommand(Command):
 
         if options["mkdirs"]:
             cmd_parts += ["--mkdirs"]
-        cmd_parts += [f"s3://{self._bucket_target()}"]
 
-        # Safely quote arguments for remote shell execution.
-        return shlex.join(cmd_parts)
+        # shlex.join() quotes the $(hostname -s) in the target away, so join the
+        # fixed arguments first and append the target unquoted.
+        return f"{shlex.join(cmd_parts)} {self._s3_target()}"
+
+    def _s3_target(self) -> str:
+        """Positional S3 target, namespaced per client with $(hostname -s) so
+        that concurrent clients writing the same bucket do not overwrite each
+        other's keys. $(hostname -s) is expanded by the remote client shell."""
+        return f"s3://{shlex.quote(self._bucket_target())}/$(hostname -s)"

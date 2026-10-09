@@ -312,7 +312,7 @@ class TestWorkload(unittest.TestCase):
         self.assertEqual(1, len(param_sets))
         _output_dir, commands = param_sets[0]
         self.assertEqual(1, len(commands), "num_buckets must be ignored without total_iodepth")
-        self.assertTrue(commands[0].endswith("s3://cbt-benchmark"), commands[0])
+        self.assertTrue(commands[0].endswith("s3://cbt-benchmark/$(hostname -s)"), commands[0])
 
 
 if __name__ == "__main__":

@@ -359,7 +359,7 @@ class TestRunLoop(unittest.TestCase):
         self.assertIn("--threads 8", cmd)
         self.assertIn("--iodepth 16", cmd)
         self.assertIn("--size 4g", cmd)
-        self.assertTrue(cmd.endswith("s3://bkt"))
+        self.assertTrue(cmd.endswith("s3://bkt/$(hostname -s)"))
 
         run_dirs = [c.args[1] for c in mock_mkdir.call_args_list]
         self.assertTrue(
@@ -592,7 +592,11 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
         for cmd in commands:
             self.assertIn("--iodepth 4", cmd, f"8 total / 2 buckets -> 4 each: {cmd}")
         buckets = sorted(cmd.split("s3://")[-1] for cmd in commands)
-        self.assertEqual(["bkt-0", "bkt-1"], buckets, "buckets must be distinctly suffixed")
+        self.assertEqual(
+            ["bkt-0/$(hostname -s)", "bkt-1/$(hostname -s)"],
+            buckets,
+            "buckets must be distinctly suffixed",
+        )
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
     @patch.object(AsyncSSHExecutor, "run_commands")
@@ -665,7 +669,7 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
         b._run_workloads()
         self.assertEqual(1, mock_exec.call_count, "num_buckets alone must not fan out")
         (cmd,) = mock_exec.call_args.args[1]
-        self.assertTrue(cmd.endswith("s3://bkt"))
+        self.assertTrue(cmd.endswith("s3://bkt/$(hostname -s)"))
 
 
 if __name__ == "__main__":
