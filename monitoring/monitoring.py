@@ -1,13 +1,13 @@
 """Base abstractions for monitoring backends."""
 
-import logging
 from abc import ABC, abstractmethod
+from logging import Logger, getLogger
 from typing import Any, ClassVar, Optional, cast
 
 import common
 import settings
 
-logger = logging.getLogger("cbt")
+logger: Logger = getLogger("cbt")
 
 
 class Monitoring(ABC):
@@ -46,9 +46,11 @@ class Monitoring(ABC):
             RuntimeError: If the tool is not found and *fatal* is ``True``.
         """
         try:
-            common.pdsh(self._nodes, f"command -v {tool_name}", continue_if_error=False).communicate()  # type: ignore[no-untyped-call]
+            command: str = f"command -v {tool_name}"
+            runner = common.pdsh(self._nodes, command, continue_if_error=False)  # type: ignore[no-untyped-call]
+            runner.communicate()
             return True
-        except Exception as exc:
+        except Exception as exc:  # pylint: disable=broad-exception-caught  # common.py raises bare Exception
             msg = (
                 f"Monitoring tool '{tool_name}' not found on one or more nodes "
                 f"({self._nodes}). Install it before running CBT with this monitoring backend."

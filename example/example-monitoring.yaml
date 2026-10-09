@@ -1,0 +1,125 @@
+# CBT monitoring profiles example
+#
+# This file documents every supported monitoring_profiles key with correct
+# placeholder usage and explains the difference between the system-wide and
+# per-OSD-PID variants.
+#
+# Only include the profiles you actually want; they all run concurrently.
+# The collectl profile is injected automatically when monitoring_profiles is
+# absent from the config, so you do not need to list it explicitly unless you
+# want to customise its args.
+
+cluster:
+  head: "ceph@head"
+  clients: ["ceph@client"]
+  osds: ["ceph@osd"]
+  mons: ["ceph@mon"]
+  osds_per_node: 4
+  fs: xfs
+  conf_file: /etc/ceph/ceph.conf
+  # pid_dir is required by osd_perf and osd_top so they can locate OSD PID
+  # files at runtime.  The default Ceph path is /var/run/ceph.
+  pid_dir: /var/run/ceph
+  iterations: 1
+  use_existing: True
+  tmp_dir: /tmp/cbt
+
+benchmarks:
+  radosbench:
+    op_size: [4096]
+    write_only: False
+    time: 60
+    concurrent_ops: [16]
+    concurrent_procs: 1
+    use_existing: True
+
+monitoring_profiles:
+
+  # -------------------------------------------------------------------------
+  # collectl — system-wide resource collection (CPU, memory, network, disk).
+  # Runs on clients, osds, mons, and rgws by default.
+  # collectl is optional — CBT skips it gracefully when it is not installed.
+  # The {collectl_dir} placeholder is substituted by CollectlMonitoring.start().
+  # -------------------------------------------------------------------------
+  collectl:
+    # nodes defaults to [clients, osds, mons, rgws]; override here if needed.
+    # nodes:
+    #   - osds
+    # Omit args to use the built-in default (captures CPU, memory, disk I/O).
+    # args: '-s+mYZ -i 1:10 -F0 -f {collectl_dir} ...'
+
+  # -------------------------------------------------------------------------
+  # perf — system-wide perf collection (no PID discovery).
+  # Use this when you want a single perf process per node covering all CPUs,
+  # or when you supply an explicit PID yourself via a wrapper script.
+  # The ONLY placeholder substituted here is {perf_dir}.
+  # Do NOT put {pid} in args for this profile — use osd_perf instead.
+  # -------------------------------------------------------------------------
+  perf:
+    nodes:
+      - osds
+    # perf_cmd defaults to "sudo perf".  Override if perf lives elsewhere.
+    # perf_cmd: 'sudo /usr/local/bin/perf'
+    args: 'record -a -g -o {perf_dir}/perf.data'
+
+  # -------------------------------------------------------------------------
+  # osd_perf — per-OSD-PID perf collection.
+  # Discovers OSD PIDs by globbing pid_glob inside cluster.pid_dir, then
+  # launches one `perf` invocation per PID.
+  #
+  # Template placeholders substituted at runtime:
+  #   {pid}        — the integer PID read from the matching PID file
+  #   {output_dir} — the perf output subdirectory for this run
+  #
+  # NOTE: use {output_dir}, NOT {perf_dir}.  {perf_dir} is only understood by
+  # the plain `perf` profile above; _start_per_pid() substitutes {output_dir}.
+  # -------------------------------------------------------------------------
+  osd_perf:
+    nodes:
+      - osds
+    args: 'stat -p {pid} -o {output_dir}/perf_stat.{pid}'
+    # pid_glob is matched against files in cluster.pid_dir.
+    # Default is "osd.*.pid".  Crimson OSD uses "ceph-osd.*.pid".
+    pid_glob: 'ceph-osd.*.pid'
+
+  # -------------------------------------------------------------------------
+  # top — system-wide top collection (no PID discovery).
+  # Runs a single top process per node writing to a shared output file.
+  # The ONLY placeholder substituted here is {top_dir}.
+  # Do NOT put {pid} in args for this profile — use osd_top instead.
+  # -------------------------------------------------------------------------
+  top:
+    nodes:
+      - osds
+    # top_cmd defaults to "top".
+    # top_cmd: 'top'
+    # -b batch mode, -H show threads, -1 per-CPU, -n iterations, -d delay(s).
+    args: '-b -H -1 -n 30 -d 3 > {top_dir}/top.out'
+
+  # -------------------------------------------------------------------------
+  # osd_top — per-OSD-PID top collection.
+  # Discovers OSD PIDs by globbing pid_glob inside cluster.pid_dir, then
+  # launches one `top` invocation per PID.
+  #
+  # Template placeholders substituted at runtime:
+  #   {pid}        — the integer PID read from the matching PID file
+  #   {output_dir} — the top output subdirectory for this run
+  #
+  # NOTE: use {output_dir}, NOT {top_dir}.  {top_dir} is only understood by
+  # the plain `top` profile above; _start_per_pid() substitutes {output_dir}.
+  # -------------------------------------------------------------------------
+  osd_top:
+    nodes:
+      - osds
+    args: '-b -H -1 -p {pid} -n 30 -d 3 > {output_dir}/{pid}_osd_top.out'
+    pid_glob: 'ceph-osd.*.pid'
+
+  # -------------------------------------------------------------------------
+  # blktrace — block-layer I/O tracing per OSD device.
+  # Traces /dev/disk/by-partlabel/osd-device-{N}-data for N in
+  # 0..osds_per_node-1.  Set use_existing: False in cluster to also generate
+  # seekwatcher movies after the run.
+  # -------------------------------------------------------------------------
+  blktrace:
+    nodes:
+      - osds

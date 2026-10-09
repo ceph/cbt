@@ -148,6 +148,33 @@ def test_perf_start_remote_node_uses_pdsh() -> None:
     remote_runner.communicate.assert_not_called()
 
 
+def test_perf_start_raises_value_error_when_args_contains_pid_placeholder() -> None:
+    """PerfMonitoring.start() raises ValueError with a helpful message when args contain {pid}.
+
+    PerfMonitoring only substitutes {perf_dir}; it has no concept of PID
+    discovery.  If a {pid} placeholder is present the user gets a clear error
+    naming the bad placeholder and the supported one, rather than a raw KeyError.
+    Users who need per-PID monitoring must use profile key 'osd_perf', or
+    profile key 'perf' with pid_glob (which MonitoringFactory auto-promotes to
+    OsdPerfMonitoring).
+    """
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/bin/perf\n", "")
+    mkdir_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.perf_monitoring.common.pdsh") as mock_pdsh,
+        patch("monitoring.perf_monitoring.common.get_localnode", return_value=None),
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        mock_pdsh.side_effect = [check_runner, mkdir_runner]
+        monitor = PerfMonitoring({"args": "stat -p {pid} -o {perf_dir}/perf_stat.{pid}"})
+
+        with pytest.raises(ValueError, match="pid"):
+            monitor.start("/tmp/output")
+
+
 def test_perf_stop_kills_local_runners() -> None:
     """PerfMonitoring.stop() pkills remote perf before killing tracked runners."""
     runner = MagicMock()
@@ -467,6 +494,75 @@ def test_osd_perf_init_raises_when_args_missing() -> None:
         )
         with pytest.raises(ValueError, match="args"):
             OsdPerfMonitoring({})
+
+
+# ---------------------------------------------------------------------------
+# Template placeholder contract
+# ---------------------------------------------------------------------------
+
+
+def test_osd_perf_start_raises_value_error_when_args_use_unknown_placeholder() -> None:
+    """OsdPerfMonitoring.start() raises ValueError with a helpful message for unknown placeholders.
+
+    {perf_dir}, {output_dir}, and {pid} are all valid placeholders.  Any other
+    placeholder (e.g. {unknown}) should produce a clear ValueError naming the
+    bad placeholder rather than a raw KeyError.
+    """
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/bin/perf\n", "")
+    mkdir_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.osd_pid_monitoring.settings") as mock_osd_settings,
+        patch("monitoring.perf_monitoring.common.pdsh") as mock_pdsh,
+        patch("monitoring.osd_pid_monitoring.common.get_localnode", return_value="node1"),
+        patch("monitoring.osd_pid_monitoring._glob.glob", return_value=["/var/run/ceph/osd.1.pid"]),
+        patch("builtins.open", mock_open(read_data="123\n")),
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        mock_osd_settings.cluster.get.side_effect = lambda key, default=None: {"pid_dir": "/var/run/ceph"}.get(
+            key, default
+        )
+        mock_pdsh.side_effect = [check_runner, mkdir_runner]
+        monitor = OsdPerfMonitoring({"args": "stat -p {pid} -o {unknown}/perf_stat.{pid}"})
+
+        with pytest.raises(ValueError, match="unknown"):
+            monitor.start("/tmp/output")
+
+
+def test_osd_perf_start_accepts_perf_dir_placeholder() -> None:
+    """OsdPerfMonitoring.start() correctly substitutes {perf_dir} in the args template.
+
+    {perf_dir} was a supported placeholder in the pre-refactor implementation and
+    must remain valid so existing YAML configs continue to work.
+    """
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/bin/perf\n", "")
+    mkdir_runner = MagicMock()
+    sh_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.osd_pid_monitoring.settings") as mock_osd_settings,
+        patch("monitoring.perf_monitoring.common.pdsh") as mock_pdsh,
+        patch("monitoring.osd_pid_monitoring.common.get_localnode", return_value="node1"),
+        patch("monitoring.osd_pid_monitoring.common.sh", return_value=sh_runner) as mock_sh,
+        patch("monitoring.osd_pid_monitoring._glob.glob", return_value=["/var/run/ceph/osd.1.pid"]),
+        patch("builtins.open", mock_open(read_data="123\n")),
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        mock_osd_settings.cluster.get.side_effect = lambda key, default=None: {"pid_dir": "/var/run/ceph"}.get(
+            key, default
+        )
+        mock_pdsh.side_effect = [check_runner, mkdir_runner]
+        monitor = OsdPerfMonitoring({"args": "stat -p {pid} -o {perf_dir}/perf_stat.{pid}"})
+
+        monitor.start("/tmp/output")
+
+        called_cmd = mock_sh.call_args[0][1]
+        assert "/tmp/output/perf" in called_cmd
+        assert "{perf_dir}" not in called_cmd
 
 
 # ---------------------------------------------------------------------------

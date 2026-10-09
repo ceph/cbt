@@ -37,7 +37,11 @@ benchmarks:
       iops_stddev: '(or (less) (near 0.05))'
       latency_avg: '(or (less) (near 0.05))'
 monitoring_profiles:
-  perf:
+  # osd_perf discovers OSD PIDs automatically via pid_glob and pid_dir, then
+  # runs one `perf` invocation per PID.  Use {output_dir} and {pid} as
+  # placeholders in the args template.
+  osd_perf:
     nodes:
       - osds
-    args: 'stat -p {pid} -o {perf_dir}/perf_stat.{pid}'
+    args: 'stat -p {pid} -o {output_dir}/perf_stat.{pid}'
+    pid_glob: 'ceph-osd.*.pid'

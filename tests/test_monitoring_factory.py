@@ -95,6 +95,71 @@ def test_get_object_returns_osd_perf_monitoring() -> None:
     assert isinstance(instance, OsdPerfMonitoring)
 
 
+def test_get_object_perf_with_pid_glob_returns_osd_perf_monitoring() -> None:
+    """get_object('perf') with pid_glob present promotes to OsdPerfMonitoring.
+
+    This guards the auto-promotion added to fix the KeyError: 'pid' bug that
+    occurred when a user wrote profile key 'perf' with a {pid} args template
+    and a pid_glob key.  Without the fix the wrong backend was chosen and
+    PerfMonitoring.start() raised KeyError because it never substitutes {pid}.
+    """
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.osd_pid_monitoring.settings") as mock_osd_settings,
+    ):
+        mock_base_settings.getnodes.return_value = "node1"
+        mock_base_settings.cluster.get.return_value = "dummy"
+        mock_osd_settings.cluster.get.return_value = "/var/run/ceph"
+        instance = MonitoringFactory.get_object(
+            "perf",
+            {"args": "stat -p {pid} -o {perf_dir}/perf_stat.{pid}", "pid_glob": "ceph-osd.*.pid"},
+        )
+    assert isinstance(instance, OsdPerfMonitoring)
+
+
+def test_get_object_perf_without_pid_glob_stays_perf_monitoring() -> None:
+    """get_object('perf') without pid_glob is NOT promoted — stays PerfMonitoring."""
+    with patch("monitoring.monitoring.settings") as mock_base_settings:
+        mock_base_settings.getnodes.return_value = "node1"
+        mock_base_settings.cluster.get.return_value = "dummy"
+        instance = MonitoringFactory.get_object("perf", {"args": "stat -o {perf_dir}/perf_stat.out"})
+    assert isinstance(instance, PerfMonitoring)
+    assert not isinstance(instance, OsdPerfMonitoring)
+
+
+def test_get_object_top_with_pid_glob_returns_osd_top_monitoring() -> None:
+    """get_object('top') with pid_glob present promotes to OsdTopMonitoring.
+
+    Mirrors the perf auto-promotion: a user who writes profile key 'top' with
+    a {pid} args template and a pid_glob key would otherwise get a plain
+    TopMonitoring instance whose start() raises ValueError on the {pid}
+    placeholder.  The promotion routes them to the correct backend without
+    requiring a YAML rename.
+    """
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.osd_pid_monitoring.settings") as mock_osd_settings,
+    ):
+        mock_base_settings.getnodes.return_value = "node1"
+        mock_base_settings.cluster.get.return_value = "dummy"
+        mock_osd_settings.cluster.get.return_value = "/var/run/ceph"
+        instance = MonitoringFactory.get_object(
+            "top",
+            {"args": "-b -H -1 -p {pid} -n 30 > {output_dir}/{pid}_top.out", "pid_glob": "ceph-osd.*.pid"},
+        )
+    assert isinstance(instance, OsdTopMonitoring)
+
+
+def test_get_object_top_without_pid_glob_stays_top_monitoring() -> None:
+    """get_object('top') without pid_glob is NOT promoted — stays TopMonitoring."""
+    with patch("monitoring.monitoring.settings") as mock_base_settings:
+        mock_base_settings.getnodes.return_value = "node1"
+        mock_base_settings.cluster.get.return_value = "dummy"
+        instance = MonitoringFactory.get_object("top", {"args": "-b -n 30 > {top_dir}/top.out"})
+    assert isinstance(instance, TopMonitoring)
+    assert not isinstance(instance, OsdTopMonitoring)
+
+
 def test_get_object_raises_for_unknown_key() -> None:
     """get_object() raises ValueError for an unrecognised backend name."""
     with pytest.raises(ValueError, match="Unknown monitoring backend: 'bogus'"):
@@ -149,6 +214,58 @@ def test_start_calls_start_on_every_monitor() -> None:
 # ---------------------------------------------------------------------------
 # stop
 # ---------------------------------------------------------------------------
+
+
+def test_stop_calls_get_all_independently_of_start_losing_runner_state() -> None:
+    """MonitoringFactory.stop() re-instantiates backends, so local runner state from start() is lost.
+
+    MonitoringFactory.start() and stop() each call get_all() independently,
+    which constructs fresh backend instances.  The fresh instances have empty
+    runner lists, so the runner.kill() loop in stop() never fires on the real
+    processes that start() launched.  Only the context-manager form
+    (MonitoringFactory.monitor()) is safe because it materialises the list once.
+
+    This test documents the existing behaviour so that any refactor of
+    start()/stop() to share state is deliberate and tested.
+    """
+    started_monitor = _stub_monitor()
+    stopped_monitor = _stub_monitor()
+
+    get_all_calls: list[list[MagicMock]] = []
+
+    def _get_all_side_effect() -> list[MagicMock]:
+        result = get_all_calls[len(get_all_calls)]  # advances on each call
+        return result
+
+    with patch.object(MonitoringFactory, "get_all") as mock_get_all:
+        mock_get_all.side_effect = [[started_monitor], [stopped_monitor]]
+
+        MonitoringFactory.start("/tmp/out")
+        MonitoringFactory.stop("/tmp/out")
+
+    # start() ran on the first instance, stop() on a completely different one
+    started_monitor.start.assert_called_once_with("/tmp/out")
+    started_monitor.stop.assert_not_called()
+
+    stopped_monitor.stop.assert_called_once_with("/tmp/out")
+    stopped_monitor.start.assert_not_called()
+
+
+def test_monitor_context_manager_uses_same_instances_for_start_and_stop() -> None:
+    """monitor() uses the same backend instances for start and stop, unlike start()+stop().
+
+    This is the safe counterpart to the start()+stop() orphan test above.
+    The context manager materialises get_all() once, so runner state is shared.
+    """
+    m = _stub_monitor()
+    with patch.object(MonitoringFactory, "get_all", return_value=iter([m])) as mock_get_all:
+        with MonitoringFactory.monitor("/tmp/out"):
+            pass
+
+    # get_all() was called exactly once — same instance used for both start and stop
+    mock_get_all.assert_called_once()
+    m.start.assert_called_once_with("/tmp/out")
+    m.stop.assert_called_once_with("/tmp/out")
 
 
 def test_stop_calls_stop_on_every_monitor() -> None:

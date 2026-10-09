@@ -229,6 +229,51 @@ def test_top_stop_chowns_output_files_when_directory_provided() -> None:
     )
 
 
+def test_top_stop_chown_communicates() -> None:
+    """TopMonitoring.stop() must call .communicate() on the chown pdsh runner.
+
+    Without .communicate() the chown subprocess is spawned and immediately
+    discarded — ownership is never actually changed.  This is a bug: compare
+    with PerfMonitoring.stop() which correctly awaits both chown runners.
+    """
+    pkill_runner = MagicMock()
+    chown_runner = MagicMock()
+    monitor = _make_top_monitor(user="ceph")
+    monitor._running_cmd = "top -b -n 1 > /tmp/output/top/top.out"
+
+    with patch("monitoring.top_monitoring.common.pdsh") as mock_pdsh:
+        mock_pdsh.side_effect = [pkill_runner, chown_runner]
+        monitor.stop("/tmp/output")
+
+    chown_runner.communicate.assert_called_once_with()
+
+
+def test_top_start_raises_value_error_when_args_contains_pid_placeholder() -> None:
+    """TopMonitoring.start() raises ValueError with a helpful message when args contain {pid}.
+
+    TopMonitoring.start() only substitutes {top_dir}; it has no concept of PID
+    discovery.  If a {pid} placeholder is present the user gets a clear error
+    naming the bad placeholder and the supported one, rather than a raw KeyError.
+    Users who need per-PID monitoring must use profile key 'osd_top' instead of
+    'top'.
+    """
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/bin/top\n", "")
+    mkdir_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.top_monitoring.common.pdsh") as mock_pdsh,
+        patch("monitoring.top_monitoring.common.get_localnode", return_value=None),
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        mock_pdsh.side_effect = [check_runner, mkdir_runner]
+        monitor = TopMonitoring({"args": "-b -H -1 -p {pid} -n 30 > {top_dir}/{pid}_top.out"})
+
+        with pytest.raises(ValueError, match="pid"):
+            monitor.start("/tmp/output")
+
+
 # ---------------------------------------------------------------------------
 # OsdTopMonitoring
 # ---------------------------------------------------------------------------
@@ -387,6 +432,42 @@ def test_osd_top_start_remote_node_warns_when_no_pid_files() -> None:
 def test_osd_top_stop_inherited_from_top_monitoring() -> None:
     """OsdTopMonitoring inherits stop() from TopMonitoring without override."""
     assert OsdTopMonitoring.stop is TopMonitoring.stop
+
+
+# ---------------------------------------------------------------------------
+# Template placeholder contract
+# ---------------------------------------------------------------------------
+
+
+def test_osd_top_start_raises_value_error_when_args_use_top_dir_instead_of_output_dir() -> None:
+    """OsdTopMonitoring.start() raises ValueError with a helpful message when args use {top_dir}.
+
+    _start_per_pid() substitutes {output_dir} and {pid}.  A user who follows
+    the TopMonitoring convention and writes {top_dir} in their osd_top args
+    template gets a clear error naming the bad placeholder and the supported
+    ones, rather than a raw KeyError.
+    """
+    check_runner = MagicMock()
+    check_runner.communicate.return_value = ("/usr/bin/top\n", "")
+    mkdir_runner = MagicMock()
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.osd_pid_monitoring.settings") as mock_osd_settings,
+        patch("monitoring.top_monitoring.common.pdsh") as mock_pdsh,
+        patch("monitoring.osd_pid_monitoring.common.get_localnode", return_value="node1"),
+        patch("monitoring.osd_pid_monitoring._glob.glob", return_value=["/var/run/ceph/osd.1.pid"]),
+        patch("builtins.open", mock_open(read_data="42\n")),
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        mock_osd_settings.cluster.get.side_effect = lambda key, default=None: {"pid_dir": "/var/run/ceph"}.get(
+            key, default
+        )
+        mock_pdsh.side_effect = [check_runner, mkdir_runner]
+        monitor = OsdTopMonitoring({"args": "-b -H -1 -p {pid} -n 30 > {top_dir}/{pid}_top.out"})
+
+        with pytest.raises(ValueError, match="top_dir"):
+            monitor.start("/tmp/output")
 
 
 # ---------------------------------------------------------------------------
