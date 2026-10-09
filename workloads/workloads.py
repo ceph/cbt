@@ -140,12 +140,16 @@ class Workloads:
 
         log.info("== Workloads completed ==")
 
-    def command_groups(self) -> Generator[tuple[str, list[str]], None, None]:
-        """Yield (output_directory, [command, ...]) for every run cell without executing.
+    def command_groups(self) -> Generator[tuple[str, list[str], str, Optional[int]], None, None]:
+        """Yield ``(output_directory, commands, workload_name, phase_secs)`` for every run cell.
 
         This factors the (pdsh-free) command-generation bookkeeping out of
         run() so a caller can choose how to fan the commands out — e.g. via a
         remote.RemoteExecutor for benchmarks that have moved off pdsh.
+
+        The extra ``workload_name`` and ``phase_secs`` fields allow the caller
+        to construct a :func:`progress.phase_bar` label and duration without
+        needing access to the ``Workload`` objects directly.
 
         set_benchmark_type() and set_executable() must be called first.
 
@@ -164,7 +168,10 @@ class Workloads:
         for workload in self._workloads:
             workload.set_benchmark_type(self._benchmark_type)
             workload.set_executable(self._executable)
-            yield from workload.get_commands_list()
+            workload_name: str = workload.get_name()
+            phase_secs: Optional[int] = workload.phase_duration_secs()
+            for output_directory, commands in workload.get_commands_list():
+                yield output_directory, commands, workload_name, phase_secs
 
     def get_names(self) -> str:
         """

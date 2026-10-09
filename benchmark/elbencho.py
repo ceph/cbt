@@ -7,6 +7,8 @@ import logging
 import os
 from typing import Any
 
+import progress
+
 import yaml
 
 import settings
@@ -176,7 +178,9 @@ class Elbencho(Benchmark):
         self._workloads.set_benchmark_type("elbencho")
         self._workloads.set_executable(self.cmd_path)
 
-        for output_directory, commands in self._workloads.command_groups():
+        overall = progress.get_overall_bar()
+
+        for output_directory, commands, workload_name, phase_secs in self._workloads.command_groups():
             live_commands = [cmd for cmd in commands if cmd]
             if not live_commands:
                 continue
@@ -188,10 +192,12 @@ class Elbencho(Benchmark):
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
-            # Per-bucket commands must run at once to produce the aggregate load
-            # total_iodepth describes, so launch the whole cell concurrently.
-            MonitoringFactory.start(output_directory)
-            self._remote.run_commands(clients, live_commands, continue_if_error=False)
-            MonitoringFactory.stop()
+
+            with progress.phase_bar(workload_name, phase_secs, overall=overall):
+                # Per-bucket commands must run at once to produce the aggregate load
+                # total_iodepth describes, so launch the whole cell concurrently.
+                MonitoringFactory.start(output_directory)
+                self._remote.run_commands(clients, live_commands, continue_if_error=False)
+                MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")
