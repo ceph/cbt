@@ -186,10 +186,12 @@ class Elbencho(Benchmark):
                 output_directory,
             )
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
-            MonitoringFactory.start(output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
-                self._remote.run_command(clients, cmd, continue_if_error=False)
+            # Per-bucket commands must run at once to produce the aggregate load
+            # total_iodepth describes, so launch the whole cell concurrently.
+            MonitoringFactory.start(output_directory)
+            self._remote.run_commands(clients, live_commands, continue_if_error=False)
             MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")

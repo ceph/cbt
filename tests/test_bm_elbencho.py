@@ -265,9 +265,9 @@ class TestRunLoop(unittest.TestCase):
         return b
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_call_count_matches_run_matrix(self, mock_exec: Any, mock_mkdir: Any) -> None:
-        """2 blocksizes x 2 threads x 2 iodepths = 8 run_command calls."""
+        """2 blocksizes x 2 threads x 2 iodepths = 8 run cells."""
         mock_exec.return_value = []
         b = self._make(
             {
@@ -284,7 +284,7 @@ class TestRunLoop(unittest.TestCase):
         self.assertEqual(8, mock_exec.call_count)
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_run_dir_path_structure(self, mock_exec: Any, mock_mkdir: Any) -> None:
         mock_exec.return_value = []
         b = self._make(
@@ -306,7 +306,7 @@ class TestRunLoop(unittest.TestCase):
         )
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_stat_workload_skipped(self, mock_exec: Any, mock_mkdir: Any) -> None:
         mock_exec.return_value = []
         b = self._make({"w": {"s3_bucket": "bkt", "mode": "stat", "threads": [1], "iodepth": [1]}})
@@ -314,7 +314,7 @@ class TestRunLoop(unittest.TestCase):
         mock_exec.assert_not_called()
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_scalar_threads_and_iodepth(self, mock_exec: Any, mock_mkdir: Any) -> None:
         mock_exec.return_value = []
         b = self._make(
@@ -332,7 +332,7 @@ class TestRunLoop(unittest.TestCase):
         self.assertEqual(1, mock_exec.call_count)
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_cell_emits_matching_command_and_byte_run_dir(self, mock_exec: Any, mock_mkdir: Any) -> None:
         # The run loop must feed elbencho the human blocksize (128k) while
         # naming the run directory with the byte count (131072). Mixing the two
@@ -353,7 +353,7 @@ class TestRunLoop(unittest.TestCase):
         b._run_workloads()
 
         self.assertEqual(1, mock_exec.call_count)
-        cmd = mock_exec.call_args.args[1]
+        (cmd,) = mock_exec.call_args.args[1]
         self.assertIn("--block 128k", cmd)
         self.assertNotIn("--block 131072", cmd)  # byte count must not reach --block
         self.assertIn("--threads 8", cmd)
@@ -577,7 +577,7 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
         return b
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_total_iodepth_splits_across_distinct_buckets(self, mock_exec: Any, mock_mkdir: Any) -> None:
         """total_iodepth=8 over num_buckets=2 -> 2 commands, iodepth 4 each, distinct buckets."""
         mock_exec.return_value = []
@@ -586,15 +586,16 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
                    "threads": 4, "total_iodepth": [8], "num_buckets": 2}}
         )
         b._run_workloads()
-        self.assertEqual(2, mock_exec.call_count, "one command per active bucket")
-        commands = [c.args[1] for c in mock_exec.call_args_list]
+        self.assertEqual(1, mock_exec.call_count, "one concurrent batch per cell")
+        commands = [cmd for c in mock_exec.call_args_list for cmd in c.args[1]]
+        self.assertEqual(2, len(commands), "one command per active bucket")
         for cmd in commands:
             self.assertIn("--iodepth 4", cmd, f"8 total / 2 buckets -> 4 each: {cmd}")
         buckets = sorted(cmd.split("s3://")[-1] for cmd in commands)
         self.assertEqual(["bkt-0", "bkt-1"], buckets, "buckets must be distinctly suffixed")
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_multi_bucket_result_files_are_distinct(self, mock_exec: Any, mock_mkdir: Any) -> None:
         """Each concurrent per-bucket process must write its own result file;
         a shared result.csv would let the parallel processes clobber each other."""
@@ -604,12 +605,12 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
                    "threads": 4, "total_iodepth": [8], "num_buckets": 2}}
         )
         b._run_workloads()
-        commands = [c.args[1] for c in mock_exec.call_args_list]
+        commands = [cmd for c in mock_exec.call_args_list for cmd in c.args[1]]
         resfiles = [cmd.split("--resfile ")[1].split(" ", 1)[0] for cmd in commands]
         self.assertEqual(2, len(set(resfiles)), f"per-bucket resfiles must be distinct: {resfiles}")
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_total_iodepth_directory_segment_present(self, mock_exec: Any, mock_mkdir: Any) -> None:
         mock_exec.return_value = []
         b = self._make(
@@ -624,7 +625,7 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
         )
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_total_iodepth_below_num_buckets_caps_active_buckets(self, mock_exec: Any, mock_mkdir: Any) -> None:
         """total_iodepth=2 < num_buckets=5 -> only 2 buckets run, iodepth 1 each."""
         mock_exec.return_value = []
@@ -633,12 +634,13 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
                    "threads": 2, "total_iodepth": [2], "num_buckets": 5}}
         )
         b._run_workloads()
-        self.assertEqual(2, mock_exec.call_count, "active buckets capped to total_iodepth")
-        for c in mock_exec.call_args_list:
-            self.assertIn("--iodepth 1", c.args[1])
+        commands = [cmd for c in mock_exec.call_args_list for cmd in c.args[1]]
+        self.assertEqual(2, len(commands), "active buckets capped to total_iodepth")
+        for cmd in commands:
+            self.assertIn("--iodepth 1", cmd)
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_total_iodepth_list_sweeps_one_cell_per_value(self, mock_exec: Any, mock_mkdir: Any) -> None:
         """total_iodepth=[4, 8] x 2 buckets = 4 commands."""
         mock_exec.return_value = []
@@ -647,10 +649,12 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
                    "threads": 2, "total_iodepth": [4, 8], "num_buckets": 2}}
         )
         b._run_workloads()
-        self.assertEqual(4, mock_exec.call_count, "2 total_iodepth values x 2 buckets")
+        self.assertEqual(2, mock_exec.call_count, "one concurrent batch per total_iodepth value")
+        commands = [cmd for c in mock_exec.call_args_list for cmd in c.args[1]]
+        self.assertEqual(4, len(commands), "2 total_iodepth values x 2 buckets")
 
     @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
+    @patch.object(AsyncSSHExecutor, "run_commands")
     def test_num_buckets_without_total_iodepth_runs_single_bucket(self, mock_exec: Any, mock_mkdir: Any) -> None:
         """num_buckets is ignored without total_iodepth: one command, base bucket."""
         mock_exec.return_value = []
@@ -660,7 +664,8 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
         )
         b._run_workloads()
         self.assertEqual(1, mock_exec.call_count, "num_buckets alone must not fan out")
-        self.assertTrue(mock_exec.call_args.args[1].endswith("s3://bkt"))
+        (cmd,) = mock_exec.call_args.args[1]
+        self.assertTrue(cmd.endswith("s3://bkt"))
 
 
 if __name__ == "__main__":
