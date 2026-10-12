@@ -113,7 +113,8 @@ class TestGenerateFullCommand(unittest.TestCase):
             "/usr/local/bin/elbencho --write --threads 1 --block 4k --iodepth 1 "
             "--s3endpoints http://rgw:7480 --s3key AK --s3secret SK "
             "--s3region default "
-            "--resfile /tmp/run/elbencho/write_4096/threads-001/iodepth-001/result.csv s3://bkt",
+            "--resfile /tmp/run/elbencho/write_4096/threads-001/iodepth-001/result.csv "
+            "s3://bkt/$(hostname -s)",
             cmd,
         )
 
@@ -136,7 +137,7 @@ class TestGenerateFullCommand(unittest.TestCase):
             "--hosts c1,c2 --s3endpoints http://rgw:7480 --s3key AK --s3secret SK "
             "--s3authtoken tok --s3region us-east-1 "
             "--resfile /tmp/myrun/elbencho/write_131072/threads-008/iodepth-016/result.csv "
-            "--mkdirs s3://bkt",
+            "--mkdirs s3://bkt/$(hostname -s)",
             cmd,
         )
 
@@ -192,6 +193,84 @@ class TestGenerateFullCommand(unittest.TestCase):
         # Without set_executable() there is nothing to run; get() must refuse
         # rather than emit a command starting with "None".
         self.assertEqual("", _cmd({"s3_bucket": "bkt", "mode": "write"}, set_executable=False))
+
+
+class TestTotalIodepthAndMultiBucket(unittest.TestCase):
+    """total_iodepth directory segment and per-bucket naming in the command line."""
+
+    def test_total_iodepth_inserts_directory_segment(self):
+        # The total_iodepth segment sits between threads- and iodepth- so the
+        # post-processor can recover the aggregate depth from the path.
+        cmd = _cmd({"s3_bucket": "bkt", "mode": "write", "total_iodepth": 16}, threads=8, iodepth=4)
+        self.assertIn(
+            "--resfile /tmp/run/elbencho/write_4096/threads-008/total_iodepth-16/iodepth-004/result.csv",
+            cmd,
+        )
+
+    def test_no_total_iodepth_segment_when_unset(self):
+        cmd = _cmd({"s3_bucket": "bkt", "mode": "write"}, iodepth=4)
+        self.assertNotIn("total_iodepth-", cmd)
+
+    def test_multi_bucket_suffixes_target_index(self):
+        # With total_iodepth and >1 bucket, each process targets its own bucket.
+        cmd = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 4, "target_number": 2},
+            iodepth=4,
+        )
+        self.assertTrue(cmd.endswith("s3://cbt-2/$(hostname -s)"), f"expected bucket suffix -2 in: {cmd}")
+
+    def test_single_bucket_uses_base_name_even_with_total_iodepth(self):
+        cmd = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 1, "target_number": 0},
+            iodepth=16,
+        )
+        self.assertTrue(cmd.endswith("s3://cbt/$(hostname -s)"), f"expected unsuffixed bucket in: {cmd}")
+
+    def test_num_buckets_without_total_iodepth_is_ignored(self):
+        # num_buckets is only meaningful alongside total_iodepth; on its own it
+        # must not rename the bucket (contract in yaml-config-reference.md).
+        cmd = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "num_buckets": 4, "target_number": 3},
+            iodepth=4,
+        )
+        self.assertTrue(cmd.endswith("s3://cbt/$(hostname -s)"), f"expected unsuffixed bucket in: {cmd}")
+        self.assertNotIn("total_iodepth-", cmd)
+
+    def test_mkdirs_precedes_suffixed_bucket(self):
+        cmd = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 8,
+             "num_buckets": 2, "target_number": 1, "mkdirs": True},
+            iodepth=4,
+        )
+        self.assertIn("--mkdirs s3://cbt-1/$(hostname -s)", cmd)
+
+    def test_non_integer_num_buckets_raises_naming_key(self):
+        with self.assertRaises(ValueError) as ctx:
+            _cmd({"s3_bucket": "cbt", "mode": "write", "total_iodepth": 8, "num_buckets": "many"}, iodepth=4)
+        self.assertIn("num_buckets", str(ctx.exception))
+
+    def test_multi_bucket_resfiles_are_target_specific(self):
+        # Concurrent per-bucket processes in one run cell must write distinct
+        # result files; a shared result.csv would clobber all but one bucket.
+        cmd0 = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 4, "target_number": 0},
+            iodepth=4,
+        )
+        cmd1 = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 4, "target_number": 1},
+            iodepth=4,
+        )
+        self.assertIn("/total_iodepth-16/iodepth-004/result-0.csv", cmd0)
+        self.assertIn("/total_iodepth-16/iodepth-004/result-1.csv", cmd1)
+
+    def test_single_bucket_resfile_is_plain_result_csv(self):
+        # Single-bucket runs keep the established result.csv name (no suffix).
+        cmd = _cmd(
+            {"s3_bucket": "cbt", "mode": "write", "total_iodepth": 16, "num_buckets": 1, "target_number": 0},
+            iodepth=16,
+        )
+        self.assertIn("/iodepth-016/result.csv", cmd)
+        self.assertNotIn("result-0.csv", cmd)
 
 
 if __name__ == "__main__":

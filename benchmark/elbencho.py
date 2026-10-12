@@ -7,6 +7,8 @@ import logging
 import os
 from typing import Any
 
+import progress
+
 import yaml
 
 import settings
@@ -146,15 +148,25 @@ class Elbencho(Benchmark):
             for field in ("mode", "s3_bucket"):
                 if field not in params:
                     raise ValueError(f"workload '{name}' missing required key '{field}'")
-            for field in ("threads", "iodepth"):
+            if "iodepth" in params and "total_iodepth" in params:
+                raise ValueError(
+                    f"workload '{name}': 'iodepth' and 'total_iodepth' are mutually exclusive — set only one"
+                )
+            # total_iodepth and num_buckets drive the per-bucket split, so a
+            # zero or negative value would divide by zero or yield no commands;
+            # require them to be >= 1.
+            positive_fields = ("total_iodepth", "num_buckets")
+            for field in ("threads", "iodepth", "total_iodepth", "num_buckets"):
                 values = params.get(field)
                 if values is None:
                     continue
                 for value in (values if isinstance(values, list) else [values]):
                     try:
-                        int(value)
+                        parsed = int(value)
                     except (TypeError, ValueError) as exc:
                         raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+                    if field in positive_fields and parsed < 1:
+                        raise ValueError(f"workload '{name}': {field} value {value!r} must be >= 1")
 
     # ------------------------------------------------------------------
     # Run loop
@@ -166,7 +178,9 @@ class Elbencho(Benchmark):
         self._workloads.set_benchmark_type("elbencho")
         self._workloads.set_executable(self.cmd_path)
 
-        for output_directory, commands in self._workloads.command_groups():
+        overall = progress.get_overall_bar()
+
+        for output_directory, commands, workload_name, phase_secs in self._workloads.command_groups():
             live_commands = [cmd for cmd in commands if cmd]
             if not live_commands:
                 continue
@@ -176,10 +190,14 @@ class Elbencho(Benchmark):
                 output_directory,
             )
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
-            MonitoringFactory.start(output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
-                self._remote.run_command(clients, cmd, continue_if_error=False)
-            MonitoringFactory.stop()
+
+            with progress.phase_bar(workload_name, phase_secs, overall=overall):
+                # Per-bucket commands must run at once to produce the aggregate load
+                # total_iodepth describes, so launch the whole cell concurrently.
+                MonitoringFactory.start(output_directory)
+                self._remote.run_commands(clients, live_commands, continue_if_error=False)
+                MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")
