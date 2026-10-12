@@ -10,3 +10,6 @@ complex edge-cases, thereby implementing TDD.
 
 Read STRUCTURE.md for a complete map of every git-tracked source file.
 Consult it instead of running `ls`, `find`, or `list_files` to orient yourself.
+
+Keep STRUCTURE.md up to date. Whenever a source file is, moved, renamed, or deleted, update 
+the corresponding entry in STRUCTURE.md in the same commit.
