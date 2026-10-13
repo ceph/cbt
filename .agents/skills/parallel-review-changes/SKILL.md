@@ -26,16 +26,17 @@ Launch **three** reviewer subagents in a single message so they run in parallel.
 Give them the **same base goal** — review the diff against the base branch and
 report only important issues (correctness/logic bugs, security holes, data-loss
 or corruption risks, concurrency hazards, broken error handling, API/contract
-breaks, missing tests for risky changes). Minor findings should be omitted.
+breaks, missing tests for risky changes, Python 3.9 compatibility regressions such
+as `X | Y` pipe unions or 3.10+ syntax). Minor findings should be omitted.
 
 Vary their *emphasis* (general purpose should be constant) slightly, e.g.:
 
-- Reviewer A — general with emphasis on internal correctness & logic
+- Reviewer A — general with emphasis on internal correctness, logic & Python 3.9 compatibility (e.g. use `Optional[T]` / `Union[T, U]`, no pipe unions)
 - Reviewer B — general with emphasis on security, testing & data integrity
-- Reviewer C — general with emphasis on broader codebase consistency & interface contracts
+- Reviewer C — general with emphasis on broader codebase consistency, interface contracts & architectural boundaries (verifying that changes adhere to architectural invariants, separation of concerns across layers, and that required plan deliverables/contracts are not bypassed)
 
-For reviewer C, in particular, order it to ensure that the DRY principle is carried out.
-Only non-minor violations of the principle should be reported. 
+For reviewer C, in particular, order it to ensure that the DRY principle is carried out and architectural boundaries are respected.
+Only non-minor violations of these principles should be reported.
 
 Each reviewer reads the diff of the required changes and returns a short list: each finding as
 `file:line` — description — severity — suggested fix.

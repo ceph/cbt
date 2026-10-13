@@ -128,12 +128,14 @@ cbt/
 │   └── wip-elbencho/elbencho_ex.yaml
 │
 ├── docs/
+│   ├── ARCHITECTURE.md             # architecture boundaries & execution contracts
 │   ├── dev/coding-guidelines.md    # ← read before writing any code (see AGENTS.md)
 │   ├── workloads/elbencho-s3.md    # Elbencho S3 feature doc
 │   └── *.md                        # design/release/integration docs
 │
 └── .agents/
     └── skills/
+        ├── executing-plans/SKILL.md
         ├── writing-unit-tests/SKILL.md
         └── parallel-review-changes/SKILL.md
 ```
