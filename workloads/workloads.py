@@ -118,10 +118,9 @@ class Workloads:
                     if script_command:
                         pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
 
-                    processes: list[Union[CheckedPopen, CheckedPopenLocal]] = [
-                        pdsh(getnodes("clients"), fio_command)  # type: ignore[no-untyped-call]
-                        for fio_command in fio_command_list
-                    ]
+                    processes: list[Union[CheckedPopen, CheckedPopenLocal]] = []
+                    for fio_command in fio_command_list:
+                        processes.append(pdsh(getnodes("clients"), fio_command))  # type: ignore[no-untyped-call]
 
                     # Sleep for the ramp time and then collect stats
                     if ramp_time:
