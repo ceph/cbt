@@ -1,0 +1,141 @@
+[project]
+name = "cbt"
+description = "Ceph Benchmark Tool"
+version = "1.0"
+requires-python = ">=3.9"
+readme = "README.md"
+license = { file = "COPYING-LGPL2.1" }
+dependencies = [
+    "lxml>=5.4",
+    "matplotlib>=3.9",
+    "mdutils>=1.6",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.67",
+    "typing_extensions>=4.0",
+]
+
+# Development dependencies for pip
+[project.optional-dependencies]
+dev = [
+    "black>=25.1",
+    "ruff>=0.11",
+    "mypy>=1.15",
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "types-PyYAML>=6",
+    "types-tqdm>=4.67",
+    "pylint>=3.3",
+]
+
+# required to stop pip attemting to install the entire CBT code as well
+[tool.setuptools]
+packages = []
+py-modules = []
+
+[tool.uv]
+package = false
+
+# ============================================================
+# Ruff
+# ============================================================
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = [".venv", ".uv", ".mypy_cache", ".ruff_cache"]
+
+[tool.ruff.lint]
+#https://docs.astral.sh/ruff/rules/
+# Rule sets to enable:
+# E/F: pycodestyle/pyflakes; I: import sorting; UP: pyupgrade; N: pep8-naming;
+# B: bugbear; PIE: pie; RUF: ruff-specific rules.
+select = ["E", "F", "I", "UP", "N", "B", "PIE", "RUF"]
+ignore = [
+  "E501",  # We let formatter handle line length instead of flagging it as a lint error
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+# ============================================================
+# MyPy 
+# ============================================================
+[tool.mypy]
+python_version = "3.9"
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+show_column_numbers = true
+show_error_codes = true
+namespace_packages = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "common",
+    "settings",
+    "client_endpoints_factory",
+    "benchmarkfactory",
+    "benchmark.benchmark",
+    "benchmark.radosbench",
+    "benchmark.hsbench",
+    "benchmark.nullbench",
+    "benchmark.cosbench",
+    "benchmark.cephtestrados",
+    "cluster.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "benchmark.base_fio",
+    "benchmark.fio",
+    "benchmark.librbdfio",
+    "benchmark.rbdfio",
+    "benchmark.kvmrbdfio",
+    "benchmark.rawfio",
+    "tests.test_fio_initialization",
+]
+disallow_untyped_calls = false
+disallow_untyped_defs = false
+
+# ============================================================
+# Pytest
+# ============================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--verbose --durations=5 --capture=no --exitfirst"
+
+# ============================================================
+# Pylint
+# ============================================================
+
+[tool.pylint.main]
+fail-under = 10.0
+jobs = 0
+ignore = ["ceph.venv"]
+
+[tool.pylint.format]
+ignore-long-lines = "^\\s*(# )?<?https?://\\S+>?$"
+max-line-length = 120
+max-parents=10
+
+# ============================================================
+# Black
+# ============================================================
+
+[tool.black]
+line-length = 120
