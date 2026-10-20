@@ -324,7 +324,7 @@ class TestWorkload(unittest.TestCase):
             "blocksize": "4k",
             "threads": "8",
             "iodepth": "4",
-            "total_iodepth": None,  # type: ignore[typeddict-item]
+            "total_iodepth": None,
         }
         workload = Workload("null_total", options, self.base_run_directory)
         workload.set_benchmark_type("elbencho")

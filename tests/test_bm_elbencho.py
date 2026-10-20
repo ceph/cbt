@@ -424,9 +424,9 @@ class TestElbenchoNoPdsh(unittest.TestCase):
             patch("monitoring.monitoring_factory.MonitoringFactory.start"),
             patch("monitoring.monitoring_factory.MonitoringFactory.stop"),
             patch.object(b, "_run_workloads"),
+            patch.object(_common, "pdsh", side_effect=AssertionError("pdsh called")),
         ):
-            with patch.object(_common, "pdsh", side_effect=AssertionError("pdsh called")):
-                b.run()
+            b.run()
 
 
 # ---------------------------------------------------------------------------
@@ -706,9 +706,8 @@ class TestTotalIodepthRunLoop(unittest.TestCase):
         b = self._make(
             {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": "4k", "threads": 4, "iodepth": 2}}
         )
-        with patch("monitoring.monitoring_factory.MonitoringFactory.stop") as mock_stop:
-            with self.assertRaises(RuntimeError):
-                b._run_workloads()
+        with patch("monitoring.monitoring_factory.MonitoringFactory.stop") as mock_stop, self.assertRaises(RuntimeError):
+            b._run_workloads()
         mock_stop.assert_called_once()
 
 

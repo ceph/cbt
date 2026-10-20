@@ -113,6 +113,38 @@ read_small:
   size: '5g'                 # identical to write
 ```
 
+### Multi-bucket workloads and `total_iodepth`
+
+To benchmark aggregate throughput across multiple S3 buckets while bounding overall queue depth, use `total_iodepth` alongside `num_buckets`:
+
+- `total_iodepth` caps the aggregate IO depth across buckets and distributes it evenly across concurrent per-bucket processes (at least 1 depth per bucket).
+- `iodepth` and `total_iodepth` are mutually exclusive.
+- `num_buckets` is only used when `total_iodepth` is specified; otherwise a single bucket is used.
+- When `total_iodepth < num_buckets`, active buckets are capped to `total_iodepth` so each bucket gets at least depth 1.
+- Each parallel per-bucket process targets its own suffixed bucket (`<s3_bucket>-<index>`), e.g. `cbt-benchmark-0`, `cbt-benchmark-1`.
+- Targets are namespaced per client using the client's FQDN (`s3://<bucket>/$(hostname -f)`), ensuring concurrent clients do not overwrite each other's keys.
+- Results for multi-bucket runs are written to distinct per-target result files (`result-0.csv`, `result-1.csv`, etc.) within the run directory to prevent file overwrites.
+
+Example multi-bucket workload:
+
+```yaml
+write_multi_bucket:
+  s3_bucket: 'cbt-benchmark'
+  mode: 'write'
+  mkdirs: True
+  threads: [4]
+  total_iodepth: [8, 16]
+  num_buckets: 4
+  blocksize: ['5m']
+  size: '5g'
+  num_objects: 100
+  duration: 30
+```
+
+With `total_iodepth: [8, 16]` and `num_buckets: 4`:
+- For `total_iodepth: 8`, CBT runs 4 concurrent elbencho processes per client with `--iodepth 2` targeting `cbt-benchmark-0` through `cbt-benchmark-3`.
+- For `total_iodepth: 16`, CBT runs 4 concurrent processes with `--iodepth 4`.
+
 ## Running
 
 ```bash
@@ -151,13 +183,15 @@ configuration produces **16 run cells**.
 
 ## Expected result files
 
-Each run cell produces a `result.csv`. Results are pulled from each client node via `scp -r`
-into a per-hostname subdirectory under the archive, mirroring the remote path:
+Each run cell produces a result file. Single-bucket runs write `result.csv`, while multi-bucket runs write per-target `result-<index>.csv` files. When `total_iodepth` is used, the `total_iodepth-<N>` directory segment is inserted between `threads-<NNN>` and `iodepth-<NNN>` so post-processing can recover the aggregate depth:
 
 ```
 /tmp/cbt-results/<hostname>/tmp/cbt/00000000/Elbencho/
   write_4096/threads-001/iodepth-001/result.csv
   write_4096/threads-001/iodepth-004/result.csv
+  ...
+  write_5242880/threads-004/total_iodepth-8/iodepth-002/result-0.csv
+  write_5242880/threads-004/total_iodepth-8/iodepth-002/result-1.csv
   ...
   write_131072/threads-004/iodepth-004/result.csv
   read_4096/threads-001/iodepth-001/result.csv

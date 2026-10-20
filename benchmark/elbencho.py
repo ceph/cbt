@@ -119,7 +119,7 @@ class Elbencho(Benchmark):
 
         self.dropcaches()
         # TODO: call super().run() once Benchmark.run() is executor-driven and
-        # is no longer using AsyncIO.
+        # is no longer using pdsh.
         self._remote.make_remote_dir(settings.getnodes("clients"), self.run_dir)  # type: ignore[no-untyped-call]
         self.cluster.dump_config(self.run_dir)
 
