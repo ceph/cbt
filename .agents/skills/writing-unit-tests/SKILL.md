@@ -19,9 +19,9 @@ refactor and goes red only when the contract breaks. See the testing section of
   `tests/test_*.py`. Some files use bare `def test_...()` functions; both styles are
   acceptable — choose the class form when shared `setUp`/`setUpClass` state is needed,
   bare functions otherwise.
-- No conftest and **no `sys.path` block** — pytest runs with `pythonpath = ["."]` (set
-  in `pyproject.toml`), so imports (`import settings`, `from benchmark.elbencho import
-  Elbencho`) resolve from the repo root.
+- No conftest and **no `sys.path` block** — imports (`import settings`, `from benchmark.elbencho import
+  Elbencho`) resolve from the repo root because `PYTHONPATH` is set to the repo root before
+  running any tool (see `docs/dev/coding-guidelines.md`).
 - Naming: `class Test<Thing><Concern>(unittest.TestCase)`; methods
   `test_<behaviour>` (e.g. `test_missing_s3_bucket_raises`), not `test_<method_called>`.
 
