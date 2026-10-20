@@ -363,6 +363,7 @@ class TestWorkloads(unittest.TestCase):
 
         iodepth_list = workloads._global_options["total_iodepth"]
         self.assertIsInstance(iodepth_list, list)
+        assert isinstance(iodepth_list, list)
         for element in iodepth_list:
             self.assertIsInstance(element, str, f"Expected str, got {type(element)} for value {element!r}")
 
@@ -413,6 +414,7 @@ class TestWorkloads(unittest.TestCase):
         workload = workloads._workloads[0]
         iodepth_list = workload._all_options["total_iodepth"]
         self.assertIsInstance(iodepth_list, list)
+        assert isinstance(iodepth_list, list)
         for element in iodepth_list:
             self.assertIsInstance(element, str, f"Expected str, got {type(element)} for value {element!r}")
 

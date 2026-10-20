@@ -50,9 +50,8 @@ class TestParseBlocksizeToBytes(unittest.TestCase):
 
     def test_invalid_forms_raise(self):
         for text in ["", "abc", "4kb", "1.2.3k", "k", "-4k", "4 k", "4tb"]:
-            with self.subTest(blocksize=text):
-                with self.assertRaises(ValueError):
-                    ElbenchoCommand.parse_blocksize_to_bytes(text)
+            with self.subTest(blocksize=text), self.assertRaises(ValueError):
+                ElbenchoCommand.parse_blocksize_to_bytes(text)
 
 
 class TestBuildAuthFlags(unittest.TestCase):

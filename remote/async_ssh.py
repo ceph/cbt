@@ -129,22 +129,18 @@ class AsyncSSHExecutor(RemoteExecutor):
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
 
-        if 'user' in settings.cluster:
+        if "user" in settings.cluster:
             self.run_command_with_error_checking(
                 nodes,
-                'sudo chown -R {0}.{0} {1}'.format(settings.cluster['user'], remote_dir),
+                f"sudo chown -R {settings.cluster['user']}.{settings.cluster['user']} {remote_dir}",
             )
 
-        user = settings.cluster.get("user")
-        scp_base_args = _build_scp_args()
-
-        raw = asyncio.run(_scp_pull_all(node_list, remote_dir, local_dir, scp_base_args, user))
+        raw = asyncio.run(
+            _scp_pull_all(node_list, remote_dir, local_dir, _build_scp_args(), settings.cluster.get("user"))
+        )
 
         errors: list[str] = []
         for item in raw:
-            # TODO: the BaseException branch duplicates the same pattern in
-            # run_command(); consolidate into a shared helper once the pattern
-            # stabilises.
             if isinstance(item, BaseException):
                 errors.append(str(item))
                 logger.warning("scp: failed to launch process: %s", item)
@@ -177,7 +173,13 @@ async def _scp_pull_all(
     user: Optional[str],
 ) -> list[Union[tuple[str, str, str, int], BaseException]]:
     tasks = [
-        _scp_pull_one(_bare_host(h), remote_dir, local_dir, scp_base_args, user=str(user) if user else None)
+        _scp_pull_one(
+            _bare_host(h),
+            remote_dir,
+            local_dir,
+            scp_base_args,
+            user=str(user) if user else None,
+        )
         for h in node_list
     ]
     return await asyncio.gather(*tasks, return_exceptions=True)

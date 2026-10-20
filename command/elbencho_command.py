@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 from logging import Logger, getLogger
+from typing import ClassVar
 
 from cli_options import CliOptions
 from command.command import Command
@@ -15,7 +16,7 @@ from common import get_fqdn_cmd
 
 log: Logger = getLogger("cbt")
 
-_BS_SUFFIXES = {"k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
+_BS_SUFFIXES = {"k": 1024, "m": 1024**2, "g": 1024**3}
 
 
 def _require_int(key: str, value: object) -> int:
@@ -29,15 +30,15 @@ def _require_int(key: str, value: object) -> int:
 class ElbenchoCommand(Command):
     """A single elbencho S3 command line for one run cell."""
 
-    _MODE_FLAGS = {
-        "write":     ["--write"],
-        "read":      ["--read"],
+    _MODE_FLAGS: ClassVar[dict[str, list[str]]] = {
+        "write": ["--write"],
+        "read": ["--read"],
         "readwrite": ["--write", "--read"],
-        "stat":      ["--stat"],
-        "list":      ["--s3listobjpar"],
+        "stat": ["--stat"],
+        "list": ["--s3listobjpar"],
     }
 
-    _MODES_NO_BLOCKSIZE = {"stat", "list"}
+    _MODES_NO_BLOCKSIZE: ClassVar[set[str]] = {"stat", "list"}
 
     def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
         # Must be set before super().__init__() because the base constructor calls _parse_options().
@@ -51,6 +52,7 @@ class ElbenchoCommand(Command):
 
     @staticmethod
     def parse_blocksize_to_bytes(blocksize: str) -> int:
+        """Convert a blocksize string (e.g. '4k', '16m') into byte count."""
         s = str(blocksize).strip().lower()
         m = re.fullmatch(r"(\d+(?:\.\d+)?)([kmg]?)", s)
         if not m:
@@ -111,9 +113,15 @@ class ElbenchoCommand(Command):
             value = options.get(key)
             parsed_options[key] = str(value) if value is not None else None
 
-        # Boolean presence flags: "true" when truthy, None otherwise.
+        # Boolean presence flags: "true" when enabled, None otherwise.
         for key in ("deldirs", "s3nompcheck", "mkdirs"):
-            parsed_options[key] = "true" if options.get(key) else None
+            val = options.get(key)
+            if isinstance(val, bool):
+                parsed_options[key] = "true" if val else None
+            elif val is not None:
+                parsed_options[key] = "true" if str(val).lower() in ("true", "1") else None
+            else:
+                parsed_options[key] = None
 
         parsed_options["s3_auth_config"] = options.get("s3_auth_config", "")
         parsed_options["s3_session_token"] = options.get("s3_session_token", "")
@@ -207,9 +215,9 @@ class ElbenchoCommand(Command):
             cmd_parts += ["--dirs", str(options["num_dirs"])]
         if options["duration"] is not None:
             cmd_parts += ["--timelimit", str(options["duration"])]
-        if options["deldirs"]:
+        if options.get("deldirs") == "true":
             cmd_parts += ["--deldirs"]
-        if options["s3nompcheck"]:
+        if options.get("s3nompcheck") == "true":
             cmd_parts += ["--s3nompcheck"]
         if options["hosts"] is not None:
             cmd_parts += ["--hosts", str(options["hosts"])]
@@ -219,9 +227,12 @@ class ElbenchoCommand(Command):
             "s3_session_token": options["s3_session_token"] or "",
         })
         cmd_parts += ["--s3region", str(options["s3_region"])]
-        cmd_parts += ["--resfile", os.path.join(self._generate_output_directory_path(), self._result_filename())]
+        cmd_parts += [
+            "--resfile",
+            os.path.join(self._generate_output_directory_path(), self._result_filename()),
+        ]
 
-        if options["mkdirs"]:
+        if options.get("mkdirs") == "true":
             cmd_parts += ["--mkdirs"]
 
         # shlex.join() quotes the $(hostname -s) in the target away, so join the

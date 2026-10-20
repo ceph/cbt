@@ -7,10 +7,9 @@ import logging
 import os
 from typing import Any
 
-import progress
-
 import yaml
 
+import progress
 import settings
 from monitoring.monitoring_factory import MonitoringFactory
 from remote.async_ssh import AsyncSSHExecutor
@@ -120,8 +119,8 @@ class Elbencho(Benchmark):
             return
 
         self.dropcaches()
-        # TODO: call super().run() once Benchmark.run() is executor-driven and
-        # is no longer using AsyncIO.
+        # Benchmark.run() will be called once it is executor-driven and
+        # is no longer using pdsh.
         self._remote.make_remote_dir(settings.getnodes("clients"), self.run_dir)  # type: ignore[no-untyped-call]
         self.cluster.dump_config(self.run_dir)
 

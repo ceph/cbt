@@ -65,7 +65,7 @@ cbt/
 │   └── rbdtcmu_client_endpoints.py
 │
 ├── remote/                         # remote execution layer
-│   ├── remote_executor.py          # RemoteExecutor base + pdsh impl
+│   ├── remote_executor.py          # RemoteExecutor abstract base (transport-agnostic)
 │   └── async_ssh.py                # asyncio SSH executor (pdsh-free)
 │
 ├── monitoring/                     # in-run monitoring plugins

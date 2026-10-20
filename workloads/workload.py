@@ -169,7 +169,7 @@ class Workload:
         if a value exists already in the configuration then ignore it
         """
         for key, value in global_options.items():
-            if key not in self._all_options.keys():
+            if key not in self._all_options:
                 self._all_options[key] = value
 
     def _create_command_class(self, options: dict[str, str]) -> Command:
@@ -190,8 +190,7 @@ class Workload:
     def _create_commands_from_options(self) -> None:
         unique_options: dict[str, str]
 
-        set_number: int = 0
-        for unique_options in all_configs(self._all_options):  # type: ignore[no-untyped-call]
+        for set_number, unique_options in enumerate(all_configs(self._all_options)):  # type: ignore[no-untyped-call]
             # Treat a present-but-None option as absent (as the fio path does for
             # time/duration in phase_duration_secs), so a null total_iodepth in
             # YAML falls back to the plain iodepth path instead of reaching
@@ -214,7 +213,6 @@ class Workload:
                 command_list.append(self._create_command_class(unique_options))
 
             self._commands[set_number] = command_list
-            set_number += 1
 
             # The above will overwrite the iodepth to be used for the command,
             # while still retaining a total_iodepth value if one is passed. We can then

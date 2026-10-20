@@ -8,11 +8,20 @@ from time import sleep
 from typing import Optional, Union
 
 import progress
-from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
+from common import (  # pyright: ignore[reportUnknownVariableType]
+    CheckedPopen,
+    CheckedPopenLocal,
+    make_remote_dir,
+    pdsh,
+)
 from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import Workload
-from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, WorkloadYamlType
+from workloads.workload_types import (
+    BenchmarkConfigurationType,
+    WorkloadType,
+    WorkloadYamlType,
+)
 
 log: Logger = getLogger("cbt")
 
