@@ -10,7 +10,7 @@ from typing import Any, Optional
 from unittest.mock import MagicMock, patch
 
 from workloads.workload import Workload
-from workloads.workloads import Workloads
+from workloads.workloads import Workloads, phase_description
 
 
 class TestWorkloads(unittest.TestCase):
@@ -84,6 +84,38 @@ class TestWorkloads(unittest.TestCase):
 
         self.assertIn("workload1", names)
         self.assertIn("workload2", names)
+
+    def test_phase_description_format(self) -> None:
+        """The shared phase-bar label carries the parameter-set counter so the
+        executor-driven path (elbencho) matches the pdsh path (fio) exactly."""
+        self.assertEqual(phase_description("write_small", 2, 5), "Workload 'write_small' 2/5")
+
+    def test_command_groups_yield_fio_style_phase_labels(self) -> None:
+        """command_groups must yield the same ``Workload '<name>' <i>/<total>``
+        label run() uses, including the counter, so elbencho's progress bar is
+        identical to fio's rather than a bare workload name."""
+        config: dict[str, Any] = {
+            "workloads": {
+                "w": {
+                    "mode": "write",
+                    "s3_bucket": "b",
+                    "blocksize": "4k",
+                    "threads": "8",
+                    "iodepth": ["4", "8"],  # two values -> two parameter sets
+                }
+            }
+        }
+        workloads: Workloads = self._create_workloads(config)
+        workloads.set_benchmark_type("elbencho")
+        workloads.set_executable("/usr/local/bin/elbencho")
+
+        descriptions = [description for _dir, _cmds, description, _secs in workloads.command_groups()]
+
+        self.assertEqual(
+            descriptions,
+            ["Workload 'w' 1/2", "Workload 'w' 2/2"],
+            "command_groups must number parameter sets like the fio run() path",
+        )
 
     def test_set_benchmark_type(self) -> None:
         """Test setting the benchmark type"""

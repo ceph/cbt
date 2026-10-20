@@ -42,6 +42,19 @@ async def _ssh_exec_all(
     return await asyncio.gather(*tasks, return_exceptions=True)
 
 
+async def _ssh_exec_many(
+    node_list: list[str],
+    commands: list[str],
+    ssh_args: list[str],
+) -> list[Union[tuple[str, str, str, int], BaseException]]:
+    tasks = [
+        _ssh_exec_one(h, command, ssh_args)
+        for command in commands
+        for h in node_list
+    ]
+    return await asyncio.gather(*tasks, return_exceptions=True)
+
+
 class AsyncSSHExecutor(RemoteExecutor):
     """Run commands on cluster nodes concurrently via the system ``ssh`` binary."""
 
@@ -61,9 +74,25 @@ class AsyncSSHExecutor(RemoteExecutor):
     ) -> list[tuple[str, str, str, int]]:
         node_list: list[str] = expanded_node_list(nodes)
         ssh_args = self._build_ssh_args()
-
         raw = asyncio.run(_ssh_exec_all(node_list, command, ssh_args))
+        return self._collect_results(raw, continue_if_error)
 
+    def run_commands(
+        self,
+        nodes: str,
+        commands: list[str],
+        continue_if_error: bool = True,
+    ) -> list[tuple[str, str, str, int]]:
+        node_list: list[str] = expanded_node_list(nodes)
+        ssh_args = self._build_ssh_args()
+        raw = asyncio.run(_ssh_exec_many(node_list, commands, ssh_args))
+        return self._collect_results(raw, continue_if_error)
+
+    def _collect_results(
+        self,
+        raw: list[Union[tuple[str, str, str, int], BaseException]],
+        continue_if_error: bool,
+    ) -> list[tuple[str, str, str, int]]:
         results: list[tuple[str, str, str, int]] = []
         errors: list[str] = []
         for item in raw:
