@@ -88,6 +88,15 @@ class ComparisonReportGenerator(ReportGenerator):
                 self._report.new_line()
 
     def _add_configuration_yaml_files(self) -> None:
+
+        if not self._archive_directories:
+            return
+
+        base_yaml_file = self._find_configuration_yaml_file(self._archive_directories[0])
+        if base_yaml_file is None:
+            log.warning("No configuration YAML file found for baseline directory %s", self._archive_directories[0])
+            return
+
         self._report.new_header(level=1, title="Configuration yaml files")
 
         yaml_paragraph: str = (
@@ -98,20 +107,22 @@ class ComparisonReportGenerator(ReportGenerator):
         self._report.new_paragraph(yaml_paragraph)
         self._report.new_line()
 
-        yaml_files: list[Path] = self._find_configuration_yaml_files()
+        self._add_yaml_file_title_and_contents(file_path=base_yaml_file, title=self._build_strings[0])
 
-        base_yaml_file: Path = yaml_files.pop(0)
-        self._add_yaml_file_title_and_contents(base_yaml_file)
-
-        for yaml_file in yaml_files:
+        for idx in range(1, len(self._archive_directories)):
+            archive_dir = self._archive_directories[idx]
+            yaml_file = self._find_configuration_yaml_file(archive_dir)
+            if yaml_file is None:
+                log.warning("No configuration YAML file found for comparison directory %s", archive_dir)
+                continue
             if self._yaml_file_has_more_that_20_differences(base_yaml_file, yaml_file):
-                self._add_yaml_file_title_and_contents(yaml_file)
+                self._add_yaml_file_title_and_contents(file_path=yaml_file, title=self._build_strings[idx])
 
-    def _add_yaml_file_title_and_contents(self, file_path: Path) -> None:
+    def _add_yaml_file_title_and_contents(self, file_path: Path, title: str) -> None:
         """
         Add a title heading and the contents of a yaml file to the report
         """
-        self._report.new_header(level=2, title=f"{file_path.parts[-2]}")
+        self._report.new_header(level=2, title=title)
 
         file_contents: str = file_path.read_text()
         safe_contents = strip_confidential_data_from_yaml(file_contents)

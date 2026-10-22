@@ -3,6 +3,7 @@ Unit tests for the post_processing/reports comparison report class
 """
 
 # pyright: strict, reportPrivateUsage=false
+# pylint: disable=protected-access
 #
 # We are OK to ignore private use in unit tests as the whole point of the tests
 # is to validate the functions contained in the module
@@ -92,7 +93,7 @@ class TestComparisonReportGenerator(unittest.TestCase):
         vis2_write = self.archive2 / "write" / "visualisation"
         vis1_write.mkdir(parents=True)
         vis2_write.mkdir(parents=True)
-        
+
         # Create additional files
         # Format: {blocksize}_{numjobs}_{operation}.json
         (vis1_write / "8192_1_write.json").touch()
@@ -106,7 +107,9 @@ class TestComparisonReportGenerator(unittest.TestCase):
         )
 
         # Now we have 2 visualisation directories per archive (read and write)
-        paths = generator._find_and_sort_file_paths(paths=[self.vis1, self.vis2, vis1_write, vis2_write], search_pattern="*.json", index=0)
+        paths = generator._find_and_sort_file_paths(
+            paths=[self.vis1, self.vis2, vis1_write, vis2_write], search_pattern="*.json", index=0
+        )
 
         # Should find files from all directories
         self.assertEqual(len(paths), 4)
@@ -148,7 +151,7 @@ class TestComparisonReportGenerator(unittest.TestCase):
         self.assertIn("comparison", header)
         # Should have percentage change columns
         self.assertIn("%change", header)
-        
+
         # Test justification string for two directories
         # Format: | :--- | ---: | ---: | ---: | ---: | ---: |
         # (left-aligned operation, right-aligned numjobs, baseline, comparison, %change throughput, %change latency)
@@ -178,7 +181,7 @@ class TestComparisonReportGenerator(unittest.TestCase):
         self.assertIn("baseline", header)
         self.assertIn("comparison", header)
         self.assertIn("comparison2", header)
-        
+
         # Test justification string for multiple directories (3+ total)
         # Format: | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
         # (left-aligned operation, right-aligned numjobs, baseline, then comparison + %change for each comparison dir)
@@ -192,13 +195,13 @@ class TestComparisonReportGenerator(unittest.TestCase):
         mock_wc_process.communicate.return_value = (b"25\n", b"")
         mock_wc_process.__enter__ = MagicMock(return_value=mock_wc_process)
         mock_wc_process.__exit__ = MagicMock(return_value=False)
-        
+
         # Mock the diff process
         mock_diff_process = MagicMock()
         mock_diff_process.stdout = MagicMock()
         mock_diff_process.__enter__ = MagicMock(return_value=mock_diff_process)
         mock_diff_process.__exit__ = MagicMock(return_value=False)
-        
+
         # Configure Popen to return diff process first, then wc process
         mock_popen.side_effect = [mock_diff_process, mock_wc_process]
 
@@ -226,13 +229,13 @@ class TestComparisonReportGenerator(unittest.TestCase):
         mock_wc_process.communicate.return_value = (b"10\n", b"")
         mock_wc_process.__enter__ = MagicMock(return_value=mock_wc_process)
         mock_wc_process.__exit__ = MagicMock(return_value=False)
-        
+
         # Mock the diff process
         mock_diff_process = MagicMock()
         mock_diff_process.stdout = MagicMock()
         mock_diff_process.__enter__ = MagicMock(return_value=mock_diff_process)
         mock_diff_process.__exit__ = MagicMock(return_value=False)
-        
+
         # Configure Popen to return diff process first, then wc process
         mock_popen.side_effect = [mock_diff_process, mock_wc_process]
 
@@ -251,6 +254,87 @@ class TestComparisonReportGenerator(unittest.TestCase):
         result = generator._yaml_file_has_more_that_20_differences(file1, file2)
 
         self.assertFalse(result)
+
+    def test_add_yaml_file_title_and_contents_uses_provided_title(self) -> None:
+        """Test that _add_yaml_file_title_and_contents uses the title parameter for the header"""
+        output_dir = f"{self.temp_dir}/output"
+
+        generator = ComparisonReportGenerator(
+            archive_directories=[str(self.archive1), str(self.archive2)],
+            output_directory=output_dir,
+        )
+        generator._report = MagicMock()
+
+        yaml_file = Path(self.temp_dir) / "test_config.yaml"
+        yaml_file.write_text("cluster: test\n")
+
+        generator._add_yaml_file_title_and_contents(file_path=yaml_file, title="my-run-title")
+
+        # Header level 2 should be titled "my-run-title", NOT "results" or parent folder
+        generator._report.new_header.assert_called_once_with(level=2, title="my-run-title")
+        generator._report.new_paragraph.assert_called_once_with("```cluster: test\n```")
+
+    @patch.object(ComparisonReportGenerator, "_yaml_file_has_more_that_20_differences")
+    def test_add_configuration_yaml_files_titles_match_report_title_runs(self, mock_has_diff: MagicMock) -> None:
+        """Test that YAML sections are titled with the run names (build strings), matching the report title"""
+        output_dir = f"{self.temp_dir}/output"
+
+        # Create cbt_config.yaml in results subdirectories for both archives
+        results1 = self.archive1 / "results"
+        results2 = self.archive2 / "results"
+        results1.mkdir(parents=True)
+        results2.mkdir(parents=True)
+        (results1 / "cbt_config.yaml").write_text("cluster: baseline\n")
+        (results2 / "cbt_config.yaml").write_text("cluster: comparison\n")
+
+        # Comparison has >20 differences
+        mock_has_diff.return_value = True
+
+        generator = ComparisonReportGenerator(
+            archive_directories=[str(self.archive1), str(self.archive2)],
+            output_directory=output_dir,
+        )
+        generator._report = MagicMock()
+
+        generator._add_configuration_yaml_files()
+
+        # Check headers added: level 1 title, then level 2 headers for baseline and comparison
+        calls = generator._report.new_header.call_args_list
+        # Call 0: level 1 "Configuration yaml files"
+        self.assertEqual(calls[0], ((), {"level": 1, "title": "Configuration yaml files"}))
+        # Call 1: level 2 baseline build string (e.g. "baseline")
+        self.assertEqual(calls[1], ((), {"level": 2, "title": generator._build_strings[0]}))
+        # Call 2: level 2 comparison build string (e.g. "comparison")
+        self.assertEqual(calls[2], ((), {"level": 2, "title": generator._build_strings[1]}))
+
+    @patch.object(ComparisonReportGenerator, "_yaml_file_has_more_that_20_differences")
+    def test_add_configuration_yaml_files_skips_comparison_when_not_differing(self, mock_has_diff: MagicMock) -> None:
+        """Test that comparison YAML is skipped when differences <= 20"""
+        output_dir = f"{self.temp_dir}/output"
+
+        results1 = self.archive1 / "results"
+        results2 = self.archive2 / "results"
+        results1.mkdir(parents=True)
+        results2.mkdir(parents=True)
+        (results1 / "cbt_config.yaml").write_text("cluster: baseline\n")
+        (results2 / "cbt_config.yaml").write_text("cluster: identical\n")
+
+        # Differences <= 20
+        mock_has_diff.return_value = False
+
+        generator = ComparisonReportGenerator(
+            archive_directories=[str(self.archive1), str(self.archive2)],
+            output_directory=output_dir,
+        )
+        generator._report = MagicMock()
+
+        generator._add_configuration_yaml_files()
+
+        # Only level 1 header and baseline level 2 header should be added
+        calls = generator._report.new_header.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], ((), {"level": 1, "title": "Configuration yaml files"}))
+        self.assertEqual(calls[1], ((), {"level": 2, "title": generator._build_strings[0]}))
 
 
 # Made with Bob
