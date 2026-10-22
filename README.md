@@ -59,15 +59,24 @@ machine.
 
 ## PREREQUISITES
 
-CBT uses several libraries and tools to run:
+CBT is a python program, and is coded to python 3.9 standards. It is strongly recommended to create a python virtual
+environment for python 3.9 and use this when running and developing CBT.
 
- 1. python3-yaml - A YAML library for python used for reading
-    configuration files.
- 2. python3-lxml - Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API
- 3. ssh (and scp) - remote secure command executation and data 
+### Python
+CBT relies on a number of python libraries. These are all documented in the pyproject.toml file, split into
+runtime dependencies and development dependencies.
+There are 2 main ways to install these, using **uv** or **pip**. uv is the modern python approach, but requires installing
+uv itself from your package repository or by running ```pip install uv```
+
+ 1. project dependencies - ```uv sync``` or ```pip install -e .```
+ 2. development dependencies - ```uv sync --extra dev``` or ```pip install -e .'[dev]'```
+
+### Tools
+
+ 1. ssh (and scp) - remote secure command executation and data 
     transfer
- 4. pdsh (and pdcp) - a parallel ssh and scp implementation
- 5. ceph - A scalable distributed storage system
+ 2. pdsh (and pdcp) - a parallel ssh and scp implementation. Note this is no longer available in ROCKY 10 Linux
+ 3. ceph - A scalable distributed storage system
 
 Note that pdsh is not packaged for RHEL7 and CentOS 7 based distributations 
 at this time, though the rawhide pdsh packages install and are usable.  The

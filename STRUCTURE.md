@@ -13,12 +13,11 @@ cbt/
 ├── cli_options.py                  # argparse CLI definition
 ├── logging_configuration.py        # logging setup
 ├── compare.py                      # result comparison helpers
-├── plot_results.py                  # standalone plot-results script
+├── plot_results.py                 # standalone plot-results script
 ├── progress.py                     # progress bar / ETA tracking
+├── pyproject.toml                  # project settings for unit tests and code quality tools
 ├── statistic.py                    # statistical helpers
 ├── requirements.txt
-├── tox.ini                         # test/lint environments (pytest, ruff, mypy)
-├── run_tests.sh
 ├── setup.sh
 │
 ├── benchmark/                      # one module per benchmark tool

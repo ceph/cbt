@@ -3,7 +3,6 @@
 *.venv
 *.code-workspace
 .devcontainer
-*.toml
 .coverage
 .bob
 .vscode
