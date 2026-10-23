@@ -21,6 +21,7 @@ from post_processing.common import (
     TITLE_CONVERSION,
     find_common_data_file_names,
     find_hockey_stick_visualisation_directories,
+    find_path_in_ancestors,
     get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
 )
@@ -40,6 +41,10 @@ class ReportGenerator(ABC):
 
     # tex header file location
     BASE_HEADER_FILE_PATH: str = "include/performance_report.tex"
+
+    # Whether the report is built from time-series data files (*_timeseries.json)
+    # rather than the standard data files
+    TIMESERIES_DATA_FILES: bool = False
 
     def __init__(  # pylint: disable=[too-many-arguments, too-many-positional-arguments]
         self,
@@ -95,7 +100,7 @@ class ReportGenerator(ABC):
 
             # We need to replace all _ characters in the build string as pandoc conversion
             # breaks if there are _ characters in the file anywhere
-            self._build_strings.append(f"{archive_path.parts[-1]}".replace("_", "-"))
+            self._build_strings.append(f"{archive_path.name}".replace("_", "-"))
 
         self._data_files = self._find_and_sort_data_files()
 
@@ -321,7 +326,7 @@ class ReportGenerator(ABC):
                     title: str = f"{blocksize} {percent} {operation}"
 
                     image_line: str = self._report.new_inline_image(
-                        text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
+                        text=title, path=f"{self._plots_directory.name}/{image_file.name}"
                     )
                     anchor: str = f'<a name="{file_stem.replace("_", "-")}"></a>'
 
@@ -428,7 +433,11 @@ class ReportGenerator(ABC):
         Find and sort all the data files that will be needed for
         producing the summary table
         """
-        unique_file_names: list[str] = find_common_data_file_names(self._data_directories)
+        unique_file_names: list[str] = find_common_data_file_names(
+            self._data_directories,
+            archive_directories=self._archive_directories,
+            timeseries=self.TIMESERIES_DATA_FILES,
+        )
         sorted_data_file_names: list[str] = sorted(
             unique_file_names,
             key=lambda file_name: (
@@ -485,13 +494,8 @@ class ReportGenerator(ABC):
         Returns:
             List of paths to the copied header files in the output directory
         """
-        current_file_path: Path = Path(__file__)
-
-        cbt_directory: str = ""
-        for part in current_file_path.parts:
-            cbt_directory += f"{part}/"
-            if part == "cbt":
-                break
+        # The header files live in the root of the repository, so search upwards from here
+        module_directory: Path = Path(__file__).resolve().parent
 
         # Combine base header and any additional headers
         all_header_paths = [self.BASE_HEADER_FILE_PATH, *self._get_additional_header_files()]
@@ -500,7 +504,11 @@ class ReportGenerator(ABC):
         output_header_files: list[Path] = []
 
         for header_path in all_header_paths:
-            source_path = Path(f"{cbt_directory}/{header_path}")
+            source_path: Optional[Path] = find_path_in_ancestors(module_directory, header_path)
+            if source_path is None:
+                log.error("Unable to find header file %s in any directory above %s", header_path, module_directory)
+                continue
+
             dest_path = Path(f"{self._output_directory}/{source_path.name}")
 
             try:

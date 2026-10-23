@@ -9,7 +9,7 @@ from logging import Logger, getLogger
 from pathlib import Path
 from typing import Optional, Union, cast
 
-from post_processing.common import file_is_empty, file_is_precondition
+from post_processing.common import file_is_empty, file_is_precondition, find_iodepth_directory
 from post_processing.post_processing_types import (
     InternalBlocksizeDataType,
     InternalFormattedOutputType,
@@ -336,20 +336,8 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
         Returns:
             Path object for the aggregation directory
         """
-        path_parts = file_path.parts
-
-        # Look for total_iodepth first (higher priority for aggregation)
-        for index, part in enumerate(path_parts):
-            if part.startswith("total_iodepth"):
-                return Path(*path_parts[: index + 1])
-
-        # If no total_iodepth, look for iodepth
-        for index, part in enumerate(path_parts):
-            if part.startswith("iodepth"):
-                return Path(*path_parts[: index + 1])
-
-        # If neither found, use the file's parent directory
-        return file_path.parent
+        # If there is no iodepth directory, use the file's parent directory
+        return find_iodepth_directory(file_path) or file_path.parent
 
     def _write_and_clear_timeseries_by_directory(self) -> None:
         """

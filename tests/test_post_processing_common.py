@@ -14,9 +14,12 @@ from post_processing.common import (
     file_is_empty,
     file_is_precondition,
     find_common_data_file_names,
+    find_iodepth_directory,
+    find_path_in_ancestors,
     get_blocksize,
     get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
+    get_iodepth_from_path,
     get_latency_throughput_from_file,
     get_resource_details_from_file,
     read_intermediate_file,
@@ -32,7 +35,9 @@ class TestCommonFunctions(unittest.TestCase):
 
     def test_get_blocksize_percentage_operation_from_file_name_simple(self) -> None:
         """Test parsing simple filename format: BLOCKSIZE_NUMJOBS_OPERATION"""
-        blocksize, read_percent, operation, number_of_jobs = get_blocksize_percentage_operation_numjobs_from_file_name("4096_1_read")
+        blocksize, read_percent, operation, number_of_jobs = get_blocksize_percentage_operation_numjobs_from_file_name(
+            "4096_1_read"
+        )
         self.assertEqual(blocksize, "4K")
         self.assertEqual(read_percent, "")
         self.assertEqual(operation, "Sequential Read")
@@ -204,6 +209,180 @@ class TestCommonFunctions(unittest.TestCase):
             self.assertIn("file2.json", common_files)
             self.assertNotIn("file3.json", common_files)
             self.assertNotIn("unique.json", common_files)
+
+    def test_find_common_data_file_names_is_independent_of_path_depth(self) -> None:
+        """Result must not depend on how deeply the directories are nested (e.g. macOS temp paths)"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            deep_root = Path(temp_dir) / "a" / "b" / "c" / "d" / "e"
+            directories = [deep_root / name for name in ("dir1", "dir2")]
+            for directory in directories:
+                directory.mkdir(parents=True)
+            (directories[0] / "file1.json").touch()
+            (directories[0] / "only_first.json").touch()
+            (directories[1] / "file1.json").touch()
+
+            common_files = find_common_data_file_names(directories)
+
+            self.assertEqual(common_files, ["file1.json"], "Only files present in every directory should be returned")
+
+    def test_find_common_data_file_names_unions_directories_within_one_archive(self) -> None:
+        """Directories belonging to the same archive are merged; archives are intersected"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            archive_a = root / "archA"
+            archive_b = root / "archB"
+            a_read = archive_a / "randread" / "visualisation"
+            a_write = archive_a / "randwrite" / "visualisation"
+            b_read = archive_b / "randread" / "visualisation"
+            b_write = archive_b / "randwrite" / "visualisation"
+            for directory in (a_read, a_write, b_read, b_write):
+                directory.mkdir(parents=True)
+
+            (a_read / "4096_1_randread.json").touch()
+            (a_write / "4096_1_randwrite.json").touch()
+            (a_write / "only_in_a.json").touch()
+            (b_read / "4096_1_randread.json").touch()
+            (b_write / "4096_1_randwrite.json").touch()
+
+            common_files = find_common_data_file_names(
+                [a_read, a_write, b_read, b_write], archive_directories=[archive_a, archive_b]
+            )
+
+            self.assertEqual(
+                common_files,
+                ["4096_1_randread.json", "4096_1_randwrite.json"],
+                "Files should be unioned within an archive and intersected across archives",
+            )
+
+    def test_find_common_data_file_names_single_archive_returns_union(self) -> None:
+        """A single archive with several operation directories returns every file"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive = Path(temp_dir) / "archA"
+            read_dir = archive / "randread" / "visualisation"
+            write_dir = archive / "randwrite" / "visualisation"
+            read_dir.mkdir(parents=True)
+            write_dir.mkdir(parents=True)
+            (read_dir / "a.json").touch()
+            (write_dir / "b.json").touch()
+
+            common_files = find_common_data_file_names([read_dir, write_dir], archive_directories=[archive])
+
+            self.assertEqual(common_files, ["a.json", "b.json"])
+
+    def test_find_common_data_file_names_excludes_timeseries_files(self) -> None:
+        """Time-series files are never returned"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = Path(temp_dir) / "dir1"
+            directory.mkdir()
+            (directory / "file1.json").touch()
+            (directory / "file1_timeseries.json").touch()
+
+            self.assertEqual(find_common_data_file_names([directory]), ["file1.json"])
+
+    def test_find_common_data_file_names_timeseries_only(self) -> None:
+        """With timeseries=True only the time-series files are returned"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = Path(temp_dir) / "dir1"
+            directory.mkdir()
+            (directory / "file1.json").touch()
+            (directory / "file1_timeseries.json").touch()
+
+            self.assertEqual(find_common_data_file_names([directory], timeseries=True), ["file1_timeseries.json"])
+
+    def test_find_path_in_ancestors_finds_path_in_an_ancestor_directory(self) -> None:
+        """The path is found in an ancestor, whatever the name of that ancestor or its depth"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir) / "not_called_c_b_t"
+            header = repo_root / "include" / "header.tex"
+            header.parent.mkdir(parents=True)
+            header.touch()
+            start = repo_root / "a" / "b" / "c"
+            start.mkdir(parents=True)
+
+            self.assertEqual(find_path_in_ancestors(start, "include/header.tex"), header)
+
+    def test_find_path_in_ancestors_checks_the_start_directory_itself(self) -> None:
+        """The start directory is searched as well as its ancestors"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            header = Path(temp_dir) / "include" / "header.tex"
+            header.parent.mkdir()
+            header.touch()
+
+            self.assertEqual(find_path_in_ancestors(Path(temp_dir), "include/header.tex"), header)
+
+    def test_find_path_in_ancestors_returns_nearest_match(self) -> None:
+        """If several ancestors contain the path the nearest one is returned"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            outer = Path(temp_dir) / "include" / "header.tex"
+            inner = Path(temp_dir) / "inner" / "include" / "header.tex"
+            for header in (outer, inner):
+                header.parent.mkdir(parents=True)
+                header.touch()
+
+            self.assertEqual(find_path_in_ancestors(inner.parent.parent / "sub", "include/header.tex"), inner)
+
+    def test_find_path_in_ancestors_returns_none_when_not_found(self) -> None:
+        """None is returned when no ancestor contains the path"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.assertIsNone(find_path_in_ancestors(Path(temp_dir), "include/does_not_exist_anywhere.tex"))
+
+    def test_find_iodepth_directory_prefers_total_iodepth(self) -> None:
+        """total_iodepth is returned in preference to iodepth, and the path stops at that directory"""
+        file_path = Path("/results/00000000/id-806228fa/wl/rbdfio/numjobs-001/total_iodepth-256/iodepth-000032/out.0")
+
+        self.assertEqual(
+            find_iodepth_directory(file_path),
+            Path("/results/00000000/id-806228fa/wl/rbdfio/numjobs-001/total_iodepth-256"),
+        )
+
+    def test_find_iodepth_directory_prefers_total_iodepth_wherever_it_is(self) -> None:
+        """total_iodepth wins even if an iodepth directory comes earlier in the path"""
+        file_path = Path("/results/iodepth-000032/total_iodepth-256/out.0")
+
+        self.assertEqual(find_iodepth_directory(file_path), Path("/results/iodepth-000032/total_iodepth-256"))
+
+    def test_find_iodepth_directory_iodepth_only(self) -> None:
+        """Old style paths only have an iodepth directory"""
+        file_path = Path("/results/rbdfio/iodepth-016/numjobs-001/output.0")
+
+        self.assertEqual(find_iodepth_directory(file_path), Path("/results/rbdfio/iodepth-016"))
+
+    def test_find_iodepth_directory_relative_path(self) -> None:
+        """Relative paths are handled, including an iodepth directory as the first component"""
+        self.assertEqual(find_iodepth_directory(Path("iodepth-8/output.0")), Path("iodepth-8"))
+
+    def test_find_iodepth_directory_returns_none_when_there_is_no_iodepth_directory(self) -> None:
+        """None is returned if the path has no iodepth directory"""
+        self.assertIsNone(find_iodepth_directory(Path("/results/rbdfio/numjobs-001/output.0")))
+
+    def test_find_iodepth_directory_ignores_look_alike_directories(self) -> None:
+        """Only directories of exactly the form [total_]iodepth-<digits> are iodepth directories"""
+        for name in (
+            "my_iodepth_tests",
+            "iodepth",
+            "total_iodepth",
+            "iodepth-",
+            "iodepth-abc",
+            "iodepth-12-old",
+            "iodepthfoo-12",
+            "my_total_iodepth-12",
+            "iodepth_12",
+        ):
+            with self.subTest(directory=name):
+                self.assertIsNone(find_iodepth_directory(Path("/results") / name / "numjobs-001" / "output.0"))
+
+    def test_get_iodepth_from_path_returns_the_digits_unchanged(self) -> None:
+        """The value is returned as it appears in the path, including any zero padding"""
+        self.assertEqual(get_iodepth_from_path(Path("/r/total_iodepth-256/iodepth-000032/out.0")), "256")
+        self.assertEqual(get_iodepth_from_path(Path("/r/iodepth-000032/out.0")), "000032")
+
+    def test_get_iodepth_from_path_returns_none_when_there_is_no_iodepth_directory(self) -> None:
+        """None is returned if the path has no iodepth directory"""
+        self.assertIsNone(get_iodepth_from_path(Path("/r/my_iodepth_tests/numjobs-001/out.0")))
+
+    def test_find_common_data_file_names_no_directories(self) -> None:
+        """No directories gives no files"""
+        self.assertEqual(find_common_data_file_names([]), [])
 
     def test_calculate_percent_difference_to_baseline(self) -> None:
         """Test calculating percentage difference"""

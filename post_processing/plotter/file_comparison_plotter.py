@@ -86,7 +86,7 @@ class FileComparisonPlotter(CommonFormatPlotter):
 
         for file_path in files:
             # get the actual file name - this will be the last part of the path
-            file_name = file_path.parts[-1]
+            file_name = file_path.name
             # strip off the .json extension from each file
             file: str = file_name[: -len(DATA_FILE_EXTENSION_WITH_DOT)]
 
