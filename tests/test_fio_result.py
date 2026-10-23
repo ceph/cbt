@@ -142,5 +142,37 @@ class TestFIO(unittest.TestCase):
         # Should use max of file value (4) and filename value (16)
         self.assertEqual(fio.iodepth, "16")
 
+    def test_get_iodepth_prefers_total_iodepth_directory(self) -> None:
+        """total_iodepth is used in preference to the per-target iodepth directory below it"""
+        test_file = Path(self.temp_dir) / "total_iodepth-256" / "iodepth-000032" / "output.0"
+        test_file.parent.mkdir(parents=True)
+
+        with open(test_file, "w") as f:
+            json.dump(self.test_data, f)
+
+        self.assertEqual(FIO(test_file).iodepth, "256")
+
+    def test_get_iodepth_ignores_directories_that_only_contain_iodepth(self) -> None:
+        """A directory that merely contains the text 'iodepth' must not be parsed as an iodepth value"""
+        test_file = Path(self.temp_dir) / "my_iodepth_tests" / "iodepth-016" / "numjobs-001" / "output.0"
+        test_file.parent.mkdir(parents=True)
+
+        with open(test_file, "w") as f:
+            json.dump(self.test_data, f)
+
+        fio = FIO(test_file)
+
+        self.assertEqual(fio.iodepth, "16")
+
+    def test_get_iodepth_uses_file_value_when_path_has_no_iodepth_directory(self) -> None:
+        """The iodepth in the output file is used if the path does not encode one"""
+        test_file = Path(self.temp_dir) / "my_iodepth_tests" / "numjobs-001" / "output.0"
+        test_file.parent.mkdir(parents=True)
+
+        with open(test_file, "w") as f:
+            json.dump(self.test_data, f)
+
+        self.assertEqual(FIO(test_file).iodepth, "4")
+
 
 # Made with Bob

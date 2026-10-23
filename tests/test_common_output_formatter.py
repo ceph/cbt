@@ -153,8 +153,8 @@ class TestCommonOutputFormatter(unittest.TestCase):
         """Test extracting test run IDs from file paths"""
         # Create test directory structure
         test_dir = Path(self.temp_dir)
-        run1_dir = test_dir / "00000000" / "id-abc123" / "workload"
-        run2_dir = test_dir / "00000001" / "id-def456" / "workload"
+        run1_dir = test_dir / "00000000" / "id-abc12345" / "workload"
+        run2_dir = test_dir / "00000001" / "id-def45678" / "workload"
 
         run1_dir.mkdir(parents=True, exist_ok=True)
         run2_dir.mkdir(parents=True, exist_ok=True)
@@ -175,8 +175,8 @@ class TestCommonOutputFormatter(unittest.TestCase):
 
         # Should find 2 unique test run IDs
         self.assertEqual(len(formatter._all_test_run_ids), 2)
-        self.assertIn("id-abc123", formatter._all_test_run_ids)
-        self.assertIn("id-def456", formatter._all_test_run_ids)
+        self.assertIn("id-abc12345", formatter._all_test_run_ids)
+        self.assertIn("id-def45678", formatter._all_test_run_ids)
 
     def test_find_all_testrun_ids_without_id_prefix(self) -> None:
         """Test extracting test run IDs when no 'id-' prefix exists"""
