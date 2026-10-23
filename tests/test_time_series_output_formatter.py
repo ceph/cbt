@@ -129,10 +129,12 @@ class TestProcessSingleTestrun(unittest.TestCase):
         mock_dir1 = MagicMock()
         mock_dir1.is_dir.return_value = True
         mock_dir1.name = "randread_4k"
+        mock_dir1.glob.return_value = [Path("/tmp/test/id-12345/randread_4k/rbdfio/json_output.0")]
 
         mock_dir2 = MagicMock()
         mock_dir2.is_dir.return_value = True
         mock_dir2.name = "randwrite_4k"
+        mock_dir2.glob.return_value = [Path("/tmp/test/id-12345/randwrite_4k/rbdfio/json_output.0")]
 
         mock_iterdir.return_value = [mock_dir1, mock_dir2]
 
@@ -224,6 +226,7 @@ class TestIntegration(unittest.TestCase):
         mock_dir = MagicMock()
         mock_dir.is_dir.return_value = True
         mock_dir.name = "randread_4k"
+        mock_dir.glob.return_value = [Path("/tmp/test/id-12345/randread_4k/rbdfio/json_output.0")]
         mock_iterdir.return_value = [mock_dir]
 
         mock_result = MagicMock()
