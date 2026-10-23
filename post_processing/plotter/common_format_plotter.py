@@ -10,7 +10,7 @@ from pathlib import Path
 # the ModuleType does exists in the types module, so no idea why pylint is
 # flagging this
 from types import ModuleType
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, Union
 
 from matplotlib.axes import Axes
 
@@ -66,7 +66,7 @@ class CommonFormatPlotter(ABC):
         title: str = ""
 
         if len(source_files) == 1:
-            title = self._construct_title_from_file_name(source_files[0].parts[-1])
+            title = self._construct_title_from_file_name(source_files[0].name)
         else:
             title = self._construct_title_from_list_of_file_names(source_files)
 
@@ -142,8 +142,8 @@ class CommonFormatPlotter(ABC):
             maximum_x = maximum_values[0]
             maximum_y = maximum_values[1]
 
-        _: Any = self._plotter.xlim(0, maximum_x)
-        _: Any = self._plotter.ylim(0, maximum_y)
+        self._plotter.xlim(0, maximum_x)
+        self._plotter.ylim(0, maximum_y)
 
     def _sort_plot_data(self, unsorted_data: CommonFormatDataType) -> PlotDataType:
         """
@@ -286,8 +286,7 @@ class CommonFormatPlotter(ABC):
             if isinstance(cpu_value, dict):
                 # Validate that dict contains at least one valid numeric value
                 valid_sources = 0
-                cpu_dict = cast(dict[str, str], cpu_value)
-                for source, value in cpu_dict.items():
+                for source, value in cpu_value.items():
                     try:
                         _ = float(value)  # Validate it's convertible to float
                         valid_sources += 1

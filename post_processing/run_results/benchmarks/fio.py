@@ -8,7 +8,12 @@ from typing import Optional, Union
 
 import pandas as pd
 
-from post_processing.common import get_blocksize, sum_mean_values, sum_standard_deviation_values
+from post_processing.common import (
+    get_blocksize,
+    get_iodepth_from_path,
+    sum_mean_values,
+    sum_standard_deviation_values,
+)
 from post_processing.parsers.fio_log_parser import FIOLogParser
 from post_processing.parsers.fio_time_series_parser import FIOTimeSeriesParser
 from post_processing.parsers.timestamp_aligner import TimestampAligner
@@ -225,30 +230,12 @@ class FIO(BenchmarkResult):
     def _get_iodepth(self, iodepth_value: str) -> str:
         log.debug("Getting iodepth from %s and %s", iodepth_value, self._resource_file_path)
         iodepth: int = int(iodepth_value)
-        logfile_name: str = f"{self._resource_file_path}"
 
-        logfile_iodepth: int = 0
-
-        # New workloads
-        for value in logfile_name.split("/"):
-            if "total_iodepth" in value:
-                logfile_iodepth = int(value[len("total_iodepth") + 1 :])
-                break
-
-            elif "iodepth" in value:
-                logfile_iodepth = int(value[len("iodepth") + 1 :])
-
-        # Old-style workloads
-        if not logfile_iodepth:
-            # the logfile name is of the format:
-            #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
-            iodepth_start_index: int = logfile_name.find("iodepth")
-            numjobs_start_index: int = logfile_name.find("numjobs")
-            # an index of -1 is no match found, so do nothing
-            if iodepth_start_index != -1 and numjobs_start_index != -1:
-                iodepth_end_index: int = iodepth_start_index + len("iodepth")
-                iodepth_string: str = logfile_name[iodepth_end_index + 1 : numjobs_start_index - 1]
-                logfile_iodepth = int(iodepth_string)
+        # The log file path is of the format:
+        #  /tmp/cbt/00000000/LibrbdFio/randwrite_1048576/iodepth-001/numjobs-001/output.0
+        # or, for the new workloads:
+        #  <workload>/numjobs-001/total_iodepth-256/iodepth-000032/output.0
+        logfile_iodepth: int = int(get_iodepth_from_path(self._resource_file_path) or 0)
 
         iodepth = max(iodepth, logfile_iodepth)
 

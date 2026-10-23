@@ -5,9 +5,15 @@ This module provides the BaseFormatter abstract class that defines
 the common API for all formatter implementations.
 """
 
+import re
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from pathlib import Path
+from re import Pattern
+
+# The test run directory is named by benchmark.py as "id-" followed by the first
+# 8 characters of a sha1 hex digest
+_TESTRUN_ID_PATTERN: Pattern[str] = re.compile(r"id-[0-9a-f]{8}")
 
 
 class BaseFormatter(ABC):
@@ -65,7 +71,8 @@ class BaseFormatter(ABC):
         Get the directories for a specific test run ID.
 
         When calling from CBT itself, the archive dir already includes the testrun
-        directory, so we handle this case by checking if 'id-' is in the path.
+        directory, so we handle this case by checking if an 'id-xxxxxxxx' directory
+        is in the path.
 
         Args:
             testrun_id: The test run identifier to find directories for
@@ -73,7 +80,7 @@ class BaseFormatter(ABC):
         Returns:
             List of Path objects for directories matching the test run ID
         """
-        if "id-" in f"{self.path}":
+        if any(_TESTRUN_ID_PATTERN.fullmatch(part) for part in self.path.parts):
             return [self.path]
         return list(self.path.glob(f"**/{testrun_id}"))
 
@@ -132,8 +139,8 @@ class BaseFormatter(ABC):
             # the directory structure.
             # This should allow us to get test run IDs when any point in the
             # archive directory tree is passed as the archive directory
-            potential_ids: list[str] = [part for part in file_path.parts if "id-" in part]
-            # There is a possibility that there could be more than one id-xxxxxx string in the
+            potential_ids: list[str] = [part for part in file_path.parts if _TESTRUN_ID_PATTERN.fullmatch(part)]
+            # There is a possibility that there could be more than one id-xxxxxxxx string in the
             # file path, and we want only one. We choose to always take the first one.
             # If there are none then just return the directory name above the file
             if len(potential_ids) > 0:
