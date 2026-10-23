@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 
+import progress
 import settings
 from monitoring.monitoring_factory import MonitoringFactory
 from remote.async_ssh import AsyncSSHExecutor
@@ -118,8 +119,8 @@ class Elbencho(Benchmark):
             return
 
         self.dropcaches()
-        # TODO: call super().run() once Benchmark.run() is executor-driven and
-        # is no longer using AsyncIO.
+        # Benchmark.run() will be called once it is executor-driven and
+        # is no longer using pdsh.
         self._remote.make_remote_dir(settings.getnodes("clients"), self.run_dir)  # type: ignore[no-untyped-call]
         self.cluster.dump_config(self.run_dir)
 
@@ -146,15 +147,25 @@ class Elbencho(Benchmark):
             for field in ("mode", "s3_bucket"):
                 if field not in params:
                     raise ValueError(f"workload '{name}' missing required key '{field}'")
-            for field in ("threads", "iodepth"):
+            if params.get("iodepth") is not None and params.get("total_iodepth") is not None:
+                raise ValueError(
+                    f"workload '{name}': 'iodepth' and 'total_iodepth' are mutually exclusive — set only one"
+                )
+            # total_iodepth and num_buckets drive the per-bucket split, so a
+            # zero or negative value would divide by zero or yield no commands;
+            # require them to be >= 1.
+            positive_fields = ("total_iodepth", "num_buckets")
+            for field in ("threads", "iodepth", "total_iodepth", "num_buckets"):
                 values = params.get(field)
                 if values is None:
                     continue
                 for value in (values if isinstance(values, list) else [values]):
                     try:
-                        int(value)
+                        parsed = int(value)
                     except (TypeError, ValueError) as exc:
                         raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+                    if field in positive_fields and parsed < 1:
+                        raise ValueError(f"workload '{name}': {field} value {value!r} must be >= 1")
 
     # ------------------------------------------------------------------
     # Run loop
@@ -166,20 +177,32 @@ class Elbencho(Benchmark):
         self._workloads.set_benchmark_type("elbencho")
         self._workloads.set_executable(self.cmd_path)
 
-        for output_directory, commands in self._workloads.command_groups():
+        # An uneven total_iodepth split gives a cell's commands different
+        # iodepth-* directories, so create every one of them up front (as the
+        # fio path does) rather than only the first command's.
+        for directory in self._workloads.get_output_directories():
+            self._remote.make_remote_dir(clients, directory)
+
+        overall = progress.get_overall_bar()
+
+        for output_directory, commands, phase_description, phase_secs in self._workloads.command_groups():
             live_commands = [cmd for cmd in commands if cmd]
             if not live_commands:
                 continue
 
-            self._remote.make_remote_dir(
-                settings.getnodes("clients"),  # type: ignore[no-untyped-call]
-                output_directory,
-            )
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
-            MonitoringFactory.start(output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
-                self._remote.run_command(clients, cmd, continue_if_error=False)
-            MonitoringFactory.stop()
+
+            with progress.phase_bar(phase_description, phase_secs, overall=overall):
+                # Per-bucket commands must run at once to produce the aggregate load
+                # total_iodepth describes, so launch the whole cell concurrently.
+                MonitoringFactory.start(output_directory)
+                try:
+                    self._remote.run_commands(clients, live_commands, continue_if_error=False)
+                finally:
+                    # run_commands raises if any bucket's process fails; the
+                    # collectors must still be stopped.
+                    MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")

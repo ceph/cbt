@@ -8,13 +8,32 @@ from time import sleep
 from typing import Optional, Union
 
 import progress
-from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
+from common import (  # pyright: ignore[reportUnknownVariableType]
+    CheckedPopen,
+    CheckedPopenLocal,
+    make_remote_dir,
+    pdsh,
+)
 from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import Workload
-from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, WorkloadYamlType
+from workloads.workload_types import (
+    BenchmarkConfigurationType,
+    WorkloadType,
+    WorkloadYamlType,
+)
 
 log: Logger = getLogger("cbt")
+
+
+def phase_description(workload_name: str, param_index: int, total_param_sets: int) -> str:
+    """Build the progress-bar label for one parameter set of a workload.
+
+    Shared by the pdsh ``run()`` path and the executor-driven ``command_groups()``
+    path so every Workloads-based benchmark (fio, elbencho, …) shows an identical
+    phase label — ``Workload '<name>' <index>/<total>``.
+    """
+    return f"Workload '{workload_name}' {param_index}/{total_param_sets}"
 
 
 class Workloads:
@@ -109,7 +128,7 @@ class Workloads:
                     total_param_sets,
                     output_directory,
                 )
-                phase_desc = f"Workload '{workload_name}' {param_index}/{total_param_sets}"
+                phase_desc = phase_description(workload_name, param_index, total_param_sets)
                 # Use the workload's own resolved time+ramp so the bar matches
                 # the --runtime/--ramp_time values actually passed to the exerciser.
                 phase_secs: Optional[int] = workload.phase_duration_secs()
@@ -140,12 +159,19 @@ class Workloads:
 
         log.info("== Workloads completed ==")
 
-    def command_groups(self) -> Generator[tuple[str, list[str]], None, None]:
-        """Yield (output_directory, [command, ...]) for every run cell without executing.
+    def command_groups(self) -> Generator[tuple[str, list[str], str, Optional[int]], None, None]:
+        """Yield ``(output_directory, commands, phase_description, phase_secs)`` for every run cell.
 
         This factors the (pdsh-free) command-generation bookkeeping out of
         run() so a caller can choose how to fan the commands out — e.g. via a
         remote.RemoteExecutor for benchmarks that have moved off pdsh.
+
+        ``phase_description`` is the same ``Workload '<name>' <index>/<total>``
+        label that run() builds (via :func:`phase_description`), so an
+        executor-driven caller's :func:`progress.phase_bar` is identical to the
+        pdsh path's — including the parameter-set counter. ``phase_secs`` is the
+        phase duration, letting the caller build the bar without reaching into
+        the ``Workload`` objects directly.
 
         set_benchmark_type() and set_executable() must be called first.
 
@@ -164,7 +190,26 @@ class Workloads:
         for workload in self._workloads:
             workload.set_benchmark_type(self._benchmark_type)
             workload.set_executable(self._executable)
-            yield from workload.get_commands_list()
+            workload_name: str = workload.get_name()
+            phase_secs: Optional[int] = workload.phase_duration_secs()
+            param_sets = list(workload.get_commands_list())
+            total_param_sets: int = len(param_sets)
+            for param_index, (output_directory, commands) in enumerate(param_sets, start=1):
+                description: str = phase_description(workload_name, param_index, total_param_sets)
+                yield output_directory, commands, description, phase_secs
+
+    def get_output_directories(self) -> Generator[str, None, None]:
+        """Yield every distinct output directory used by any command of any workload.
+
+        An uneven total_iodepth split gives the commands of one run cell
+        different per-target iodepths, and therefore different directories, so
+        callers that create directories up front must create all of them.
+
+        set_benchmark_type() must be called first.
+        """
+        for workload in self._workloads:
+            workload.set_benchmark_type(self._benchmark_type)
+            yield from workload.get_output_directories()
 
     def get_names(self) -> str:
         """
