@@ -15,6 +15,8 @@ busy_poll
 Of these clustername and busy_poll are not currently used by CBT
 """
 
+from typing import ClassVar, Optional
+
 from command.fio_command import FioCommand
 from common import get_fqdn_cmd
 
@@ -24,21 +26,18 @@ class RbdFioCommand(FioCommand):
     An FioCommand type that deals specifically with running I/O using the rbd io engine.
     """
 
-    _RBD_DEFAULT_OPTIONS: dict[str, str] = {"ioengine": "rbd", "clientname": "admin"}
-
-    def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
-        super().__init__(options, workload_output_directory)
+    _RBD_DEFAULT_OPTIONS: ClassVar[dict[str, Optional[str]]] = {"ioengine": "rbd", "clientname": "admin"}
 
     @property
     def benchmark(self) -> str:
         return "rbdfio"
 
-    def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:
-        rbd_options: dict[str, str] = self._RBD_DEFAULT_OPTIONS
+    def _parse_ioengine_specific_parameters(self, options: dict[str, Optional[str]]) -> dict[str, Optional[str]]:
+        rbd_options: dict[str, Optional[str]] = dict(self._RBD_DEFAULT_OPTIONS)
 
-        rbd_base_name: str = options.get("rbdname", "cbt-fio")
+        rbd_base_name: str = options.get("rbdname") or "cbt-fio"
         rbd_name: str = f"{rbd_base_name}-`{get_fqdn_cmd()}`-{self._target_number:d}"  # type: ignore [no-untyped-call]
         rbd_options["rbdname"] = rbd_name
-        rbd_options["pool"] = options.get("poolname", "cbt-rbdfio")
+        rbd_options["pool"] = options.get("poolname") or "cbt-rbdfio"
 
         return rbd_options

@@ -17,13 +17,12 @@ class CliOptions(UserDict[str, Optional[str]]):
     behaviour modified so that duplicate keys do not update the original.
     """
 
-    def __update__(self, key_value_pair: tuple[str, str]) -> None:
+    def __setitem__(self, key: str, value: Optional[str]) -> None:
         """
-        Update an existing entry in the configuration.
-        If the entry exists then don't update it
+        Set an entry in the configuration.
+        If the entry already exists, do not overwrite it.
         """
-        key, value = key_value_pair
-        if key not in self.data.keys():
+        if key not in self.data:
             self.data[key] = value
         else:
             log.debug("Not Updating %s:%s in configuration. Value already exists", key, value)
@@ -33,11 +32,10 @@ class CliOptions(UserDict[str, Optional[str]]):
         Get the value for key in the configuration.
         Return None and log a warning if the key does not exist
         """
-        if key in self.data.keys():
+        if key in self.data:
             return self.data[key]
-        else:
-            log.debug("Key %s does not exist in configuration", key)
-            return None
+        log.debug("Key %s does not exist in configuration", key)
+        return None
 
     def clear(self) -> None:
         """
