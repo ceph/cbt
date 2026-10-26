@@ -6,6 +6,8 @@ Unit tests for the BaseFormatter class
 #
 # We are OK to ignore private use in unit tests as the whole point of the tests
 # is to validate the functions contained in the module
+# pylint: disable=protected-access
+
 
 import shutil
 import tempfile
@@ -110,6 +112,79 @@ class TestBaseFormatter(unittest.TestCase):
         self.assertTrue(nested_dir.exists())
         self.assertTrue(nested_dir.parent.exists())
         self.assertTrue(nested_dir.parent.parent.exists())
+
+
+class TestGetIoPatternDirectories(unittest.TestCase):
+    """
+    Unit tests for BaseFormatter._get_io_pattern_directories
+    """
+
+    def setUp(self) -> None:
+        """Set up a test run directory that will hold workload and monitoring directories"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.testrun = Path(self.temp_dir) / "id-94a6db48"
+        self.testrun.mkdir()
+        self.formatter = ConcreteFormatter(self.temp_dir)
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures"""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_workload(self, name: str) -> Path:
+        """Create a workload directory containing a json_output.0 result file"""
+        workload = self.testrun / name
+        (workload / "librbdfio").mkdir(parents=True)
+        (workload / "librbdfio" / "json_output.0").write_text("{}", encoding="utf-8")
+        return workload
+
+    def test_directories_with_result_files_are_returned(self) -> None:
+        """Workload directories containing json_output.<n> files are returned"""
+        workload = self._make_workload("workload1")
+
+        result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
+
+        self.assertEqual(result, [workload])
+
+    def test_monitoring_directories_without_result_files_are_skipped(self) -> None:
+        """Directories such as collectl.<host> and pool_monitoring.<host> hold no results so are skipped"""
+        workload = self._make_workload("workload1")
+        collectl_dir = self.testrun / "collectl.host1.example.com"
+        collectl_dir.mkdir()
+        (collectl_dir / "host1.cpu").write_text("data", encoding="utf-8")
+        (self.testrun / "pool_monitoring.host1.example.com").mkdir()
+
+        result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
+
+        self.assertEqual(result, [workload])
+
+    def test_directory_with_non_numeric_suffix_is_skipped(self) -> None:
+        """Files such as json_output.txt are not result files"""
+        other = self.testrun / "other"
+        other.mkdir()
+        (other / "json_output.txt").write_text("x", encoding="utf-8")
+
+        result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
+
+        self.assertEqual(result, [])
+
+    def test_hidden_and_visualisation_directories_are_skipped(self) -> None:
+        """Hidden and visualisation directories are never returned, even if they hold result files"""
+        for name in (".hidden", "visualisation"):
+            skipped = self.testrun / name
+            skipped.mkdir()
+            (skipped / "json_output.0").write_text("{}", encoding="utf-8")
+
+        result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
+
+        self.assertEqual(result, [])
+
+    def test_plain_files_are_ignored(self) -> None:
+        """Files directly inside the test run directory are not returned"""
+        (self.testrun / "json_output.0").write_text("{}", encoding="utf-8")
+
+        result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
+
+        self.assertEqual(result, [])
 
 
 if __name__ == "__main__":
