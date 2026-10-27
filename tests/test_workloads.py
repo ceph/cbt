@@ -1,6 +1,7 @@
 """Unit tests for the Workloads class"""
 
 # pyright: strict, reportPrivateUsage=false
+# pylint: disable=protected-access,unused-argument,too-many-arguments,too-many-positional-arguments,too-many-public-methods
 #
 # We are OK to ignore private use in unit tests as the whole point of the tests
 # is to validate the functions contained in the module
@@ -161,6 +162,130 @@ class TestWorkloads(unittest.TestCase):
         # Verify monitoring was started and stopped
         self.assertTrue(mock_monitoring.start.called)
         self.assertTrue(mock_monitoring.stop.called)
+
+    @patch("workloads.workloads.pdsh")
+    @patch("workloads.workloads.make_remote_dir")
+    @patch("workloads.workloads.MonitoringFactory")
+    @patch("workloads.workloads.getnodes")
+    @patch("workloads.workloads.sleep")
+    def test_each_process_waited_exactly_once(
+        self,
+        mock_sleep: MagicMock,
+        mock_getnodes: MagicMock,
+        mock_monitoring: MagicMock,
+        mock_make_remote_dir: MagicMock,
+        mock_pdsh: MagicMock,
+    ) -> None:
+        """Each pdsh process must be waited exactly once, not re-waited across param sets.
+
+        The bug: declaring 'processes = []' outside the parameter-set loop caused
+        completed processes from earlier sets to accumulate and be re-waited on
+        every subsequent iteration.  This test uses a config that produces multiple
+        parameter sets (iodepth has two values) and asserts that every mock process
+        returned by pdsh has wait() called exactly once.
+        """
+        mock_getnodes.return_value = "client1"
+        # Each call to pdsh() returns a distinct mock so we can track wait() independently.
+        process_mocks: list[MagicMock] = [MagicMock() for _ in range(10)]
+        mock_pdsh.side_effect = process_mocks
+
+        # One workload, two iodepth values → two parameter sets, one fio command each.
+        config: dict[str, Any] = {
+            "workloads": {
+                "wl": {
+                    "mode": "randwrite",
+                    "iodepth": ["4", "8"],
+                    "volumes_per_client": "1",
+                },
+            },
+        }
+
+        workloads: Workloads = self._create_workloads(config)
+        workloads.set_benchmark_type("rbdfio")
+        workloads.set_executable("/usr/bin/fio")
+
+        workloads.run()
+
+        # Count how many distinct process mocks were actually consumed by pdsh.
+        processes_used = [m for m in process_mocks if m.wait.called]
+        # Every consumed process must have been waited exactly once.
+        for proc in processes_used:
+            self.assertEqual(
+                proc.wait.call_count,
+                1,
+                f"Expected wait() called exactly once per process, got {proc.wait.call_count}",
+            )
+
+    @patch("workloads.workloads.pdsh")
+    @patch("workloads.workloads.make_remote_dir")
+    @patch("workloads.workloads.MonitoringFactory")
+    @patch("workloads.workloads.getnodes")
+    @patch("workloads.workloads.sleep")
+    def test_multiple_volumes_concurrent_execution(
+        self,
+        mock_sleep: MagicMock,
+        mock_getnodes: MagicMock,
+        mock_monitoring: MagicMock,
+        mock_make_remote_dir: MagicMock,
+        mock_pdsh: MagicMock,
+    ) -> None:
+        """With multiple volumes per client, all commands must be launched concurrently.
+
+        Monitoring and ramp sleep must only run once per parameter set, not per volume,
+        and all processes must be launched before monitoring begins.
+        """
+        mock_getnodes.return_value = "client1"
+        call_events: list[str] = []
+
+        def mock_pdsh_side_effect(_nodes: Any, _cmd: Any) -> MagicMock:
+            call_events.append("pdsh")
+            proc = MagicMock()
+            proc.wait.side_effect = lambda: call_events.append("wait")
+            return proc
+
+        mock_pdsh.side_effect = mock_pdsh_side_effect
+        mock_sleep.side_effect = lambda _s: call_events.append("sleep")
+        mock_monitoring.start.side_effect = lambda _dir: call_events.append("monitoring_start")
+        mock_monitoring.stop.side_effect = lambda: call_events.append("monitoring_stop")
+
+        # 1 workload, 1 param set, 3 volumes per client -> 3 fio commands in 1 parameter set
+        config: dict[str, Any] = {
+            "ramp": "30",
+            "workloads": {
+                "wl": {
+                    "mode": "randwrite",
+                    "iodepth": ["4"],
+                    "volumes_per_client": "3",
+                },
+            },
+        }
+
+        workloads: Workloads = self._create_workloads(config)
+        workloads.set_benchmark_type("rbdfio")
+        workloads.set_executable("/usr/bin/fio")
+
+        workloads.run()
+
+        # Ramp sleep and monitoring should happen once per parameter set
+        self.assertEqual(mock_sleep.call_count, 1)
+        self.assertEqual(mock_monitoring.start.call_count, 1)
+        self.assertEqual(mock_monitoring.stop.call_count, 1)
+
+        # All 3 pdsh commands must be dispatched before sleep and monitoring start
+        self.assertEqual(
+            call_events,
+            [
+                "pdsh",
+                "pdsh",
+                "pdsh",
+                "sleep",
+                "monitoring_start",
+                "wait",
+                "wait",
+                "wait",
+                "monitoring_stop",
+            ],
+        )
 
     @patch("workloads.workloads.pdsh")
     @patch("workloads.workloads.make_remote_dir")
