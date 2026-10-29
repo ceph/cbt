@@ -108,6 +108,7 @@ cbt/
 │
 ├── tests/                          # pytest suite — mirrors src layout
 │   ├── test_bm_<name>.py           # benchmark unit tests (one per benchmark)
+│   ├── test_bm_force_prefill.py    # force_prefill option across librbdfio / fio / hsbench
 │   ├── test_elbencho_command.py
 │   ├── test_workload.py
 │   ├── test_workloads.py
@@ -130,6 +131,7 @@ cbt/
 │   ├── ARCHITECTURE.md             # architecture boundaries & execution contracts
 │   ├── dev/coding-guidelines.md    # ← read before writing any code (see AGENTS.md)
 │   ├── workloads/elbencho-s3.md    # Elbencho S3 feature doc
+│   ├── ForcePrefill.md             # force_prefill option (override use_existing_volumes / prefill: False)
 │   └── *.md                        # design/release/integration docs
 │
 └── .agents/

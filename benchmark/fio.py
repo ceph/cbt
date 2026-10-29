@@ -139,7 +139,7 @@ class Fio(Benchmark):
 
     def prefill(self):
         super(Fio, self).prefill()
-        if not self.prefill_flag:
+        if not (self.prefill_flag or self.force_prefill):
             return
         # populate the fio files
         ps = []
