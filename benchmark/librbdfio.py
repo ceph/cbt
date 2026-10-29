@@ -131,10 +131,7 @@ class LibrbdFio(Benchmark):
             self.mkrecovimage()
         if self._workloads.exist():
             logger.info("Workloads:\n    %s", self._workloads.get_names().replace(" ", "\n"))
-        logger.info("Creating fio images...")
         self.mkimages()
-        logger.info("Attempting to prefill fio images...")
-        self.prefill()
 
     def run(self):
         super(LibrbdFio, self).run()
@@ -302,22 +299,27 @@ class LibrbdFio(Benchmark):
         """
         MonitoringFactory.start(f"{self.run_dir}/pool_monitoring")
         if self.use_existing_volumes is False:
+            logger.info("Creating volume images")
             self.cluster.rmpool(self.pool_name, self.pool_profile)
             self.cluster.mkpool(self.pool_name, self.pool_profile, "rbd")
             if self.data_pool_profile:
                 self.data_pool = self.pool_name + "-data"
                 self.cluster.rmpool(self.data_pool, self.data_pool_profile)
                 self.cluster.mkpool(self.data_pool, self.data_pool_profile, "rbd")
-        client_list = common.get_fqdn_list("clients")
-        total_images = len(client_list) * self.volumes_per_client
-        image_num = 0
-        for node in client_list:
-            for volnum in range(0, self.volumes_per_client):
-                node = node.rpartition("@")[2]
-                image_num += 1
-                image_name = f"cbt-rbdfio-{node}-{volnum:d}"
-                logger.info("Creating fio image %d/%d: %s", image_num, total_images, image_name)
-                self.cluster.mkimage(image_name, self.vol_size, self.pool_name, self.data_pool, self.vol_object_size)
+            client_list = common.get_fqdn_list("clients")
+            total_images = len(client_list) * self.volumes_per_client
+            image_num = 0
+            for node in client_list:
+                for volnum in range(0, self.volumes_per_client):
+                    node = node.rpartition("@")[2]
+                    image_num += 1
+                    image_name = f"cbt-rbdfio-{node}-{volnum:d}"
+                    logger.info("Creating fio image %d/%d: %s", image_num, total_images, image_name)
+                    self.cluster.mkimage(
+                        image_name, self.vol_size, self.pool_name, self.data_pool, self.vol_object_size
+                    )
+        else:
+            logger.debug("Not creating any volumes as use_existing_volumes is True")
         MonitoringFactory.stop()
 
     def prefill(self):
