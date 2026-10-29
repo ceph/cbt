@@ -248,9 +248,9 @@ class Workloads:
         global_options: WorkloadType = {}
 
         for option_name, value in configuration.items():
-            if option_name in ("workloads", "prefill"):
-                # prefill is not an option for workloads as it is used in the Benchmark prefill()
-                # method.
+            if option_name in ("workloads", "prefill", "force_prefill"):
+                # prefill and force_prefill are not options for workloads as they are used in the
+                # Benchmark prefill() method.
                 # workloads we also want to ignore as these will be dealt with at a later date
                 pass
             elif isinstance(value, list):

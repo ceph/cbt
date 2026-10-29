@@ -49,6 +49,9 @@ class Benchmark(object):
 
         self._workloads = Workloads(config, self.run_dir)
         self._create_report = config.get("create_report", False)
+        # When True, prefill() must run even if the benchmark would normally skip it
+        # (e.g. use_existing_volumes: True or prefill: False)
+        self.force_prefill: bool = bool(config.get("force_prefill", False))
 
     def create_data_analyzer(self, run, host, proc):
         pass
