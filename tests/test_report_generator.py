@@ -185,6 +185,25 @@ class TestReportGenerator(unittest.TestCase):
         self.assertTrue(generator._force_refresh)
         self.assertEqual(generator._data_directories, [legacy_vis_dir])
 
+    def test_create_header_files_copies_headers_and_replaces_build_string(self) -> None:
+        """The repository header files are found and copied with the BUILD placeholder replaced"""
+        output_dir = Path(self.temp_dir) / "output"
+        output_dir.mkdir()
+
+        generator = SimpleReportGenerator(
+            archive_directories=[str(self.archive_dir)],
+            output_directory=str(output_dir),
+        )
+
+        header_files = generator._create_header_files()
+
+        self.assertEqual(
+            [header_file.name for header_file in header_files],
+            ["performance_report.tex"],
+            "The base header file should have been found and copied",
+        )
+        self.assertNotIn("BUILD", header_files[0].read_text(encoding="utf-8"), "BUILD should have been replaced")
+
     def test_constants(self) -> None:
         """Test ReportGenerator constants"""
         self.assertEqual(ReportGenerator.MARKDOWN_FILE_EXTENSION, "md")

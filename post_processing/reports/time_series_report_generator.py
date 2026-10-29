@@ -23,11 +23,11 @@ from typing import Optional
 import matplotlib.pyplot as plotter
 
 from post_processing.common import (
-    DATA_FILE_EXTENSION_WITH_DOT,
     PLOT_FILE_EXTENSION_WITH_DOT,
     TITLE_CONVERSION,
     find_timeseries_visualisation_directories,
     get_blocksize_percentage_operation_numjobs_from_file_name,
+    get_iodepth_from_path,
     get_resource_details_from_file,
     read_intermediate_file,
     strip_confidential_data_from_yaml,
@@ -55,6 +55,9 @@ class TimeSeriesReportGenerator(ReportGenerator):
 
     # Additional LaTeX header file for timeseries-specific formatting
     TIMESERIES_HEADER_FILE_PATH: str = "include/timeseries_report.tex"
+
+    # Time-series reports are built from *_timeseries.json files
+    TIMESERIES_DATA_FILES: bool = True
 
     def _get_additional_header_files(self) -> list[str]:
         """
@@ -273,19 +276,7 @@ class TimeSeriesReportGenerator(ReportGenerator):
         Returns:
             The iodepth value as a string, or "N/A" if not found
         """
-        path_parts = file_path.parts
-
-        # Look for total_iodepth first (higher priority)
-        for part in path_parts:
-            if part.startswith("total_iodepth-"):
-                return part.split("-")[1]
-
-        # If no total_iodepth, look for iodepth
-        for part in path_parts:
-            if part.startswith("iodepth-"):
-                return part.split("-")[1]
-
-        return "N/A"
+        return get_iodepth_from_path(file_path) or "N/A"
 
     def _get_max_metrics_with_timestamps(self, file_path: Path) -> tuple[str, str]:  # pylint: disable=too-many-locals
         """
@@ -454,89 +445,6 @@ class TimeSeriesReportGenerator(ReportGenerator):
 
         return sorted(timeseries_plots, key=get_sort_key)
 
-    def _find_and_sort_data_files(self) -> dict[str, list[Path]]:
-        """
-        Find and sort all the time-series data files that will be needed for
-        producing the summary table.
-
-        Overrides base class to look for *_timeseries.json files instead of
-        regular .json files.
-        """
-        # Find common time-series file names across all data directories
-        unique_file_names: list[str] = self._find_common_timeseries_file_names()
-
-        # Sort by blocksize and numjobs
-        sorted_data_file_names: list[str] = sorted(
-            unique_file_names,
-            key=lambda file_name: (
-                int(file_name.split("_")[0]),
-                int(file_name.split("_")[1]),
-            ),
-        )
-
-        sorted_data_files: dict[str, list[Path]] = {}
-        for file_name in sorted_data_file_names:
-            file_name_without_extension: str = file_name[: -len(DATA_FILE_EXTENSION_WITH_DOT)]
-            sorted_data_files[file_name_without_extension] = self._find_files_with_filename(file_name_without_extension)
-
-        return sorted_data_files
-
-    def _find_common_timeseries_file_names(self) -> list[str]:
-        """
-        Find common time-series file names across all data directories.
-
-        Returns:
-            List of time-series JSON file names (with extension)
-        """
-        if not self._data_directories:
-            return []
-
-        # Collect all time-series file names from all directories
-        all_files: set[str] = set()
-        for directory in self._data_directories:
-            files = set(path.parts[-1] for path in directory.glob(f"*_timeseries{DATA_FILE_EXTENSION_WITH_DOT}"))
-            all_files.update(files)
-
-        # For a single archive, return all unique files
-        if len(self._data_directories) == 1:
-            return sorted(list(all_files))
-
-        # Check if all directories share a common ancestor (same archive)
-        # For time-series reports from a single archive, we want all unique files
-        # even if they're in different subdirectories (different iodepth values)
-        try:
-            # Check if all directories are from the same archive by looking at the archive root
-            # Path structure: archive/results/00000000/id-xxx/workload/rbdfio/
-            # numjobs-xxx/total_iodepth-xxx/visualisation
-            # We need to check if they all share the same archive root (before /results/)
-            archive_roots = set()
-            for d in self._data_directories:
-                # Find the archive root by looking for the 'results' directory in parents
-                for i, parent in enumerate(d.parents):
-                    if parent.name == "results" and i > 0:
-                        # The parent before 'results' is the archive root
-                        archive_roots.add(d.parents[i + 1])
-                        break
-
-            # If all directories are from the same archive, return all unique files
-            if len(archive_roots) == 1:
-                log.debug("All directories from same archive, returning %d unique files", len(all_files))
-                return sorted(list(all_files))
-        except (IndexError, AttributeError):
-            pass
-
-        # For multiple archives, check if files exist in ALL directories
-        common_files: set[str] = set()
-        for file_name in all_files:
-            # Check if this file exists in all of the directories
-            found_count = sum(1 for d in self._data_directories if (d / file_name).exists())
-            # Only include if found in ALL directories
-            if found_count == len(self._data_directories):
-                common_files.add(file_name)
-
-        log.debug("Multiple archives detected, returning %d common files", len(common_files))
-        return sorted(list(common_files))
-
     def _add_plots(self) -> None:  # pylint: disable=too-many-locals
         """
         Add the plots to the report in single-column layout.
@@ -568,7 +476,7 @@ class TimeSeriesReportGenerator(ReportGenerator):
                     title: str = f"{blocksize} {percent} {operation}"
 
                     image_line: str = self._report.new_inline_image(
-                        text=title, path=f"{self._plots_directory.parts[-1]}/{image_file.parts[-1]}"
+                        text=title, path=f"{self._plots_directory.name}/{image_file.name}"
                     )
                     anchor: str = f'<a name="{file_stem.replace("_", "-")}"></a>'
 

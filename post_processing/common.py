@@ -54,6 +54,10 @@ _HOSTNAME_PATTERN: Pattern[str] = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# The iodepth directories written by the benchmarks, e.g. total_iodepth-256 and iodepth-000032
+_TOTAL_IODEPTH_DIRECTORY_PATTERN: Pattern[str] = re.compile(r"total_iodepth-(\d+)")
+_IODEPTH_DIRECTORY_PATTERN: Pattern[str] = re.compile(r"iodepth-(\d+)")
+
 
 def get_blocksize_percentage_operation_numjobs_from_file_name(file_name: str) -> tuple[str, str, str, str]:
     """
@@ -237,56 +241,126 @@ def strip_confidential_data_from_yaml(yaml_data: str) -> str:
     return filtered_text
 
 
-def find_common_data_file_names(directories: list[Path]) -> list[str]:
+def find_owning_archive(directory: Path, archive_directories: Optional[list[Path]]) -> Optional[Path]:
     """
-    Find a list of file names from the provided directories.
+    Return the deepest archive directory that contains the given directory,
+    or None if there is no match (or no archives were supplied).
+    """
+    if not archive_directories:
+        return None
 
-    For a single archive (multiple subdirectories from the same parent),
-    returns all unique file names found across all subdirectories.
-    For multiple archives (comparison), returns only files that
-    exist in ALL provided directories.
+    matching_archives: list[Path] = [archive for archive in archive_directories if directory.is_relative_to(archive)]
 
-    Note: Excludes time-series files (*_timeseries.json) as they have
-    a different data structure and are handled by TimeSeriesReportGenerator.
+    return max(matching_archives, key=lambda archive: len(archive.parts), default=None)
+
+
+def find_path_in_ancestors(start: Path, relative_path: str) -> Optional[Path]:
+    """
+    Search for a relative path in a directory and then each of its ancestors,
+    nearest first, without assuming how deep the directory is or what any of
+    the ancestors are called.
+
+    Args:
+        start: The directory to start the search from
+        relative_path: The path to look for, relative to each directory searched
+
+    Returns:
+        The first existing path found, or None if no ancestor contains it
+    """
+    for directory in (start, *start.parents):
+        candidate: Path = directory / relative_path
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
+def _find_iodepth_directory_match(path: Path) -> Optional[tuple[Path, str]]:
+    """
+    Find the iodepth directory in a path and the iodepth value it holds.
+
+    A total_iodepth-<n> directory is preferred, wherever it is in the path. If
+    there is not one then the first iodepth-<n> directory is used. Only path
+    components that are exactly of that form are considered.
+    """
+    for pattern in (_TOTAL_IODEPTH_DIRECTORY_PATTERN, _IODEPTH_DIRECTORY_PATTERN):
+        for index, part in enumerate(path.parts):
+            match = pattern.fullmatch(part)
+            if match:
+                return (Path(*path.parts[: index + 1]), match.group(1))
+
+    return None
+
+
+def find_iodepth_directory(path: Path) -> Optional[Path]:
+    """
+    Get the iodepth directory from the path to a file or directory, i.e. the
+    path up to and including the total_iodepth-<n> directory, or the
+    iodepth-<n> directory if there is no total_iodepth-<n> directory.
+
+    Returns:
+        The path of the iodepth directory, or None if the path does not contain one
+    """
+    match = _find_iodepth_directory_match(path)
+    return match[0] if match else None
+
+
+def get_iodepth_from_path(path: Path) -> Optional[str]:
+    """
+    Get the iodepth from the path to a file or directory, as it is written in
+    the iodepth directory name. total_iodepth is preferred over iodepth.
+
+    Returns:
+        The iodepth as a string, or None if the path does not contain an iodepth directory
+    """
+    match = _find_iodepth_directory_match(path)
+    return match[1] if match else None
+
+
+def find_common_data_file_names(
+    directories: list[Path], archive_directories: Optional[list[Path]] = None, timeseries: bool = False
+) -> list[str]:
+    """
+    Find the data file names that are common to the provided directories.
+
+    Directories that belong to the same archive (as identified by
+    archive_directories) are merged, returning every unique file name found
+    across them. Across different archives (comparison), only the file names
+    that exist in ALL archives are returned.
+
+    If archive_directories is not provided then every directory is treated as
+    being its own archive, so only files present in all the directories are
+    returned. A directory that is not inside any of the supplied archives is
+    also treated as its own archive.
+
+    Args:
+        directories: The directories to search for data files
+        archive_directories: The archive directories that the directories belong to
+        timeseries: If False (the default) time-series files (*_timeseries.json) are
+            excluded, as they have a different data structure. If True, only the
+            time-series files are considered.
     """
     if not directories:
         return []
 
-    # Collect all file names from all directories, excluding time-series files
-    all_files: set[str] = set()
+    directories_by_archive: dict[Path, list[Path]] = {}
     for directory in directories:
-        files = set(
-            path.parts[-1]
+        archive: Path = find_owning_archive(directory, archive_directories) or directory
+        directories_by_archive.setdefault(archive, []).append(directory)
+
+    # Union of the file names within each archive
+    file_names_per_archive: list[set[str]] = [
+        {
+            path.name
+            for directory in archive_dirs
             for path in directory.glob(f"*{DATA_FILE_EXTENSION_WITH_DOT}")
-            if not path.stem.endswith("_timeseries")
-        )
-        all_files.update(files)
+            if path.stem.endswith("_timeseries") == timeseries
+        }
+        for archive_dirs in directories_by_archive.values()
+    ]
 
-    # If we only have one directory, return all files found
-    if len(directories) == 1:
-        return sorted(list(all_files))
-
-    # Check if all directories share a common ancestor (same archive)
-    # by checking if they all have the same great-great-grandparent
-    # (archive_dir/results/00000000/id-xxx/workload/visualisation)
-    try:
-        ancestors = [directory.parents[3] for directory in directories if len(directory.parents) > 3]
-        if ancestors and all(ancestor == ancestors[0] for ancestor in ancestors):
-            # All from same archive - return all unique files
-            return sorted(list(all_files))
-    except (IndexError, AttributeError):
-        pass
-
-    # For multiple archives, check if files exist in ALL directories
-    common_files: set[str] = set()
-    for file_name in all_files:
-        # Check if this file exists in all of the directories
-        found_count = sum(1 for directory in directories if (directory / file_name).exists())
-        # Only include if found in ALL directories
-        if found_count == len(directories):
-            common_files.add(file_name)
-
-    return sorted(list(common_files))
+    # Intersection across the archives
+    return sorted(set.intersection(*file_names_per_archive))
 
 
 def calculate_percent_difference_to_baseline(baseline: str, comparison: str) -> str:
@@ -548,7 +622,9 @@ def find_timeseries_visualisation_directories(archive_directory: Path) -> list[P
     def is_iodepth_directory(visualisation_directory: Path) -> bool:
         """Filter function: check if parent is an iodepth or total_iodepth directory."""
         parent_name = visualisation_directory.parent.name
-        return parent_name.startswith(("iodepth-", "total_iodepth-"))
+        return bool(
+            _IODEPTH_DIRECTORY_PATTERN.fullmatch(parent_name) or _TOTAL_IODEPTH_DIRECTORY_PATTERN.fullmatch(parent_name)
+        )
 
     def sort_by_priority(paths: list[Path]) -> list[Path]:
         """Sort by priority: total_iodepth > iodepth, then by path."""

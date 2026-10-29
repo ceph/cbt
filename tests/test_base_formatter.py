@@ -187,6 +187,74 @@ class TestGetIoPatternDirectories(unittest.TestCase):
         self.assertEqual(result, [])
 
 
+class TestTestrunIdMatching(unittest.TestCase):
+    """
+    The test run directory is named id-<8 hex characters> by benchmark.py. Only
+    path components of exactly that form are test run IDs, not any component
+    that happens to contain the text "id-".
+    """
+
+    def setUp(self) -> None:
+        """Set up test fixtures"""
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures"""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_find_all_testrun_ids_ignores_directories_containing_id_dash(self) -> None:
+        """Directories such as raid-config or valid-data before the real ID must not be used as the ID"""
+        formatter = ConcreteFormatter("/tmp/android-build")
+        file_list = [Path("/tmp/android-build/valid-data/results/00000000/id-94a6db48/workload/json_output.0")]
+
+        formatter._find_all_testrun_ids(file_list)
+
+        self.assertEqual(formatter._all_test_run_ids, {"id-94a6db48"})
+
+    def test_find_all_testrun_ids_uses_first_matching_id(self) -> None:
+        """If there is more than one id-<hex> component the first is used"""
+        formatter = ConcreteFormatter("/tmp/test")
+        file_list = [Path("/tmp/test/id-94a6db48/workload/id-0123abcd/json_output.0")]
+
+        formatter._find_all_testrun_ids(file_list)
+
+        self.assertEqual(formatter._all_test_run_ids, {"id-94a6db48"})
+
+    def test_find_all_testrun_ids_rejects_malformed_ids(self) -> None:
+        """Components that only look similar to an ID fall back to the directory above the file"""
+        formatter = ConcreteFormatter("/tmp/test")
+        file_list = [
+            Path("/tmp/test/id-94a6db4/workload1/json_output.0"),  # too short
+            Path("/tmp/test/id-94a6db489/workload2/json_output.0"),  # too long
+            Path("/tmp/test/id-94A6DB48/workload3/json_output.0"),  # not lower case hex
+            Path("/tmp/test/id-94a6dbzz/workload4/json_output.0"),  # not hex
+            Path("/tmp/test/xid-94a6db48/workload5/json_output.0"),  # extra prefix
+        ]
+
+        formatter._find_all_testrun_ids(file_list)
+
+        self.assertEqual(formatter._all_test_run_ids, {"workload1", "workload2", "workload3", "workload4", "workload5"})
+
+    def test_get_testrun_directories_when_archive_directory_is_the_testrun_directory(self) -> None:
+        """When the archive directory already is the id-<hex> directory it is returned as is"""
+        testrun_directory = Path(self.temp_dir) / "results" / "00000000" / "id-94a6db48"
+        testrun_directory.mkdir(parents=True)
+
+        formatter = ConcreteFormatter(str(testrun_directory))
+
+        self.assertEqual(formatter._get_testrun_directories("id-94a6db48"), [testrun_directory])
+
+    def test_get_testrun_directories_not_confused_by_id_dash_in_archive_path(self) -> None:
+        """A look-alike such as 'valid-archive' in the archive path must not stop the test run search"""
+        archive = Path(self.temp_dir) / "valid-archive"
+        testrun_directory = archive / "results" / "00000000" / "id-94a6db48"
+        testrun_directory.mkdir(parents=True)
+
+        formatter = ConcreteFormatter(str(archive))
+
+        self.assertEqual(formatter._get_testrun_directories("id-94a6db48"), [testrun_directory])
+
+
 if __name__ == "__main__":
     unittest.main()
 
