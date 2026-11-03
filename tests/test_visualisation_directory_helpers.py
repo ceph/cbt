@@ -60,7 +60,7 @@ class TestVisualisationDirectoryHelpers(unittest.TestCase):
         # Create both structures
         legacy_vis = self.archive_dir / "visualisation"
         legacy_vis.mkdir(parents=True)
-        
+
         # Add a JSON file to legacy directory
         (legacy_vis / "test.json").touch()
 
@@ -74,7 +74,7 @@ class TestVisualisationDirectoryHelpers(unittest.TestCase):
         # Should only return legacy structure when it has data
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0], legacy_vis)
-    
+
     def test_find_hockey_stick_empty_legacy_with_new_structure(self) -> None:
         """Test that empty legacy directory doesn't prevent finding new structure"""
         # Create both structures
@@ -188,6 +188,16 @@ class TestVisualisationDirectoryHelpers(unittest.TestCase):
         result = find_timeseries_visualisation_directories(self.archive_dir)
 
         self.assertEqual(len(result), 0)
+
+    def test_find_timeseries_ignores_iodepth_directory_names_with_extra_characters(self) -> None:
+        """Test that only directories named exactly iodepth-<n> or total_iodepth-<n> are matched"""
+        invalid_names = ["iodepth-32_backup", "iodepth-32.old", "total_iodepth-256_old", "total_iodepth-256x"]
+        for name in invalid_names:
+            (self.archive_dir / "randread" / name / "visualisation").mkdir(parents=True)
+
+        result = find_timeseries_visualisation_directories(self.archive_dir)
+
+        self.assertEqual(result, [], f"Directories with extra characters in the name should be ignored, got {result}")
 
 
 if __name__ == "__main__":

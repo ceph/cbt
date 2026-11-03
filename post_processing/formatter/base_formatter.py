@@ -5,9 +5,15 @@ This module provides the BaseFormatter abstract class that defines
 the common API for all formatter implementations.
 """
 
+import re
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
 from pathlib import Path
+from re import Pattern
+
+# The test run directory is named by benchmark.py as "id-" followed by the first
+# 8 characters of a sha1 hex digest
+_TESTRUN_ID_PATTERN: Pattern[str] = re.compile(r"id-[0-9a-f]{8}")
 
 
 class BaseFormatter(ABC):
@@ -65,7 +71,8 @@ class BaseFormatter(ABC):
         Get the directories for a specific test run ID.
 
         When calling from CBT itself, the archive dir already includes the testrun
-        directory, so we handle this case by checking if 'id-' is in the path.
+        directory, so we handle this case by checking if an 'id-xxxxxxxx' directory
+        is in the path.
 
         Args:
             testrun_id: The test run identifier to find directories for
@@ -73,9 +80,41 @@ class BaseFormatter(ABC):
         Returns:
             List of Path objects for directories matching the test run ID
         """
-        if "id-" in f"{self.path}":
+        if any(_TESTRUN_ID_PATTERN.fullmatch(part) for part in self.path.parts):
             return [self.path]
         return list(self.path.glob(f"**/{testrun_id}"))
+
+    def _get_io_pattern_directories(self, testrun_directory: Path, file_name_root: str) -> list[Path]:
+        """
+        Get the directories inside a test run directory that contain benchmark results.
+
+        A test run directory also holds the output of the resource monitoring tools
+        (for example collectl.<host> and pool_monitoring.<host>). These contain no
+        benchmark result files so cannot be processed as an I/O pattern directory.
+        Only directories that contain at least one <file_name_root>.<number> file are
+        returned. Hidden directories and visualisation directories are always skipped.
+
+        Args:
+            testrun_directory: Path to the test run directory
+            file_name_root: Root name of the result files (e.g. "json_output")
+
+        Returns:
+            List of Path objects for the directories that contain result files
+        """
+        io_pattern_directories: list[Path] = []
+
+        for directory in testrun_directory.iterdir():
+            if not directory.is_dir() or directory.name.startswith(".") or "visualisation" in directory.name:
+                continue
+
+            if any(path.suffix[1:].isdigit() for path in directory.glob(f"**/{file_name_root}.*")):
+                io_pattern_directories.append(directory)
+            else:
+                self.log.debug("Skipping directory %s as it contains no %s files", directory, file_name_root)
+
+        if not io_pattern_directories:
+            self.log.warning("No I/O Pattern directories found that contain files")
+        return io_pattern_directories
 
     def _find_all_testrun_ids(self, file_list: list[Path]) -> None:
         """
@@ -100,8 +139,8 @@ class BaseFormatter(ABC):
             # the directory structure.
             # This should allow us to get test run IDs when any point in the
             # archive directory tree is passed as the archive directory
-            potential_ids: list[str] = [part for part in file_path.parts if "id-" in part]
-            # There is a possibility that there could be more than one id-xxxxxx string in the
+            potential_ids: list[str] = [part for part in file_path.parts if _TESTRUN_ID_PATTERN.fullmatch(part)]
+            # There is a possibility that there could be more than one id-xxxxxxxx string in the
             # file path, and we want only one. We choose to always take the first one.
             # If there are none then just return the directory name above the file
             if len(potential_ids) > 0:
