@@ -127,7 +127,7 @@ class Hsbench(Benchmark):
 
     def prefill(self):
         super(Hsbench, self).prefill()
-        if not self.prefill_flag:
+        if not (self.prefill_flag or self.force_prefill):
             return
         logger.info("Attempting to prefill hsbench objects...")
         ps = []

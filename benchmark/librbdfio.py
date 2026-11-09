@@ -325,9 +325,12 @@ class LibrbdFio(Benchmark):
     def prefill(self):
         """
         Execute a FIO cmd to prefill the volumes
+
+        Volumes are not prefilled when use_existing_volumes is True, unless
+        force_prefill is also set.
         """
         ps = []
-        if not self.use_existing_volumes:
+        if self.force_prefill or not self.use_existing_volumes:
             rbd_base_name: str = self.config.get("rbdname", "cbt-rbdfio")
             for volnum in range(self.volumes_per_client):
                 rbd_name = f"{rbd_base_name}-`{common.get_fqdn_cmd()}`-{volnum:d}"
