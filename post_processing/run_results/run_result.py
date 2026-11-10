@@ -15,6 +15,7 @@ from post_processing.post_processing_types import (
     InternalFormattedOutputType,
     InternalNumJobsDataType,
     IodepthDataType,
+    IoDetailsType,
     TimeSeriesFormatType,
 )
 from post_processing.run_results.benchmark_result import BenchmarkResult
@@ -57,9 +58,7 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
         """
 
     @abstractmethod
-    def _sum_io_details(
-        self, existing_values: Union[str, IodepthDataType], new_values: IodepthDataType
-    ) -> IodepthDataType:
+    def _sum_io_details(self, existing_values: Union[str, IodepthDataType], new_values: IoDetailsType) -> IoDetailsType:
         """
         sum the existing_values with new_values and return the result
         """
@@ -194,9 +193,7 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
             benchmark_result.number_of_jobs,
         )
 
-    def _merge_io_details(
-        self, test_config: tuple[str, str, str, str], new_io_details: IodepthDataType
-    ) -> IodepthDataType:
+    def _merge_io_details(self, test_config: tuple[str, str, str, str], new_io_details: IoDetailsType) -> IoDetailsType:
         """
         Merge new IO details with existing data for the same test configuration.
 
@@ -224,7 +221,7 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
     def _build_test_result_data(
         self,
         test_config: tuple[str, str, str, str],
-        io_details: IodepthDataType,
+        io_details: IoDetailsType,
         global_details: dict[str, str],
         resource_data: dict[str, dict[str, str]],
     ) -> InternalNumJobsDataType:
@@ -443,6 +440,66 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
         operation, blocksize, iodepth, number_of_jobs = test_config
         return self._processed_data.get(operation, {}).get(number_of_jobs, {}).get(blocksize, {}).get(iodepth)
 
+    def _find_missing_shared_sources(self, resource_data: dict[str, dict[str, str]]) -> set[str]:
+        """
+        Identify shared-directory sources whose monitoring directory was absent.
+
+        A missing directory yields "0.00" for both cpu and memory, so a source is
+        only considered missing when BOTH metrics are zero. A single zero metric
+        (e.g. an idle CPU with real memory use) is valid data.
+
+        Args:
+            resource_data: Resource data from the current volume file
+
+        Returns:
+            Set of non-summed source names with zero cpu and zero memory
+        """
+        cpu_map = resource_data.get("cpu", {})
+        mem_map = resource_data.get("memory", {})
+        return {
+            source
+            for source in set(cpu_map) | set(mem_map)
+            if source not in self._SUMMED_RESOURCE_SOURCES
+            and float(cpu_map.get(source, "0.00")) == 0.0
+            and float(mem_map.get(source, "0.00")) == 0.0
+        }
+
+    def _merge_metric_dict(
+        self,
+        test_config: tuple[str, str, str, str],
+        existing_metrics: dict[str, str],
+        new_metrics: dict[str, str],
+        missing_sources: set[str],
+    ) -> dict[str, str]:
+        """
+        Merge a single metric mapping (cpu or memory) across volumes for a test configuration.
+
+        Args:
+            test_config: Tuple of (operation, blocksize, iodepth, number_of_jobs)
+            existing_metrics: Existing metric dictionary by source
+            new_metrics: New metric dictionary by source from the current volume
+            missing_sources: Sources with no monitoring data in the current volume
+                             (see _find_missing_shared_sources)
+
+        Returns:
+            Merged metric dictionary
+        """
+        merged: dict[str, str] = {}
+        for source in set(existing_metrics) | set(new_metrics):
+            if source in missing_sources:
+                # Missing monitoring directory — keep the accumulated value unchanged
+                # and do not increment _resource_source_counts for this source.
+                merged[source] = existing_metrics.get(source, "0.00")
+            else:
+                source_count: int = self._resource_source_counts.get((test_config, source), 0)
+                merged[source] = self._aggregate_metric(
+                    source,
+                    float(existing_metrics.get(source, "0.00")),
+                    float(new_metrics.get(source, "0.00")),
+                    source_count,
+                )
+        return merged
+
     def _merge_resource_data(
         self,
         test_config: tuple[str, str, str, str],
@@ -475,34 +532,24 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
         if not isinstance(existing_iodepth, dict):
             return new_resource_data
 
-        raw_cpu = existing_iodepth.get("cpu", "")
-        raw_mem = existing_iodepth.get("memory", "")
-        existing_cpu: dict[str, str] = raw_cpu if isinstance(raw_cpu, dict) else {}
-        existing_mem: dict[str, str] = raw_mem if isinstance(raw_mem, dict) else {}
-        new_cpu_map = new_resource_data.get("cpu", {})
-        new_mem_map = new_resource_data.get("memory", {})
-        merged_cpu: dict[str, str] = {}
-        merged_mem: dict[str, str] = {}
+        existing_cpu = existing_iodepth.get("cpu", {})
+        existing_mem = existing_iodepth.get("memory", {})
+        missing_sources = self._find_missing_shared_sources(new_resource_data)
 
-        for source in set(existing_cpu) | set(new_cpu_map):
-            new_cpu_val = float(new_cpu_map.get(source, "0.00"))
-            new_mem_val = float(new_mem_map.get(source, "0.00"))
-            source_count: int = self._resource_source_counts.get((test_config, source), 0)
-
-            if source not in self._SUMMED_RESOURCE_SOURCES and new_cpu_val == 0.0 and new_mem_val == 0.0:
-                # Missing monitoring directory — keep the accumulated value unchanged
-                # and do not increment _resource_source_counts for this source.
-                merged_cpu[source] = existing_cpu.get(source, "0.00")
-                merged_mem[source] = existing_mem.get(source, "0.00")
-            else:
-                merged_cpu[source] = self._aggregate_metric(
-                    source, float(existing_cpu.get(source, "0.00")), new_cpu_val, source_count
-                )
-                merged_mem[source] = self._aggregate_metric(
-                    source, float(existing_mem.get(source, "0.00")), new_mem_val, source_count
-                )
-
-        return {"cpu": merged_cpu, "memory": merged_mem}
+        return {
+            "cpu": self._merge_metric_dict(
+                test_config,
+                existing_cpu if isinstance(existing_cpu, dict) else {},
+                new_resource_data.get("cpu", {}),
+                missing_sources,
+            ),
+            "memory": self._merge_metric_dict(
+                test_config,
+                existing_mem if isinstance(existing_mem, dict) else {},
+                new_resource_data.get("memory", {}),
+                missing_sources,
+            ),
+        }
 
     def _convert_file(self, file_path: Path) -> None:
         """
@@ -540,8 +587,8 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
 
             # Collect resource data from all sources then merge with any
             # previously accumulated data for the same test configuration
-            resource_data = self._collect_multi_source_resources(resources)
-            resource_data = self._merge_resource_data(test_config, resource_data)
+            new_resource_data = self._collect_multi_source_resources(resources)
+            resource_data = self._merge_resource_data(test_config, new_resource_data)
 
             # Build complete test result data structure
             numjobs_details = self._build_test_result_data(test_config, io_details, io.global_options, resource_data)
@@ -552,13 +599,15 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
             # Increment the per-configuration volume counter (all sources).
             self._resource_volume_counts[test_config] = self._resource_volume_counts.get(test_config, 0) + 1
 
-            # Increment the per-(config, source) counter only for non-zero
-            # shared-directory sources, so that volumes whose monitoring
-            # directory is absent are not counted in the averaging denominator.
-            for source, cpu_val in resource_data.get("cpu", {}).items():
-                if source not in self._SUMMED_RESOURCE_SOURCES and float(cpu_val) != 0.0:
-                    key = (test_config, source)
-                    self._resource_source_counts[key] = self._resource_source_counts.get(key, 0) + 1
+            # Increment the per-(config, source) counter only for shared-directory
+            # sources present in THIS volume (judged on the raw, pre-merge data), so
+            # that volumes whose monitoring directory is absent are not counted in
+            # the averaging denominator.
+            missing_sources = self._find_missing_shared_sources(new_resource_data)
+            present_sources = set(new_resource_data.get("cpu", {})) | set(new_resource_data.get("memory", {}))
+            for source in present_sources - self._SUMMED_RESOURCE_SOURCES - missing_sources:
+                key = (test_config, source)
+                self._resource_source_counts[key] = self._resource_source_counts.get(key, 0) + 1
 
             # Process time-series data if requested
             if self._include_timeseries:

@@ -589,6 +589,11 @@ class TestCommonFunctions(unittest.TestCase):  # pylint: disable=too-many-public
         # Expected: (4 + 6 + 8) / 3 = 6.0
         self.assertAlmostEqual(result, 6.0, places=5)
 
+    def test_sum_mean_values_zero_total_ios_returns_zero(self) -> None:
+        """Zero total IOs must return 0.0 without division by zero"""
+        result = sum_mean_values([0.0], [0], 0)
+        self.assertEqual(result, 0.0)
+
     def test_title_conversion_dict(self) -> None:
         """Test that TITLE_CONVERSION contains expected mappings"""
         self.assertEqual(TITLE_CONVERSION["read"], "Sequential Read")

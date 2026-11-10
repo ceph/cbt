@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from post_processing.common import file_is_empty, get_blocksize
-from post_processing.post_processing_types import IodepthDataType, JobsDataType, TimeSeriesFormatType
+from post_processing.post_processing_types import IoDetailsType, JobsDataType, TimeSeriesFormatType
 
 log: Logger = getLogger("cbt.formatter")
 
@@ -32,7 +32,7 @@ class BenchmarkResult(ABC):  # pylint: disable=too-many-instance-attributes
         self._number_of_jobs: str = ""  # Will be set by subclass in _get_global_options
         self._global_options: dict[str, str] = self._get_global_options(self._data["global options"])
         self._iodepth = self._get_iodepth(f"{self._data['global options']['iodepth']}")
-        self._io_details: IodepthDataType = self._get_io_details(self._data["jobs"])
+        self._io_details: IoDetailsType = self._get_io_details(self._data["jobs"])
 
         self._has_been_parsed: bool = False
         self._source: str = self.source
@@ -54,7 +54,7 @@ class BenchmarkResult(ABC):  # pylint: disable=too-many-instance-attributes
         """
 
     @abstractmethod
-    def _get_io_details(self, all_jobs: JobsDataType) -> dict[str, str]:
+    def _get_io_details(self, all_jobs: JobsDataType) -> IoDetailsType:
         """
         Get all the required details for the total I/O submitted by the benchmark tool
         """
@@ -103,7 +103,7 @@ class BenchmarkResult(ABC):  # pylint: disable=too-many-instance-attributes
         return self._iodepth
 
     @property
-    def io_details(self) -> IodepthDataType:
+    def io_details(self) -> IoDetailsType:
         """
         Return the IO details for this benchmark run.
         """
