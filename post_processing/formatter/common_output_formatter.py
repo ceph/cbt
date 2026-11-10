@@ -173,8 +173,8 @@ class CommonOutputFormatter(BaseFormatter):
                     # Extract number_of_jobs from the first iodepth entry
                     # All iodepth entries should have the same number_of_jobs value
                     for _, value in blocksize_data.items():
-                        if isinstance(value, dict) and "number_of_jobs" in value:
-                            blocksize_data["number_of_jobs"] = value["number_of_jobs"]
+                        if isinstance(value, dict) and isinstance(value.get("number_of_jobs"), str):
+                            blocksize_data["number_of_jobs"] = str(value["number_of_jobs"])
                             break
 
     def _add_peak_metrics(self) -> None:
@@ -317,12 +317,15 @@ class CommonOutputFormatter(BaseFormatter):
         for _, data in test_run_data.items():
             if isinstance(data, dict):
                 # latency is in ns, and we want to convert to ms
-                if float(data["bandwidth_bytes"]) > max_bandwidth:
-                    max_bandwidth = float(data["bandwidth_bytes"])
-                    bandwidth_latency_ms = float(float(data["latency"]) / (1000 * 1000))
-                if float(data["iops"]) > max_iops:
-                    max_iops = float(data["iops"])
-                    iops_latency_ms = float(float(data["latency"]) / (1000 * 1000))
+                bandwidth = float(str(data["bandwidth_bytes"]))
+                iops = float(str(data["iops"]))
+                latency_ms = float(str(data["latency"])) / (1000 * 1000)
+                if bandwidth > max_bandwidth:
+                    max_bandwidth = bandwidth
+                    bandwidth_latency_ms = latency_ms
+                if iops > max_iops:
+                    max_iops = iops
+                    iops_latency_ms = latency_ms
 
         return (f"{max_bandwidth}", f"{bandwidth_latency_ms}", f"{max_iops}", f"{iops_latency_ms}")
 

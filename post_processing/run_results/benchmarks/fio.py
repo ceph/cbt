@@ -18,7 +18,7 @@ from post_processing.parsers.fio_log_parser import FIOLogParser
 from post_processing.parsers.fio_time_series_parser import FIOTimeSeriesParser
 from post_processing.parsers.timestamp_aligner import TimestampAligner
 from post_processing.post_processing_types import (
-    IodepthDataType,
+    IoDetailsType,
     JobsDataType,
     TimeSeriesFormatType,
 )
@@ -110,7 +110,7 @@ class FIO(BenchmarkResult):
         return float(value)
 
     # pylint: disable=[too-many-locals]
-    def _get_io_details(self, all_jobs: JobsDataType) -> IodepthDataType:
+    def _get_io_details(self, all_jobs: JobsDataType) -> IoDetailsType:
         """
         Aggregate IO metrics across read and write operations from FIO output.
 

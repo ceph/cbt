@@ -24,7 +24,7 @@ from post_processing.plotter.cpu_plotter import CPUPlotter
 from post_processing.plotter.io_plotter import IOPlotter
 from post_processing.plotter.plot_data_collector import PlotDataCollector
 from post_processing.plotter.plot_data_results import DataPointResult, PlotDataResult
-from post_processing.post_processing_types import CommonFormatDataType, PlotDataType
+from post_processing.post_processing_types import CommonFormatDataType, IodepthDataType, PlotDataType
 
 log: Logger = getLogger("cbt.plotter")
 
@@ -178,25 +178,25 @@ class CommonFormatPlotter(ABC):
         """Convert standard deviation from nanoseconds to milliseconds."""
         return float(std_dev_ns) / NANOSECONDS_TO_MS_DIVISOR
 
-    def _extract_x_axis_data(self, data: dict[str, str]) -> tuple[float, str]:
+    def _extract_x_axis_data(self, data: IodepthDataType) -> tuple[float, str]:
         """
         Extract x-axis data point and label based on blocksize.
 
         Returns:
             Tuple of (x_value, x_label) where x_value is either bandwidth or IOPS
         """
-        blocksize_kb = self._calculate_blocksize_kb(data["blocksize"])
+        blocksize_kb = self._calculate_blocksize_kb(str(data["blocksize"]))
 
         if self._should_use_bandwidth(blocksize_kb):
-            x_value = self._convert_bandwidth_to_mb(data["bandwidth_bytes"])
+            x_value = self._convert_bandwidth_to_mb(str(data["bandwidth_bytes"]))
             x_label = "Bandwidth (MB/s)"
         else:
-            x_value = float(data["iops"])
+            x_value = float(str(data["iops"]))
             x_label = "IOps"
 
         return x_value, x_label
 
-    def _validate_cpu_data_availability(self, data: dict[str, str], plot_resource_usage: bool) -> bool:
+    def _validate_cpu_data_availability(self, data: IodepthDataType, plot_resource_usage: bool) -> bool:
         """
         Check if CPU data is available when resource plotting is requested.
 
@@ -211,7 +211,7 @@ class CommonFormatPlotter(ABC):
         return plot_resource_usage
 
     def _calculate_error_bar(
-        self, data: dict[str, str], plot_error_bars: bool, resource_plotting_enabled: bool
+        self, data: IodepthDataType, plot_error_bars: bool, resource_plotting_enabled: bool
     ) -> float:
         """
         Calculate error bar value for a data point.
@@ -228,7 +228,7 @@ class CommonFormatPlotter(ABC):
             if "std_deviation" not in data:
                 log.warning("Missing 'std_deviation' field, using 0 for error bar")
                 return 0.0
-            return self._convert_std_dev_to_ms(data["std_deviation"])
+            return self._convert_std_dev_to_ms(str(data["std_deviation"]))
         return 0.0
 
     def _initialize_plotters(self, main_axes: Axes, label: Optional[str]) -> tuple[IOPlotter, CPUPlotter]:
@@ -257,7 +257,7 @@ class CommonFormatPlotter(ABC):
 
     def _process_cpu_data(
         self,
-        data: dict[str, str],
+        data: IodepthDataType,
         queue_depth: str,
         cpu_plotter: CPUPlotter,
         resource_plotting_enabled: bool,
@@ -324,7 +324,7 @@ class CommonFormatPlotter(ABC):
 
     def _process_data_point(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
-        data: dict[str, str],
+        data: IodepthDataType,
         queue_depth: str,
         io_plotter: IOPlotter,
         cpu_plotter: CPUPlotter,
@@ -356,7 +356,7 @@ class CommonFormatPlotter(ABC):
             raise ValueError(f"Missing required fields for queue depth {queue_depth}: {', '.join(missing_fields)}")
 
         # Validate latency is numeric
-        latency_value = data["latency"]
+        latency_value = str(data["latency"])
         try:
             _ = float(latency_value)  # Validate it's convertible to float
         except (ValueError, TypeError) as e:

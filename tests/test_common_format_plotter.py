@@ -12,17 +12,18 @@ from unittest.mock import MagicMock, patch
 
 from matplotlib.axes import Axes
 
+from post_processing.common import KB_CONVERSION_FACTOR
 from post_processing.plotter.common_format_plotter import (
     BLOCKSIZE_THRESHOLD_KB,
     BYTES_TO_MB_DIVISOR,
     ERROR_BAR_CAP_SIZE,
-    KB_CONVERSION_FACTOR,
     NANOSECONDS_TO_MS_DIVISOR,
     CommonFormatPlotter,
 )
 from post_processing.plotter.cpu_plotter import CPUPlotter
 from post_processing.plotter.io_plotter import IOPlotter
 from post_processing.plotter.plot_data_results import PlotDataResult
+from post_processing.post_processing_types import IodepthDataType, PlotDataType
 
 
 class ConcreteCommonFormatPlotter(CommonFormatPlotter):
@@ -124,7 +125,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
 
     def test_extract_x_axis_data_small_blocksize(self) -> None:
         """Test _extract_x_axis_data with small blocksize (uses IOPS)"""
-        data = {
+        data: IodepthDataType = {
             "blocksize": "4096",  # 4KB
             "bandwidth_bytes": "1000000",
             "iops": "250.5",
@@ -135,7 +136,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
 
     def test_extract_x_axis_data_large_blocksize(self) -> None:
         """Test _extract_x_axis_data with large blocksize (uses bandwidth)"""
-        data = {
+        data: IodepthDataType = {
             "blocksize": "131072",  # 128KB
             "bandwidth_bytes": "104857600",  # 100 MB
             "iops": "800",
@@ -146,7 +147,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
 
     def test_extract_x_axis_data_threshold_blocksize(self) -> None:
         """Test _extract_x_axis_data at threshold blocksize (uses bandwidth)"""
-        data = {
+        data: IodepthDataType = {
             "blocksize": "65536",  # 64KB (at threshold)
             "bandwidth_bytes": "52428800",  # 50 MB
             "iops": "800",
@@ -158,7 +159,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
     @patch("post_processing.plotter.common_format_plotter.log")
     def test_validate_cpu_data_availability_with_cpu_data(self, mock_log: MagicMock) -> None:
         """Test _validate_cpu_data_availability when CPU data exists"""
-        data = {"cpu": "45.5"}
+        data: IodepthDataType = {"cpu": "45.5"}
         result = self.plotter._validate_cpu_data_availability(data, True)
         self.assertTrue(result)
         mock_log.warning.assert_not_called()
@@ -166,7 +167,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
     @patch("post_processing.plotter.common_format_plotter.log")
     def test_validate_cpu_data_availability_without_cpu_data(self, mock_log: MagicMock) -> None:
         """Test _validate_cpu_data_availability when CPU data is missing"""
-        data = {"latency": "5000000"}
+        data: IodepthDataType = {"latency": "5000000"}
         result = self.plotter._validate_cpu_data_availability(data, True)
         self.assertFalse(result)
         mock_log.warning.assert_called_once()
@@ -175,7 +176,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
     @patch("post_processing.plotter.common_format_plotter.log")
     def test_validate_cpu_data_availability_not_requested(self, mock_log: MagicMock) -> None:
         """Test _validate_cpu_data_availability when resource plotting not requested"""
-        data = {"latency": "5000000"}
+        data: IodepthDataType = {"latency": "5000000"}
         result = self.plotter._validate_cpu_data_availability(data, False)
         self.assertFalse(result)
         mock_log.warning.assert_not_called()
@@ -221,7 +222,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -257,7 +258,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -283,7 +284,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "131072",  # 128KB
                 "bandwidth_bytes": "104857600",  # 100 MB
@@ -338,25 +339,25 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
 
     def test_calculate_error_bar_with_error_bars_enabled(self) -> None:
         """Test _calculate_error_bar when error bars are enabled"""
-        data = {"std_deviation": "1000000"}  # 1ms in nanoseconds
+        data: IodepthDataType = {"std_deviation": "1000000"}  # 1ms in nanoseconds
         result = self.plotter._calculate_error_bar(data, True, False)
         self.assertAlmostEqual(result, 1.0, places=2)
 
     def test_calculate_error_bar_with_error_bars_disabled(self) -> None:
         """Test _calculate_error_bar when error bars are disabled"""
-        data = {"std_deviation": "1000000"}
+        data: IodepthDataType = {"std_deviation": "1000000"}
         result = self.plotter._calculate_error_bar(data, False, False)
         self.assertEqual(result, 0.0)
 
     def test_calculate_error_bar_with_resource_plotting(self) -> None:
         """Test _calculate_error_bar when resource plotting is enabled"""
-        data = {"std_deviation": "1000000"}
+        data: IodepthDataType = {"std_deviation": "1000000"}
         result = self.plotter._calculate_error_bar(data, True, True)
         self.assertEqual(result, 0.0)
 
     def test_calculate_error_bar_missing_std_deviation(self) -> None:
         """Test _calculate_error_bar with missing std_deviation field"""
-        data: dict[str, str] = {}
+        data: IodepthDataType = {}
         result = self.plotter._calculate_error_bar(data, True, False)
         self.assertEqual(result, 0.0)
 
@@ -376,7 +377,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -398,7 +399,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -429,7 +430,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -452,7 +453,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -485,7 +486,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -522,7 +523,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -552,7 +553,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {  # type: ignore[arg-type]
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -595,7 +596,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {  # type: ignore[arg-type]
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
@@ -630,7 +631,7 @@ class TestCommonFormatPlotterHelperMethods(unittest.TestCase):
         mock_io_plotter = MagicMock(spec=IOPlotter)
         mock_cpu_plotter = MagicMock(spec=CPUPlotter)
 
-        sorted_plot_data = {  # type: ignore[arg-type]
+        sorted_plot_data: PlotDataType = {
             "1": {
                 "blocksize": "4096",
                 "bandwidth_bytes": "1000000",
