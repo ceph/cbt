@@ -114,6 +114,7 @@ cbt/
 │   ├── test_workloads.py
 │   ├── test_async_ssh.py
 │   ├── test_monitoring_*.py
+│   ├── test_report_script_exit_codes.py  # exit status of tools/ report scripts
 │   └── test_post_processing_*.py / test_*_plotter.py / test_*_formatter.py …
 │
 ├── tools/                          # standalone offline analysis scripts (not imported)

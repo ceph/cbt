@@ -454,7 +454,13 @@ def sum_standard_deviation_values(
     weighted_stddev = sum ((num_ops - 1) * std_dev^2 + num_ops1 * mean_latency1^2)
 
     sqrt( (weighted_stddev - (total_ios)*combined_latency^2) / total_ios - 1)
+
+    A sample standard deviation is undefined for fewer than 2 operations, so 0.0
+    is returned in that case.
     """
+    if total_ios < 2:
+        return 0.0
+
     weighted_stddev: float = 0
 
     # For standard deviation this is more complex. For each job we need to calculate:
@@ -464,9 +470,11 @@ def sum_standard_deviation_values(
             latencies[index] * latencies[index]
         )
 
-    latency_standard_deviation: float = sqrt(
-        (weighted_stddev - total_ios * combined_latency * combined_latency) / (total_ios - 1)
-    )
+    # When every operation has the same latency the variance is exactly 0, but
+    # floating point rounding can leave a very small negative value, which sqrt()
+    # would reject. A variance can never be negative, so clamp it at 0.
+    variance: float = max(0.0, (weighted_stddev - total_ios * combined_latency * combined_latency) / (total_ios - 1))
+    latency_standard_deviation: float = sqrt(variance)
 
     return latency_standard_deviation
 
