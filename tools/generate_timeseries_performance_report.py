@@ -51,6 +51,7 @@ Examples:
                                     --create_pdf
 """
 
+import sys
 from argparse import SUPPRESS, ArgumentParser
 from logging import Logger, getLogger
 
@@ -126,6 +127,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 
 # Made with Bob

@@ -151,6 +151,10 @@ class TestLogConfiguration(unittest.TestCase):
 
         import post_processing.log_configuration as log_config
 
+        # The reload below bakes "/custom/path" into the module constants. Reload again once the
+        # patched environment has been restored so that later tests see the real LOGFILE_LOCATION.
+        self.addCleanup(importlib.reload, log_config)
+
         importlib.reload(log_config)
 
         # The constant should reflect the environment variable
