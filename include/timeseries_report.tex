@@ -1,7 +1,9 @@
 % Additional LaTeX commands for timeseries reports
 % This file is used in addition to performance_report.tex
-% Scale all images to 50% of their natural size for timeseries reports
-\let\oldincludegraphics\includegraphics
-\renewcommand{\includegraphics}[2][]{\oldincludegraphics[#1,scale=0.5]{#2}}
+% Limit the size of the timeseries plots to 75% of the text width and 50% of the text height.
+% Do NOT use \includegraphics[scale=...]: pandoc's default template already sets
+% width=\maxwidth,height=\maxheight as global graphicx defaults, and adding scale on top of
+% those makes older pandoc versions (e.g. 2.14) render the images as tiny thumbnails.
+\setkeys{Gin}{width=0.75\linewidth,height=0.5\textheight,keepaspectratio}
 
 % Made with Bob
