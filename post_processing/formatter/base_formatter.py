@@ -11,6 +11,9 @@ from logging import Logger, getLogger
 from pathlib import Path
 from re import Pattern
 
+from post_processing.common import split_group_and_host
+from post_processing.post_processing_types import DirectoryGroup
+
 # The test run directory is named by benchmark.py as "id-" followed by the first
 # 8 characters of a sha1 hex digest
 _TESTRUN_ID_PATTERN: Pattern[str] = re.compile(r"id-[0-9a-f]{8}")
@@ -103,11 +106,8 @@ class BaseFormatter(ABC):
         """
         io_pattern_directories: list[Path] = []
 
-        for directory in testrun_directory.iterdir():
-            if not directory.is_dir() or directory.name.startswith(".") or "visualisation" in directory.name:
-                continue
-
-            if any(path.suffix[1:].isdigit() for path in directory.glob(f"**/{file_name_root}.*")):
+        for directory in self._get_candidate_directories(testrun_directory):
+            if self._directory_has_result_files(directory, file_name_root):
                 io_pattern_directories.append(directory)
             else:
                 self.log.debug("Skipping directory %s as it contains no %s files", directory, file_name_root)
@@ -115,6 +115,83 @@ class BaseFormatter(ABC):
         if not io_pattern_directories:
             self.log.warning("No I/O Pattern directories found that contain files")
         return io_pattern_directories
+
+    def _group_io_pattern_directories(self, testrun_directory: Path, file_name_root: str) -> list[DirectoryGroup]:
+        """
+        Group the directories in a test run directory by the workload they belong to.
+
+        In workloads mode rpdcp appends the host name to each directory, so a workload that
+        ran on several nodes is spread over <workload>.<host1>, <workload>.<host2> and so on.
+        Directories sharing the same base workload name form a group. The primary of a group
+        is the first (sorted) directory that contains result files; it is never a
+        monitoring-only directory. Other directories with result files are result peers and
+        directories without result files are monitoring peers. A group with no directory
+        containing result files (for example idle_monitoring.<host>) is dropped.
+
+        Directories are split into workload and host on the first dot, so base workload names
+        are assumed not to contain dots. A workload whose name does contain a dot would be
+        grouped under the wrong base name; resolving that needs the known workload or host
+        names to be passed to split_group_and_host().
+
+        Args:
+            testrun_directory: Path to the test run directory
+            file_name_root: Root name of the result files (e.g. "json_output")
+
+        Returns:
+            List of DirectoryGroup, sorted by base workload name
+        """
+        members_by_workload: dict[str, list[Path]] = {}
+
+        for directory in self._get_candidate_directories(testrun_directory):
+            workload, _ = split_group_and_host(directory.name)
+            members_by_workload.setdefault(workload, []).append(directory)
+
+        groups: list[DirectoryGroup] = []
+
+        for workload, members in sorted(members_by_workload.items()):
+            result_members: list[Path] = [
+                member for member in members if self._directory_has_result_files(member, file_name_root)
+            ]
+            if not result_members:
+                self.log.debug("Skipping %s as none of its directories contain %s files", workload, file_name_root)
+                continue
+
+            groups.append(
+                DirectoryGroup(
+                    primary=result_members[0],
+                    result_peers=result_members[1:],
+                    monitoring_peers=[member for member in members if member not in result_members],
+                )
+            )
+
+        if not groups:
+            self.log.warning("No I/O Pattern directories found that contain files")
+        return groups
+
+    @staticmethod
+    def _get_candidate_directories(testrun_directory: Path) -> list[Path]:
+        """
+        Get the sorted, non-hidden, non-visualisation directories inside a test run directory.
+
+        The result is sorted because iterdir() order is arbitrary and everything built from
+        these directories (primary selection in particular) must be deterministic.
+
+        The sort key is the directory name, which is only equivalent to sorting by full path
+        because every entry is a direct child of the same parent directory.
+        """
+        return sorted(
+            (
+                directory
+                for directory in testrun_directory.iterdir()
+                if directory.is_dir() and not directory.name.startswith(".") and "visualisation" not in directory.name
+            ),
+            key=lambda directory: directory.name,
+        )
+
+    @staticmethod
+    def _directory_has_result_files(directory: Path, file_name_root: str) -> bool:
+        """Return True if the directory contains at least one <file_name_root>.<number> file."""
+        return any(path.suffix[1:].isdigit() for path in directory.glob(f"**/{file_name_root}.*"))
 
     def _find_all_testrun_ids(self, file_list: list[Path]) -> None:
         """

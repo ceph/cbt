@@ -5,6 +5,7 @@ drawing plots or producing reports
 
 import json
 import re
+from collections.abc import Collection
 from datetime import datetime
 from logging import Logger, getLogger
 from math import sqrt
@@ -479,6 +480,46 @@ def sum_standard_deviation_values(
     latency_standard_deviation: float = sqrt(variance)
 
     return latency_standard_deviation
+
+
+def split_group_and_host(
+    dir_name: str,
+    known_workloads: Optional[Collection[str]] = None,
+    known_hosts: Optional[Collection[str]] = None,
+) -> tuple[str, str]:
+    """
+    Split a workloads-mode directory name of the form <workload>.<host> into its parts.
+
+    Base workload names are assumed not to contain dots, so by default the name is split on
+    the first dot. This is ambiguous for a workload name that does contain a dot, so callers
+    that know the workload names (from the benchmark configuration) or the host names (from
+    the suffixes seen on sibling directories) can pass them in. Known workloads take
+    precedence over known hosts, and the longest match is always used.
+
+    Args:
+        dir_name: The directory name, e.g. "randwrite_4k.client1.example.com"
+        known_workloads: Optional workload names to match the start of dir_name against
+        known_hosts: Optional host names to match the end of dir_name against
+
+    Returns:
+        A tuple of (workload, host). The host is an empty string if the name has no host suffix.
+    """
+    if known_workloads:
+        workload_matches: list[str] = [
+            workload for workload in known_workloads if dir_name == workload or dir_name.startswith(f"{workload}.")
+        ]
+        if workload_matches:
+            workload: str = max(workload_matches, key=len)
+            return workload, dir_name[len(workload) + 1 :]
+
+    if known_hosts:
+        host_matches: list[str] = [host for host in known_hosts if host and dir_name.endswith(f".{host}")]
+        if host_matches:
+            host: str = max(host_matches, key=len)
+            return dir_name[: -(len(host) + 1)], host
+
+    group, _, host_suffix = dir_name.partition(".")
+    return group, host_suffix
 
 
 def file_is_empty(file_path: Path) -> bool:

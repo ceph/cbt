@@ -12,9 +12,19 @@ Unit tests for the BaseFormatter class
 import shutil
 import tempfile
 import unittest
+from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 from post_processing.formatter.base_formatter import BaseFormatter
+from post_processing.post_processing_types import DirectoryGroup
+
+_ORIGINAL_ITERDIR = Path.iterdir
+
+
+def _reverse_sorted_iterdir(self: Path) -> Iterator[Path]:
+    """Stand-in for Path.iterdir() that returns entries in reverse sorted order, so a missing sort is detected"""
+    return iter(sorted(_ORIGINAL_ITERDIR(self), reverse=True))
 
 
 class ConcreteFormatter(BaseFormatter):
@@ -185,6 +195,196 @@ class TestGetIoPatternDirectories(unittest.TestCase):
         result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
 
         self.assertEqual(result, [])
+
+    def test_results_are_sorted(self) -> None:
+        """Directories are returned in sorted order, independent of iterdir() order"""
+        workloads = [self._make_workload(name) for name in ("w.client2", "w.client10", "w.client1")]
+
+        with patch.object(Path, "iterdir", _reverse_sorted_iterdir):
+            result = self.formatter._get_io_pattern_directories(self.testrun, "json_output")
+
+        self.assertEqual(result, sorted(workloads), "Result directories must be returned in sorted order")
+
+
+class TestGroupIoPatternDirectories(unittest.TestCase):
+    """
+    Unit tests for BaseFormatter._group_io_pattern_directories
+    """
+
+    def setUp(self) -> None:
+        """Set up a test run directory that will hold workload and monitoring directories"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.testrun = Path(self.temp_dir) / "id-94a6db48"
+        self.testrun.mkdir()
+        self.formatter = ConcreteFormatter(self.temp_dir)
+
+    def tearDown(self) -> None:
+        """Clean up test fixtures"""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def _make_workload(self, name: str) -> Path:
+        """Create a workload directory containing a json_output.0 result file"""
+        workload = self.testrun / name
+        (workload / "rbdfio").mkdir(parents=True)
+        (workload / "rbdfio" / "json_output.0").write_text("{}", encoding="utf-8")
+        return workload
+
+    def _make_monitoring(self, name: str) -> Path:
+        """Create a directory that holds monitoring data only (no result files)"""
+        monitoring = self.testrun / name
+        (monitoring / "collectl").mkdir(parents=True)
+        (monitoring / "collectl" / "host.cpu").write_text("data", encoding="utf-8")
+        return monitoring
+
+    def _group(self) -> list[DirectoryGroup]:
+        return self.formatter._group_io_pattern_directories(self.testrun, "json_output")
+
+    def test_peers_with_same_workload_are_clustered(self) -> None:
+        """<workload>.<nodeA> and <workload>.<nodeB> form one group"""
+        node_a = self._make_workload("randwrite_4k.nodeA")
+        node_b = self._make_workload("randwrite_4k.nodeB")
+
+        groups = self._group()
+
+        self.assertEqual(len(groups), 1, "Both hosts must be in a single group")
+        self.assertEqual(groups[0].primary, node_a)
+        self.assertEqual(groups[0].result_peers, [node_b])
+        self.assertEqual(groups[0].monitoring_peers, [])
+
+    def test_different_workloads_form_different_groups(self) -> None:
+        """Different base workload names are never clustered together"""
+        read = self._make_workload("randread_4k.nodeA")
+        write = self._make_workload("randwrite_4k.nodeA")
+
+        groups = self._group()
+
+        self.assertEqual([group.primary for group in groups], [read, write])
+
+    def test_order_is_sorted_and_independent_of_iterdir_order(self) -> None:
+        """Primary selection and group order are deterministic regardless of iterdir() order"""
+        for name in ("w.nodeC", "w.nodeA", "w.nodeB"):
+            self._make_workload(name)
+
+        with patch.object(Path, "iterdir", _reverse_sorted_iterdir):
+            groups = self._group()
+
+        self.assertEqual(groups[0].primary, self.testrun / "w.nodeA")
+        self.assertEqual(groups[0].result_peers, [self.testrun / "w.nodeB", self.testrun / "w.nodeC"])
+
+    def test_groups_are_ordered_by_workload_not_by_host_suffix(self) -> None:
+        """Group order follows the workload name; characters in the host suffix must not affect it"""
+        # By primary directory name "w-x.h" sorts before "w.h" because "-" sorts before ".", but
+        # by workload "w" sorts before "w-x".
+        workload_w = self._make_workload("w.h")
+        workload_wx = self._make_workload("w-x.h")
+
+        groups = self._group()
+
+        self.assertEqual(
+            [group.primary for group in groups],
+            [workload_w, workload_wx],
+            "Groups must be ordered by workload name, not by the full primary directory name",
+        )
+
+    def test_primary_ordering_is_lexicographic(self) -> None:
+        """client10 sorts before client2 (lexicographic, not numeric) so becomes the primary"""
+        self._make_workload("w.client2")
+        self._make_workload("w.client10")
+
+        groups = self._group()
+
+        self.assertEqual(groups[0].primary, self.testrun / "w.client10")
+        self.assertEqual(groups[0].result_peers, [self.testrun / "w.client2"])
+
+    def test_primary_is_never_a_monitoring_only_directory(self) -> None:
+        """A monitoring-only directory that sorts first is attached as a peer, not made primary"""
+        monitoring = self._make_monitoring("w.aaa_osd")
+        client = self._make_workload("w.zzz_client")
+
+        groups = self._group()
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].primary, client)
+        self.assertEqual(groups[0].result_peers, [])
+        self.assertEqual(groups[0].monitoring_peers, [monitoring])
+
+    def test_groups_without_result_bearing_member_are_dropped(self) -> None:
+        """Monitoring-only groups such as idle_monitoring.<host> are dropped"""
+        workload = self._make_workload("w.nodeA")
+        self._make_monitoring("idle_monitoring.nodeA")
+        self._make_monitoring("pool_monitoring.nodeA")
+        (self.testrun / "recovery_pool_monitoring.nodeA").mkdir()
+
+        groups = self._group()
+
+        self.assertEqual([group.primary for group in groups], [workload])
+
+    def test_single_suffixed_host_forms_single_member_group(self) -> None:
+        """A one-host group with a host suffix behaves like the old single directory"""
+        workload = self._make_workload("w.nodeA")
+
+        groups = self._group()
+
+        self.assertEqual(groups, [DirectoryGroup(workload, [], [])])
+
+    def test_unsuffixed_directory_forms_single_member_group(self) -> None:
+        """A directory without a host suffix is a single-member group"""
+        workload = self._make_workload("workload1")
+
+        groups = self._group()
+
+        self.assertEqual(groups, [DirectoryGroup(workload, [], [])])
+
+    def test_legacy_monitoring_directories_are_dropped_not_treated_as_workloads(self) -> None:
+        """Legacy collectl.<host> / top.<host> directories have no result files so are dropped"""
+        workload = self._make_workload("w.nodeA")
+        for name in ("collectl.nodeA", "top.nodeA"):
+            directory = self.testrun / name
+            directory.mkdir()
+            (directory / "nodeA.cpu").write_text("data", encoding="utf-8")
+
+        groups = self._group()
+
+        self.assertEqual([group.primary for group in groups], [workload])
+
+    def test_hidden_and_visualisation_directories_are_skipped(self) -> None:
+        """Hidden and visualisation directories are never grouped"""
+        workload = self._make_workload("w.nodeA")
+        for name in (".hidden", "visualisation"):
+            skipped = self.testrun / name
+            skipped.mkdir()
+            (skipped / "json_output.0").write_text("{}", encoding="utf-8")
+
+        groups = self._group()
+
+        self.assertEqual([group.primary for group in groups], [workload])
+
+    def test_host_names_containing_dots_group_together(self) -> None:
+        """FQDN and IPv4 host suffixes are all grouped under the base workload name"""
+        fqdn = self._make_workload("w.client1.example.com")
+        ipv4 = self._make_workload("w.10.0.0.2")
+
+        groups = self._group()
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].primary, ipv4, "10.0.0.2 sorts before client1.example.com")
+        self.assertEqual(groups[0].result_peers, [fqdn])
+
+    def test_node_that_is_both_client_and_osd_is_a_result_peer(self) -> None:
+        """A directory with results and monitoring data is a result peer, not a monitoring peer"""
+        client = self._make_workload("w.nodeA")
+        client_osd = self._make_workload("w.nodeB")
+        (client_osd / "rbdfio" / "collectl").mkdir()
+        (client_osd / "rbdfio" / "collectl" / "nodeB.cpu").write_text("data", encoding="utf-8")
+        osd = self._make_monitoring("w.nodeC")
+
+        groups = self._group()
+
+        self.assertEqual(groups, [DirectoryGroup(client, [client_osd], [osd])])
+
+    def test_empty_testrun_directory_returns_no_groups(self) -> None:
+        """No directories means no groups"""
+        self.assertEqual(self._group(), [])
 
 
 class TestTestrunIdMatching(unittest.TestCase):

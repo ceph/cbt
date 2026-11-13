@@ -24,6 +24,7 @@ from post_processing.common import (
     get_resource_details_from_file,
     read_intermediate_file,
     recursive_search,
+    split_group_and_host,
     strip_confidential_data_from_yaml,
     sum_mean_values,
     sum_standard_deviation_values,
@@ -602,6 +603,78 @@ class TestCommonFunctions(unittest.TestCase):  # pylint: disable=too-many-public
         self.assertEqual(TITLE_CONVERSION["randwrite"], "Random Write")
         self.assertEqual(TITLE_CONVERSION["readwrite"], "Sequential Read/Write")
         self.assertEqual(TITLE_CONVERSION["randrw"], "Random Read/Write")
+
+
+class TestSplitGroupAndHost(unittest.TestCase):
+    """Test cases for split_group_and_host"""
+
+    def test_no_dot_returns_empty_host(self) -> None:
+        """A directory name with no dot has no host suffix"""
+        self.assertEqual(split_group_and_host("randwrite_4k"), ("randwrite_4k", ""))
+
+    def test_short_hostname(self) -> None:
+        """A simple hostname suffix is split from the workload name"""
+        self.assertEqual(split_group_and_host("randwrite_4k.client1"), ("randwrite_4k", "client1"))
+
+    def test_fqdn_host(self) -> None:
+        """Everything after the first dot is the host, including further dots"""
+        self.assertEqual(
+            split_group_and_host("randwrite_4k.client1.example.com"),
+            ("randwrite_4k", "client1.example.com"),
+        )
+
+    def test_ipv4_host(self) -> None:
+        """An IPv4 address host keeps all of its octets"""
+        self.assertEqual(split_group_and_host("seq32kread.10.0.0.1"), ("seq32kread", "10.0.0.1"))
+
+    def test_hyphenated_host(self) -> None:
+        """Hyphens in the workload name or host do not affect the split"""
+        self.assertEqual(
+            split_group_and_host("rand-write.client-1-rack-2.example.com"),
+            ("rand-write", "client-1-rack-2.example.com"),
+        )
+
+    def test_dotted_workload_with_known_workloads(self) -> None:
+        """A known workload name containing a dot is matched before the first-dot rule"""
+        self.assertEqual(split_group_and_host("a.b.h", known_workloads=["a.b", "c"]), ("a.b", "h"))
+
+    def test_known_workloads_longest_match_wins(self) -> None:
+        """When two known workloads are prefixes of the name the longest is used"""
+        self.assertEqual(split_group_and_host("a.b.h", known_workloads=["a", "a.b"]), ("a.b", "h"))
+
+    def test_known_workload_without_host(self) -> None:
+        """A name equal to a known workload has no host"""
+        self.assertEqual(split_group_and_host("a.b", known_workloads=["a.b"]), ("a.b", ""))
+
+    def test_unknown_workload_falls_back_to_first_dot(self) -> None:
+        """A name matching no known workload uses the first-dot rule"""
+        self.assertEqual(split_group_and_host("x.h", known_workloads=["a.b"]), ("x", "h"))
+
+    def test_dotted_workload_with_known_hosts(self) -> None:
+        """A host inferred from sibling directories is stripped from the end of the name"""
+        self.assertEqual(split_group_and_host("a.b.h", known_hosts=["h"]), ("a.b", "h"))
+
+    def test_known_hosts_longest_match_wins(self) -> None:
+        """When several known hosts match the end of the name, the longest host is used"""
+        self.assertEqual(
+            split_group_and_host("a.b.example.com", known_hosts=["com", "example.com"]),
+            ("a.b", "example.com"),
+        )
+
+    def test_known_hosts_no_match_falls_back_to_first_dot(self) -> None:
+        """A name matching no known host uses the first-dot rule"""
+        self.assertEqual(split_group_and_host("a.b.h", known_hosts=["other"]), ("a", "b.h"))
+
+    def test_known_workloads_take_precedence_over_known_hosts(self) -> None:
+        """Known workloads are used in preference to known hosts"""
+        self.assertEqual(
+            split_group_and_host("a.b.h", known_workloads=["a"], known_hosts=["b.h", "h"]),
+            ("a", "b.h"),
+        )
+
+    def test_host_equal_to_whole_name_is_not_a_split(self) -> None:
+        """A known host must follow a dot, so a name equal to the host is not split on it"""
+        self.assertEqual(split_group_and_host("h", known_hosts=["h"]), ("h", ""))
 
 
 if __name__ == "__main__":
