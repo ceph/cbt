@@ -30,6 +30,21 @@ class RemoteExecutor(ABC):
         """
 
     @abstractmethod
+    def run_commands(
+        self,
+        nodes: str,
+        commands: list[str],
+        continue_if_error: bool = True,
+    ) -> list[tuple[str, str, str, int]]:
+        """Launch every command in commands on all nodes at once, then wait.
+
+        Semantics otherwise match run_command. Return one
+        ``(host, stdout, stderr, exit_status)`` tuple per (command, node).
+        Used where a run cell is several processes that must run concurrently
+        (e.g. one elbencho process per bucket).
+        """
+
+    @abstractmethod
     def sync_files(self, nodes: str, remote_dir: str, local_dir: str) -> None:
         """Pull remote_dir from nodes into local_dir."""
 

@@ -15,6 +15,13 @@ from workloads.workload_types import WorkloadType
 
 log: Logger = getLogger("cbt")
 
+# The option key holding a benchmark's per-client fan-out count: fio counts
+# volumes, elbencho counts buckets.
+_DEFAULT_TARGET_COUNT_KEY: str = "volumes_per_client"
+_TARGET_COUNT_KEYS: dict[str, str] = {
+    "elbencho": "num_buckets",
+}
+
 
 class Workload:
     """
@@ -162,7 +169,7 @@ class Workload:
         if a value exists already in the configuration then ignore it
         """
         for key, value in global_options.items():
-            if key not in self._all_options.keys():
+            if key not in self._all_options:
                 self._all_options[key] = value
 
     def _create_command_class(self, options: dict[str, str]) -> Command:
@@ -183,14 +190,18 @@ class Workload:
     def _create_commands_from_options(self) -> None:
         unique_options: dict[str, str]
 
-        set_number: int = 0
-        for unique_options in all_configs(self._all_options):  # type: ignore[no-untyped-call]
-            iodepth_key: str = self._get_iodepth_key(list(unique_options.keys()))
+        for set_number, unique_options in enumerate(all_configs(self._all_options)):  # type: ignore[no-untyped-call]
+            # Treat a present-but-None option as absent (as the fio path does for
+            # time/duration in phase_duration_secs), so a null total_iodepth in
+            # YAML falls back to the plain iodepth path instead of reaching
+            # int(None) later.
+            active_keys: list[str] = [key for key, value in unique_options.items() if value is not None]
+            iodepth_key: str = self._get_iodepth_key(active_keys)
             unique_options["iodepth_key"] = iodepth_key
             iodepth: int = int(unique_options.get(iodepth_key, 16))
-            number_of_volumes: int = int(unique_options.get("volumes_per_client", 1))
+            number_of_targets: int = self._get_number_of_targets(unique_options, iodepth_key)
             iodepth_per_target: dict[int, int] = self._calculate_iodepth_per_target(
-                number_of_volumes, iodepth, iodepth_key
+                number_of_targets, iodepth, iodepth_key
             )
             unique_options["name"] = self._name
 
@@ -202,18 +213,35 @@ class Workload:
                 command_list.append(self._create_command_class(unique_options))
 
             self._commands[set_number] = command_list
-            set_number += 1
 
             # The above will overwrite the iodepth to be used for the command,
             # while still retaining a total_iodepth value if one is passed. We can then
             # use the total_iodepth value to add into the output_dir so we can read it
             # in post-processing.
 
+    def _get_number_of_targets(self, unique_options: dict[str, str], iodepth_key: str) -> int:
+        """
+        Number of parallel targets (fan-out) for one run cell, read from the
+        benchmark-specific key in _TARGET_COUNT_KEYS.
+
+        num_buckets only applies alongside total_iodepth; without it elbencho
+        runs a single target.
+        """
+        target_count_key: str = _TARGET_COUNT_KEYS.get(
+            self._parent_benchmark_type or "", _DEFAULT_TARGET_COUNT_KEY
+        )
+        if target_count_key == "num_buckets" and iodepth_key != "total_iodepth":
+            return 1
+        return int(unique_options.get(target_count_key, 1))
+
     def _get_iodepth_key(self, configuration_keys: list[str]) -> str:
         """
         Get the range of iodepth values to use for this test. This will either
         be the list of total_iodepth values if the total_iodepth key exists,
-        or the iodepth value if it does not
+        or the iodepth value if it does not.
+
+        Callers pass only keys whose value is not None, so a null total_iodepth
+        is treated as absent.
         """
         iodepth_key: str = "iodepth"
         if "total_iodepth" in configuration_keys:
