@@ -1,7 +1,7 @@
 common:
-  # Control whether pdsh continues on error (default: true)
-  # Set to false to fail immediately if any host fails
-  pdsh_continue_on_error: true
+  # Control whether CBT will continue if a local or remote command fails (default: true)
+  # Set to false to fail immediately if any local or remote command fails
+  continue_on_error: true
 
 cluster:
   user: 'perf'
