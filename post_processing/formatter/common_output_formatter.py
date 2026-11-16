@@ -138,13 +138,7 @@ class CommonOutputFormatter(BaseFormatter):
         """
         benchmark_type: str = "unknown"
 
-        for io_pattern_directory in [
-            directory
-            for directory in testrun_directory.iterdir()
-            if directory.is_dir()
-            and not f"{directory.name}".startswith(".")
-            and "visualisation" not in f"{directory.name}"
-        ]:
+        for io_pattern_directory in self._get_io_pattern_directories(testrun_directory, self._filename_root):
             self.log.debug("Looking at results for directory %s", io_pattern_directory)
             # Use factory method to get the correct results type based on directory name
             results = get_run_result_from_directory_name(

@@ -77,6 +77,38 @@ class BaseFormatter(ABC):
             return [self.path]
         return list(self.path.glob(f"**/{testrun_id}"))
 
+    def _get_io_pattern_directories(self, testrun_directory: Path, file_name_root: str) -> list[Path]:
+        """
+        Get the directories inside a test run directory that contain benchmark results.
+
+        A test run directory also holds the output of the resource monitoring tools
+        (for example collectl.<host> and pool_monitoring.<host>). These contain no
+        benchmark result files so cannot be processed as an I/O pattern directory.
+        Only directories that contain at least one <file_name_root>.<number> file are
+        returned. Hidden directories and visualisation directories are always skipped.
+
+        Args:
+            testrun_directory: Path to the test run directory
+            file_name_root: Root name of the result files (e.g. "json_output")
+
+        Returns:
+            List of Path objects for the directories that contain result files
+        """
+        io_pattern_directories: list[Path] = []
+
+        for directory in testrun_directory.iterdir():
+            if not directory.is_dir() or directory.name.startswith(".") or "visualisation" in directory.name:
+                continue
+
+            if any(path.suffix[1:].isdigit() for path in directory.glob(f"**/{file_name_root}.*")):
+                io_pattern_directories.append(directory)
+            else:
+                self.log.debug("Skipping directory %s as it contains no %s files", directory, file_name_root)
+
+        if not io_pattern_directories:
+            self.log.warning("No I/O Pattern directories found that contain files")
+        return io_pattern_directories
+
     def _find_all_testrun_ids(self, file_list: list[Path]) -> None:
         """
         Find all the unique test run IDs from a list of file paths.
