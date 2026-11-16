@@ -363,6 +363,15 @@ def find_common_data_file_names(
     return sorted(set.intersection(*file_names_per_archive))
 
 
+def float_percent_difference(baseline: float, candidate: float) -> float:
+    """
+    Return the unrounded fractional change from baseline to candidate.
+
+    Raises ZeroDivisionError if baseline is zero.
+    """
+    return (candidate - baseline) / baseline
+
+
 def calculate_percent_difference_to_baseline(baseline: str, comparison: str) -> str:
     """
     Compare a value to a baseline and calculate the percentage difference
@@ -372,10 +381,10 @@ def calculate_percent_difference_to_baseline(baseline: str, comparison: str) -> 
     baseline_value: float = float(baseline.split(" ")[0])
     comparison_value: float = float(comparison.split(" ")[0])
 
-    percentage_difference: float = (comparison_value - baseline_value) / baseline_value
+    percentage_difference: float = float_percent_difference(baseline_value, comparison_value)
 
     # format the value as a percentage, to 0 decimal places
-    return f"{percentage_difference:.0%}"  #
+    return f"{percentage_difference:.0%}"
 
 
 def get_date_time_string() -> str:
