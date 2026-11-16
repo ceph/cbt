@@ -200,3 +200,42 @@ class Thresholds(NamedTuple):
     strong: float = 0.12
     h3_weak: float = 0.25
     h3_strong: float = 0.35
+
+
+class Decision(Enum):
+    """
+    Overall decision for a workload or a run comparison.
+
+    PASS   — no significant regression detected.
+    REVIEW — possible regression; needs human review.
+    FAIL   — regression detected above the strong threshold.
+    """
+
+    PASS = auto()
+    REVIEW = auto()
+    FAIL = auto()
+
+
+class WorkloadDecision(NamedTuple):
+    """Decision for a single paired workload."""
+
+    stem: str
+    decision: Decision
+    flags: list[FlagResult]
+
+
+class RunDecision(NamedTuple):
+    """
+    Decision for the overall run comparison.
+
+    num_workloads — N: total baseline workloads (paired + missing).
+    fail_target   — the number of FAILs needed to fail the run.
+    fail_count    — FC: number of FAIL workloads.
+    review_count  — RC: number of REVIEW workloads.
+    """
+
+    decision: Decision
+    num_workloads: int
+    fail_target: int
+    fail_count: int
+    review_count: int
