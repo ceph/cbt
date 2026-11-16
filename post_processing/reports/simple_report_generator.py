@@ -113,8 +113,12 @@ class SimpleReportGenerator(ReportGenerator):
 
     def _add_configuration_yaml_files(self) -> None:
         self._report.new_header(level=1, title="Configuration yaml")
-        yaml_file_path: Path = self._find_configuration_yaml_files()[0]
+        yaml_files: list[Path] = self._find_configuration_yaml_files()
+        if not yaml_files:
+            log.warning("No configuration YAML files found")
+            return
 
+        yaml_file_path: Path = yaml_files[0]
         file_contents: str = yaml_file_path.read_text()
         safe_contents = strip_confidential_data_from_yaml(file_contents)
         markdown_string: str = f"```{safe_contents}```"

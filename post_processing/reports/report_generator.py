@@ -345,33 +345,64 @@ class ReportGenerator(ABC):
                         table_images.append("")
                     self._report.new_table(columns=2, rows=number_of_rows, text=table_images, text_align="center")
 
+    def _find_configuration_yaml_file(self, directory: Path) -> Optional[Path]:
+        """
+        Find the configuration yaml file for a specific archive directory.
+
+        Args:
+            directory: Archive directory to search.
+
+        Returns:
+            Path to the cbt_config.yaml file if found, None otherwise.
+        """
+        # Check standard locations within or relative to the archive directory
+        candidates = [
+            directory / "results" / "cbt_config.yaml",
+            directory / "cbt_config.yaml",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                log.info("Found run configuration file %s", candidate)
+                return candidate
+
+        # Check parent directories if archive directory is nested inside results
+        for parent in directory.parents:
+            if (parent / "cbt_config.yaml").is_file() and parent.name == "results":
+                log.warning(
+                    "We have found nested results directories with multiple cbt_config.yaml files. Selecting %s",
+                    str(parent / "cbt_config.yaml"),
+                )
+                return parent / "cbt_config.yaml"
+            if (parent / "results" / "cbt_config.yaml").is_file():
+                log.warning(
+                    "We have found nested results directories with multiple cbt_config.yaml files. Selecting %s",
+                    str(parent / "results" / "cbt_config.yaml"),
+                )
+                return parent / "results" / "cbt_config.yaml"
+
+        # Fallback: search within directory for any cbt_config.yaml
+        if directory.is_dir():
+            found = list(directory.glob("**/cbt_config.yaml"))
+            if found:
+                found.sort(key=lambda p: len(p.parts))
+                log.warning("Fallback configuration file will be used: %s", str(found[0]))
+                return found[0]
+
+        return None
+
     def _find_configuration_yaml_files(self) -> list[Path]:
         """
         Find the path to the configuration yaml files in the archive directories.
 
-        This method searches for cbt_config.yaml files in the results directories
-        associated with each archive directory. It handles both cases where the
-        archive directory is within the results tree or contains a results subdirectory.
-
         Returns:
-            List of Path objects for cbt_config.yaml files found
+            List of Path objects for cbt_config.yaml files found (at most one per archive directory)
         """
         file_paths: list[Path] = []
 
         for directory in self._archive_directories:
-            # Search both above and below the current directory for the config yaml
-            # This handles different calling contexts (during run vs. post-processing)
-
-            # First, try to find results directory in parent paths
-            paths: list[Path] = [path for path in directory.parents if f"{path}".endswith("/results")]
-
-            # If not found in parents, look in subdirectories
-            if len(paths) == 0:
-                paths = [path for path in directory.iterdir() if f"{path}".endswith("/results")]
-
-            # Search for yaml files in the results directories
-            for path in paths:
-                file_paths.extend(path.glob("**/cbt_config.yaml"))
+            yaml_file = self._find_configuration_yaml_file(directory)
+            if yaml_file is not None:
+                file_paths.append(yaml_file)
 
         return file_paths
 
