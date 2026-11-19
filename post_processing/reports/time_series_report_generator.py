@@ -63,7 +63,7 @@ class TimeSeriesReportGenerator(ReportGenerator):
         """
         Get additional LaTeX header files for timeseries reports.
 
-        Returns the timeseries-specific header that scales images to 50% height.
+        Returns the timeseries-specific header that limits plots to 75% of the text width.
 
         Returns:
             List containing the path to the timeseries header file
