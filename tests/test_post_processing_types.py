@@ -15,6 +15,7 @@ from post_processing.post_processing_types import (
     PlotDataType,
     ReportOptions,
     ReportType,
+    Thresholds,
 )
 
 
@@ -184,6 +185,26 @@ class TestReportOptions(unittest.TestCase):
         # Original should be unchanged
         self.assertTrue(options.create_pdf)
         self.assertFalse(options.force_refresh)
+
+
+class TestThresholds(unittest.TestCase):
+    """Test cases for Thresholds NamedTuple"""
+
+    def test_thresholds_defaults(self) -> None:
+        """Test default values for thresholds"""
+        t = Thresholds()
+        self.assertEqual(t.weak, 0.08)
+        self.assertEqual(t.strong, 0.12)
+        self.assertEqual(t.h3_weak, 0.25)
+        self.assertEqual(t.h3_strong, 0.35)
+
+    def test_thresholds_positional_args(self) -> None:
+        """Test creating Thresholds with standard weak/strong args"""
+        t = Thresholds(0.10, 0.20)
+        self.assertEqual(t.weak, 0.10)
+        self.assertEqual(t.strong, 0.20)
+        self.assertEqual(t.h3_weak, 0.25)
+        self.assertEqual(t.h3_strong, 0.35)
 
 
 class TestTypeAliases(unittest.TestCase):

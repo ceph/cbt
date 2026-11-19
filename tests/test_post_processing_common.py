@@ -16,6 +16,7 @@ from post_processing.common import (
     find_common_data_file_names,
     find_iodepth_directory,
     find_path_in_ancestors,
+    float_percent_difference,
     get_blocksize,
     get_blocksize_percentage_operation_numjobs_from_file_name,
     get_date_time_string,
@@ -396,6 +397,26 @@ class TestCommonFunctions(unittest.TestCase):  # pylint: disable=too-many-public
 
         result = calculate_percent_difference_to_baseline("100 IOps", "100 IOps")
         self.assertEqual(result, "0%")
+
+    def test_float_percent_difference_unrounded(self) -> None:
+        """A 9.6% drop should return the unrounded fraction, not a rounded string."""
+        result = float_percent_difference(baseline=100.0, candidate=90.4)
+        self.assertAlmostEqual(result, -0.096, places=10, msg="9.6% drop should return -0.096 (unrounded fraction)")
+
+    def test_float_percent_difference_improvement_is_positive(self) -> None:
+        """An improvement (candidate > baseline) should return a positive fraction."""
+        result = float_percent_difference(baseline=100.0, candidate=110.0)
+        self.assertAlmostEqual(result, 0.10, places=10, msg="10% improvement should return +0.10")
+
+    def test_float_percent_difference_zero_baseline_raises(self) -> None:
+        """A zero baseline must raise ZeroDivisionError, matching the string function."""
+        with self.assertRaises(ZeroDivisionError, msg="Zero baseline should raise ZeroDivisionError"):
+            float_percent_difference(baseline=0.0, candidate=50.0)
+
+    def test_calculate_percent_difference_zero_baseline_raises(self) -> None:
+        """String function must still raise ZeroDivisionError on a zero baseline."""
+        with self.assertRaises(ZeroDivisionError, msg="Zero baseline should raise ZeroDivisionError"):
+            calculate_percent_difference_to_baseline("0 IOps", "50 IOps")
 
     def test_get_date_time_string(self) -> None:
         """Test getting formatted date/time string"""
