@@ -8,11 +8,20 @@ from time import sleep
 from typing import Optional, Union
 
 import progress
-from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
+from common import (  # pyright: ignore[reportUnknownVariableType]
+    CheckedPopen,
+    CheckedPopenLocal,
+    make_remote_dir,
+    pdsh,
+)
 from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import Workload
-from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, WorkloadYamlType
+from workloads.workload_types import (
+    BenchmarkConfigurationType,
+    WorkloadType,
+    WorkloadYamlType,
+)
 
 log: Logger = getLogger("cbt")
 
@@ -165,6 +174,19 @@ class Workloads:
             workload.set_benchmark_type(self._benchmark_type)
             workload.set_executable(self._executable)
             yield from workload.get_commands_list()
+
+    def get_output_directories(self) -> Generator[str, None, None]:
+        """Yield every distinct output directory used by any command of any workload.
+
+        An uneven total_iodepth split gives the commands of one run cell
+        different per-target iodepths, and therefore different directories, so
+        callers that create directories up front must create all of them.
+
+        set_benchmark_type() must be called first.
+        """
+        for workload in self._workloads:
+            workload.set_benchmark_type(self._benchmark_type)
+            yield from workload.get_output_directories()
 
     def get_names(self) -> str:
         """

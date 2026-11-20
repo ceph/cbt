@@ -30,7 +30,7 @@ class TestSshArgvConstruction(unittest.TestCase):
 
     @patch.dict("settings.cluster", {"user": "bob"}, clear=True)
     def test_ssh_args_with_user(self):
-        self.assertEqual(_SSH_BASE + ["-l", "bob"], AsyncSSHExecutor()._build_ssh_args())
+        self.assertEqual([*_SSH_BASE, "-l", "bob"], AsyncSSHExecutor()._build_ssh_args())
 
     def test_scp_args(self):
         self.assertEqual(
@@ -43,14 +43,14 @@ class TestSshArgvConstruction(unittest.TestCase):
     def test_run_command_passes_expected_argv(self, mock_exec):
         mock_exec.return_value = _make_proc(returncode=0)
         AsyncSSHExecutor().run_command("h1", "ls -l")
-        self.assertEqual(list(mock_exec.call_args.args), _SSH_BASE + ["h1", "ls -l"])
+        self.assertEqual(list(mock_exec.call_args.args), [*_SSH_BASE, "h1", "ls -l"])
 
     @patch.dict("settings.cluster", {"user": "bob"}, clear=True)
     @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
     def test_run_command_includes_user_in_argv(self, mock_exec):
         mock_exec.return_value = _make_proc(returncode=0)
         AsyncSSHExecutor().run_command("h1", "whoami")
-        self.assertEqual(list(mock_exec.call_args.args), _SSH_BASE + ["-l", "bob", "h1", "whoami"])
+        self.assertEqual(list(mock_exec.call_args.args), [*_SSH_BASE, "-l", "bob", "h1", "whoami"])
 
 
 class TestRunCommandResults(unittest.TestCase):
@@ -103,9 +103,8 @@ class TestRunCommandErrorHandling(unittest.TestCase):
         # A failure to even launch the process is always surfaced as a
         # RuntimeError, even with continue_if_error=True.
         mock_exec.side_effect = OSError("cannot spawn ssh")
-        with self.assertLogs("cbt", level="WARNING"):
-            with self.assertRaises(RuntimeError):
-                AsyncSSHExecutor().run_command("h1", "ls", continue_if_error=True)
+        with self.assertLogs("cbt", level="WARNING"), self.assertRaises(RuntimeError):
+            AsyncSSHExecutor().run_command("h1", "ls", continue_if_error=True)
 
     @patch.dict("settings.cluster", {}, clear=True)
     @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
@@ -153,6 +152,43 @@ class TestRunCommandErrorHandling(unittest.TestCase):
         mock_exec.return_value = _make_proc(returncode=0, stdout=b"", stderr=b"just a warning")
         results = AsyncSSHExecutor().run_command("h1", "cmd", continue_if_error=False)
         self.assertEqual([("h1", "", "just a warning", 0)], results)
+
+
+class TestRunCommands(unittest.TestCase):
+
+    @patch.dict("settings.cluster", {}, clear=True)
+    @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    def test_runs_every_command_on_every_node(self, mock_exec):
+        mock_exec.return_value = _make_proc(returncode=0)
+        results = AsyncSSHExecutor().run_commands("h1,h2", ["cmd-a", "cmd-b"])
+        self.assertEqual(4, mock_exec.call_count)
+        self.assertEqual(4, len(results))
+        launched = sorted(tuple(c.args[-2:]) for c in mock_exec.call_args_list)
+        self.assertEqual(
+            [("h1", "cmd-a"), ("h1", "cmd-b"), ("h2", "cmd-a"), ("h2", "cmd-b")],
+            launched,
+        )
+
+    @patch.dict("settings.cluster", {}, clear=True)
+    @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    def test_one_failing_command_raises_after_all_complete(self, mock_exec):
+        mock_exec.side_effect = [
+            _make_proc(returncode=0),
+            _make_proc(returncode=1, stderr=b"bad"),
+            _make_proc(returncode=0),
+        ]
+        with self.assertRaises(RuntimeError) as ctx:
+            AsyncSSHExecutor().run_commands("h1", ["a", "b", "c"], continue_if_error=False)
+        self.assertEqual(3, mock_exec.call_count, "all commands must be launched and awaited")
+        self.assertIn("exited 1", str(ctx.exception))
+
+    @patch.dict("settings.cluster", {}, clear=True)
+    @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+    def test_failure_tolerated_when_continue_if_error(self, mock_exec):
+        mock_exec.return_value = _make_proc(returncode=1, stderr=b"warn")
+        with self.assertLogs("cbt", level="WARNING"):
+            results = AsyncSSHExecutor().run_commands("h1", ["a", "b"], continue_if_error=True)
+        self.assertEqual(2, len(results))
 
 
 if __name__ == "__main__":
