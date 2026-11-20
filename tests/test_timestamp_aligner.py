@@ -61,7 +61,7 @@ class TestAlignAndAggregate:
         aligner = TimestampAligner(window_size_ms=1000)
         df = pd.DataFrame({"timestamp_sec": [0.5, 1.5, 2.5], "iops": [100, 200, 300]})
         result = aligner.align_and_aggregate([df], "iops", "sum")
-        
+
         assert len(result) == 3
         assert list(result.columns) == ["timestamp_sec", "iops", "num_samples"]
         assert result["iops"].tolist() == [100, 200, 300]
@@ -73,7 +73,7 @@ class TestAlignAndAggregate:
         df1 = pd.DataFrame({"timestamp_sec": [0.5, 1.5], "iops": [100, 200]})
         df2 = pd.DataFrame({"timestamp_sec": [0.7, 1.3], "iops": [50, 150]})
         result = aligner.align_and_aggregate([df1, df2], "iops", "sum")
-        
+
         assert len(result) == 2
         # Both 0.5 and 0.7 fall in window 0.0, both 1.5 and 1.3 fall in window 1.0
         assert result["timestamp_sec"].tolist() == [0.0, 1.0]
@@ -86,7 +86,7 @@ class TestAlignAndAggregate:
         df1 = pd.DataFrame({"timestamp_sec": [0.5, 1.5], "latency_ms": [10.0, 20.0]})
         df2 = pd.DataFrame({"timestamp_sec": [0.7, 1.3], "latency_ms": [20.0, 30.0]})
         result = aligner.align_and_aggregate([df1, df2], "latency_ms", "mean")
-        
+
         assert len(result) == 2
         assert result["latency_ms"].tolist() == [15.0, 25.0]  # (10+20)/2, (20+30)/2
 
@@ -96,7 +96,7 @@ class TestAlignAndAggregate:
         df1 = pd.DataFrame({"timestamp_sec": [0.5, 1.5], "latency_ms": [10.0, 20.0]})
         df2 = pd.DataFrame({"timestamp_sec": [0.7, 1.3], "latency_ms": [20.0, 15.0]})
         result = aligner.align_and_aggregate([df1, df2], "latency_ms", "max")
-        
+
         assert len(result) == 2
         assert result["latency_ms"].tolist() == [20.0, 20.0]  # max(10,20), max(20,15)
 
@@ -114,7 +114,7 @@ class TestAlignAndAggregate:
         df2 = None
         df3 = pd.DataFrame({"timestamp_sec": [0.7], "iops": [50]})
         result = aligner.align_and_aggregate([df1, df2, df3], "iops", "sum")
-        
+
         assert len(result) == 1
         assert result["iops"].tolist() == [150]
 
@@ -123,7 +123,7 @@ class TestAlignAndAggregate:
         aligner = TimestampAligner(window_size_ms=100)
         df = pd.DataFrame({"timestamp_sec": [0.05, 0.15, 0.25], "iops": [100, 200, 300]})
         result = aligner.align_and_aggregate([df], "iops", "sum")
-        
+
         assert len(result) == 3
         assert result["timestamp_sec"].tolist() == [0.0, 0.1, 0.2]
 
@@ -132,7 +132,7 @@ class TestAlignAndAggregate:
         aligner = TimestampAligner(window_size_ms=5000)
         df = pd.DataFrame({"timestamp_sec": [1.0, 2.0, 3.0, 6.0], "iops": [100, 200, 300, 400]})
         result = aligner.align_and_aggregate([df], "iops", "sum")
-        
+
         assert len(result) == 2
         assert result["timestamp_sec"].tolist() == [0.0, 5.0]
         assert result["iops"].tolist() == [600, 400]  # 100+200+300, 400
@@ -165,12 +165,9 @@ class TestCalculatePercentiles:
     def test_default_percentiles(self):
         """Test with default percentiles (50, 95, 99)."""
         aligner = TimestampAligner(window_size_ms=1000)
-        df = pd.DataFrame({
-            "timestamp_sec": [0.5] * 100,
-            "latency_ms": list(range(100))
-        })
+        df = pd.DataFrame({"timestamp_sec": [0.5] * 100, "latency_ms": list(range(100))})
         result = aligner.calculate_percentiles([df])
-        
+
         assert len(result) == 1
         assert "timestamp_sec" in result.columns
         assert "p50_latency_ms" in result.columns
@@ -183,12 +180,9 @@ class TestCalculatePercentiles:
     def test_custom_percentiles(self):
         """Test with custom percentiles."""
         aligner = TimestampAligner(window_size_ms=1000)
-        df = pd.DataFrame({
-            "timestamp_sec": [0.5] * 100,
-            "latency_ms": list(range(100))
-        })
+        df = pd.DataFrame({"timestamp_sec": [0.5] * 100, "latency_ms": list(range(100))})
         result = aligner.calculate_percentiles([df], percentiles=[25, 75])
-        
+
         assert "p25_latency_ms" in result.columns
         assert "p75_latency_ms" in result.columns
         assert "p50_latency_ms" not in result.columns
@@ -196,12 +190,11 @@ class TestCalculatePercentiles:
     def test_multiple_time_windows(self):
         """Test percentiles across multiple time windows."""
         aligner = TimestampAligner(window_size_ms=1000)
-        df = pd.DataFrame({
-            "timestamp_sec": [0.5] * 50 + [1.5] * 50,
-            "latency_ms": list(range(50)) + list(range(100, 150))
-        })
+        df = pd.DataFrame(
+            {"timestamp_sec": [0.5] * 50 + [1.5] * 50, "latency_ms": list(range(50)) + list(range(100, 150))}
+        )
         result = aligner.calculate_percentiles([df])
-        
+
         assert len(result) == 2
         assert result["timestamp_sec"].tolist() == [0.0, 1.0]
 
@@ -211,7 +204,7 @@ class TestCalculatePercentiles:
         df1 = pd.DataFrame({"timestamp_sec": [0.5] * 50, "latency_ms": list(range(50))})
         df2 = pd.DataFrame({"timestamp_sec": [0.7] * 50, "latency_ms": list(range(50, 100))})
         result = aligner.calculate_percentiles([df1, df2])
-        
+
         assert len(result) == 1
         # All data falls in the same window (0.0)
 
@@ -244,7 +237,7 @@ class TestMergeMetrics:
         aligner = TimestampAligner()
         df = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "iops": [100, 200]})
         result = aligner.merge_metrics(df)
-        
+
         assert len(result) == 2
         assert list(result.columns) == ["timestamp_sec", "iops"]
         pd.testing.assert_frame_equal(result, df)
@@ -255,7 +248,7 @@ class TestMergeMetrics:
         df1 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "iops": [100, 200]})
         df2 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "latency_ms": [10.0, 20.0]})
         result = aligner.merge_metrics(df1, df2)
-        
+
         assert len(result) == 2
         assert set(result.columns) == {"timestamp_sec", "iops", "latency_ms"}
         assert result["iops"].tolist() == [100, 200]
@@ -267,7 +260,7 @@ class TestMergeMetrics:
         df1 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "iops": [100, 200]})
         df2 = pd.DataFrame({"timestamp_sec": [1.0, 2.0], "latency_ms": [20.0, 30.0]})
         result = aligner.merge_metrics(df1, df2)
-        
+
         assert len(result) == 3
         assert result["timestamp_sec"].tolist() == [0.0, 1.0, 2.0]
         assert result["iops"].tolist()[0] == 100
@@ -280,7 +273,7 @@ class TestMergeMetrics:
         df2 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "latency_ms": [10.0, 20.0]})
         df3 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "bandwidth_mb": [50.0, 100.0]})
         result = aligner.merge_metrics(df1, df2, df3)
-        
+
         assert len(result) == 2
         assert set(result.columns) == {"timestamp_sec", "iops", "latency_ms", "bandwidth_mb"}
 
@@ -290,7 +283,7 @@ class TestMergeMetrics:
         df1 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "iops": [100, 200], "extra": [1, 2]})
         df2 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "iops": [100, 200], "latency_ms": [10.0, 20.0]})
         result = aligner.merge_metrics(df1, df2)
-        
+
         # Should keep first occurrence of 'iops', not create 'iops_dup'
         assert "iops_dup" not in result.columns
         assert "iops" in result.columns
@@ -301,7 +294,7 @@ class TestMergeMetrics:
         df1 = pd.DataFrame({"timestamp_sec": [2.0, 0.0, 1.0], "iops": [300, 100, 200]})
         df2 = pd.DataFrame({"timestamp_sec": [1.0, 2.0, 0.0], "latency_ms": [20.0, 30.0, 10.0]})
         result = aligner.merge_metrics(df1, df2)
-        
+
         assert result["timestamp_sec"].tolist() == [0.0, 1.0, 2.0]
 
     def test_merge_with_none_and_valid_dataframes(self):
@@ -311,7 +304,7 @@ class TestMergeMetrics:
         df2 = None
         df3 = pd.DataFrame({"timestamp_sec": [0.0, 1.0], "latency_ms": [10.0, 20.0]})
         result = aligner.merge_metrics(df1, df2, df3)
-        
+
         assert len(result) == 2
         assert set(result.columns) == {"timestamp_sec", "iops", "latency_ms"}
 
@@ -322,28 +315,22 @@ class TestIntegration:
     def test_full_workflow(self):
         """Test complete workflow: align, calculate percentiles, merge."""
         aligner = TimestampAligner(window_size_ms=1000)
-        
+
         # Create sample data from two volumes
-        df1 = pd.DataFrame({
-            "timestamp_sec": [0.5, 1.5, 2.5],
-            "iops": [100, 200, 300],
-            "latency_ms": [10.0, 20.0, 30.0]
-        })
-        df2 = pd.DataFrame({
-            "timestamp_sec": [0.7, 1.3, 2.8],
-            "iops": [50, 150, 250],
-            "latency_ms": [15.0, 25.0, 35.0]
-        })
-        
+        df1 = pd.DataFrame(
+            {"timestamp_sec": [0.5, 1.5, 2.5], "iops": [100, 200, 300], "latency_ms": [10.0, 20.0, 30.0]}
+        )
+        df2 = pd.DataFrame({"timestamp_sec": [0.7, 1.3, 2.8], "iops": [50, 150, 250], "latency_ms": [15.0, 25.0, 35.0]})
+
         # Align and aggregate IOPS
         iops_result = aligner.align_and_aggregate([df1, df2], "iops", "sum")
-        
+
         # Calculate latency percentiles
         latency_result = aligner.calculate_percentiles([df1, df2], percentiles=[50, 95])
-        
+
         # Merge results
         final_result = aligner.merge_metrics(iops_result, latency_result)
-        
+
         assert "timestamp_sec" in final_result.columns
         assert "iops" in final_result.columns
         assert "p50_latency_ms" in final_result.columns
