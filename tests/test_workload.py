@@ -268,6 +268,8 @@ class TestWorkload(unittest.TestCase):
 
         self.assertIn(self.workload_name, str_repr)
         self.assertIn("Name:", str_repr)
+
+
 if __name__ == "__main__":
     unittest.main()
 
