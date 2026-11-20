@@ -186,16 +186,16 @@ class ComparisonReportGenerator(ReportGenerator):
         archive_dirs = self._archive_directories.copy()
         baseline_dir = archive_dirs.pop(0)
 
-        table_header: str = f"numjobs|{baseline_dir.parts[-1]}|"
+        table_header: str = f"numjobs|{baseline_dir.name}|"
         table_justfication_string: str = "| :--- | ---: | ---: |"
 
         if len(archive_dirs) < 2:
             for directory in archive_dirs:
-                table_header += f"{directory.parts[-1]}|%change throughput|%change latency|"
+                table_header += f"{directory.name}|%change throughput|%change latency|"
                 table_justfication_string += " ---: | ---: | ---: |"
         else:
             for directory in archive_dirs:
-                table_header += f"{directory.parts[-1]}|%change|"
+                table_header += f"{directory.name}|%change|"
                 table_justfication_string += " ---: | ---: |"
 
         return (table_header, table_justfication_string)

@@ -38,12 +38,12 @@ class TestGetTestrunDirectories(unittest.TestCase):
 
     def test_with_id_in_path(self) -> None:
         """Test when 'id-' is in the archive directory path"""
-        formatter = TimeSeriesOutputFormatter(archive_directory="/tmp/test/id-12345")
+        formatter = TimeSeriesOutputFormatter(archive_directory="/tmp/test/id-12345678")
 
-        directories = formatter._get_testrun_directories("id-12345")
+        directories = formatter._get_testrun_directories("id-12345678")
 
         self.assertEqual(len(directories), 1)
-        self.assertEqual(directories[0], Path("/tmp/test/id-12345"))
+        self.assertEqual(directories[0], Path("/tmp/test/id-12345678"))
 
     @patch("pathlib.Path.glob")
     def test_without_id_in_path(self, mock_glob: Mock) -> None:
@@ -63,17 +63,17 @@ class TestFindAllTestrunIds(unittest.TestCase):
     def test_find_ids_with_id_prefix(self) -> None:
         """Test finding test run IDs with 'id-' prefix"""
         file_list = [
-            Path("/tmp/test/results/id-12345/rbdfio/json_output.0"),
-            Path("/tmp/test/results/id-12345/rbdfio/json_output.1"),
-            Path("/tmp/test/results/id-67890/rbdfio/json_output.0"),
+            Path("/tmp/test/results/id-12345678/rbdfio/json_output.0"),
+            Path("/tmp/test/results/id-12345678/rbdfio/json_output.1"),
+            Path("/tmp/test/results/id-67890abc/rbdfio/json_output.0"),
         ]
 
         formatter = TimeSeriesOutputFormatter(archive_directory="/tmp/test")
         formatter._find_all_testrun_ids(file_list)
 
         self.assertEqual(len(formatter._all_test_run_ids), 2)
-        self.assertIn("id-12345", formatter._all_test_run_ids)
-        self.assertIn("id-67890", formatter._all_test_run_ids)
+        self.assertIn("id-12345678", formatter._all_test_run_ids)
+        self.assertIn("id-67890abc", formatter._all_test_run_ids)
 
     def test_find_ids_without_id_prefix(self) -> None:
         """Test finding test run IDs without 'id-' prefix"""

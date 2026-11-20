@@ -180,13 +180,86 @@ class TestTimeSeriesReportGenerator(unittest.TestCase):
             output_directory=output_dir,
         )
 
-        file_names = generator._find_common_timeseries_file_names()
+        file_names = list(generator._data_files)
 
         # Should find both time-series files
         self.assertEqual(len(file_names), 3)
-        self.assertIn("4096_1_read_1_timeseries.json", file_names)
-        self.assertIn("4096_1_read_128_timeseries.json", file_names)
-        self.assertIn("65536_1_read_1_timeseries.json", file_names)
+        self.assertIn("4096_1_read_1_timeseries", file_names)
+        self.assertIn("4096_1_read_128_timeseries", file_names)
+        self.assertIn("65536_1_read_1_timeseries", file_names)
+
+    def test_find_common_timeseries_file_names_unions_directories_within_one_archive(self) -> None:
+        """A single archive with several iodepth directories returns every time-series file"""
+        second_vis_dir = self.archive_dir / "read" / "total_iodepth-256" / "visualisation"
+        second_vis_dir.mkdir(parents=True)
+        (second_vis_dir / "4096_1_read_256_timeseries.json").touch()
+
+        generator = TimeSeriesReportGenerator(
+            archive_directories=[str(self.archive_dir)],
+            output_directory=f"{self.temp_dir}/output",
+        )
+
+        file_names = list(generator._data_files)
+
+        self.assertCountEqual(
+            file_names,
+            [
+                "4096_1_read_1_timeseries",
+                "4096_1_read_128_timeseries",
+                "4096_1_read_256_timeseries",
+                "65536_1_read_1_timeseries",
+            ],
+            "Files from every iodepth directory of a single archive should be returned",
+        )
+
+    def test_extract_iodepth_from_path_preserves_the_value_in_the_path(self) -> None:
+        """The iodepth is reported exactly as it appears in the directory name"""
+        generator = TimeSeriesReportGenerator(
+            archive_directories=[str(self.archive_dir)],
+            output_directory=f"{self.temp_dir}/output",
+        )
+
+        self.assertEqual(
+            generator._extract_iodepth_from_path(Path("/r/total_iodepth-256/iodepth-000032/visualisation/a.json")),
+            "256",
+        )
+        self.assertEqual(generator._extract_iodepth_from_path(Path("/r/iodepth-000032/visualisation/a.json")), "000032")
+
+    def test_extract_iodepth_from_path_not_found(self) -> None:
+        """N/A is returned if there is no iodepth directory, including for look-alike directory names"""
+        generator = TimeSeriesReportGenerator(
+            archive_directories=[str(self.archive_dir)],
+            output_directory=f"{self.temp_dir}/output",
+        )
+
+        self.assertEqual(generator._extract_iodepth_from_path(Path("/r/my_iodepth_tests/visualisation/a.json")), "N/A")
+
+    def test_find_common_timeseries_file_names_intersects_across_archives(self) -> None:
+        """Only files present in every archive are returned, wherever the archives live on disk"""
+        results_root = Path(self.temp_dir) / "results"
+        archive_a = results_root / "archA"
+        archive_b = results_root / "archB"
+        for archive, file_names in (
+            (archive_a, ["4096_1_read_1_timeseries.json", "65536_1_read_1_timeseries.json"]),
+            (archive_b, ["4096_1_read_1_timeseries.json", "8192_1_read_1_timeseries.json"]),
+        ):
+            vis_dir = archive / "read" / "total_iodepth-128" / "visualisation"
+            vis_dir.mkdir(parents=True)
+            for file_name in file_names:
+                (vis_dir / file_name).touch()
+
+        generator = TimeSeriesReportGenerator(
+            archive_directories=[str(archive_a), str(archive_b)],
+            output_directory=f"{self.temp_dir}/output",
+        )
+
+        file_names = list(generator._data_files)
+
+        self.assertEqual(
+            file_names,
+            ["4096_1_read_1_timeseries"],
+            "Only files present in both archives should be returned",
+        )
 
     def test_find_and_sort_data_files(self) -> None:
         """Test finding and sorting time-series data files"""
