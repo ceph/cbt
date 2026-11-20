@@ -52,22 +52,19 @@ def get_run_result_from_directory_name(
         If the benchmark type cannot be determined from the directory name,
         a NotImplementedError will be raised
     """
-    directory_str: str = ""
     # We need to look at the directory that is inside the directory we are passed.
     # For example, if we are passed /tmp/results/id-1234/precondition, we need to look at
     # /tmp/results/id-1234/precondition/rbdfio to determine the benchmark type.
-    for entry in directory.iterdir():
-        if entry.is_dir():
-            directory_str = str(entry).lower()
-            break
-
-    # Try to find a matching benchmark type in the directory path
-    for benchmark_type, result_class in BENCHMARK_TYPE_MAP.items():
-        if benchmark_type in directory_str:
-            log.debug("Creating %s result processor for directory %s", result_class.__name__, directory)
-            return result_class(
-                directory=directory, file_name_root=file_name_root, include_timeseries=include_timeseries
-            )
+    # We sort directory entries for determinism and skip visualisation/hidden directories.
+    for entry in sorted(directory.iterdir()):
+        if entry.is_dir() and not entry.name.startswith(".") and entry.name != "visualisation":
+            directory_name = entry.name.lower()
+            for benchmark_type, result_class in BENCHMARK_TYPE_MAP.items():
+                if benchmark_type in directory_name:
+                    log.debug("Creating %s result processor for directory %s", result_class.__name__, directory)
+                    return result_class(
+                        directory=directory, file_name_root=file_name_root, include_timeseries=include_timeseries
+                    )
 
     raise NotImplementedError(f"Could not determine benchmark type from directory {directory}, ")
 

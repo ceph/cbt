@@ -3,6 +3,7 @@ Unit tests for the RBDFIO class
 """
 
 # pyright: strict, reportPrivateUsage=false
+# pylint: disable=protected-access
 
 import json
 import shutil
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from post_processing.post_processing_types import IodepthDataType, IoDetailsType
 from post_processing.run_results.rbdfio import RBDFIO
 
 
@@ -57,7 +59,7 @@ class TestRBDFIO(unittest.TestCase):
         # Create multiple test files simulating multiple volumes
         for i in range(3):
             test_file = self.test_path / f"json_output.{i}"
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf-8") as f:
                 json.dump(self.test_data, f)
 
     def tearDown(self) -> None:
@@ -101,7 +103,7 @@ class TestRBDFIO(unittest.TestCase):
         """Test summing IO details from multiple volumes"""
         rbdfio = RBDFIO(self.test_path, "json_output")
 
-        existing_values = {
+        existing_values: IodepthDataType = {
             "io_bytes": "1000000000",
             "iops": "4000.0",
             "bandwidth_bytes": "16666666",
@@ -110,7 +112,7 @@ class TestRBDFIO(unittest.TestCase):
             "std_deviation": "0.5",
         }
 
-        new_values = {
+        new_values: IoDetailsType = {
             "io_bytes": "1000000000",
             "iops": "4000.0",
             "bandwidth_bytes": "16666666",
@@ -122,19 +124,29 @@ class TestRBDFIO(unittest.TestCase):
         result = rbdfio._sum_io_details(existing_values, new_values)
 
         # Check summed values
-        self.assertAlmostEqual(float(result["io_bytes"]), 2000000000.0, places=0)
-        self.assertAlmostEqual(float(result["iops"]), 8000.0, places=1)
-        self.assertAlmostEqual(float(result["bandwidth_bytes"]), 33333332.0, places=0)
-        self.assertEqual(int(result["total_ios"]), 488280)
+        io_bytes = result["io_bytes"]
+        iops = result["iops"]
+        bw_bytes = result["bandwidth_bytes"]
+        total_ios = result["total_ios"]
+        lat = result["latency"]
+        assert isinstance(io_bytes, str)
+        assert isinstance(iops, str)
+        assert isinstance(bw_bytes, str)
+        assert isinstance(total_ios, str)
+        assert isinstance(lat, str)
+        self.assertAlmostEqual(float(io_bytes), 2000000000.0, places=0)
+        self.assertAlmostEqual(float(iops), 8000.0, places=1)
+        self.assertAlmostEqual(float(bw_bytes), 33333332.0, places=0)
+        self.assertEqual(int(total_ios), 488280)
 
         # Latency should be weighted average (same values = same result)
-        self.assertAlmostEqual(float(result["latency"]), 8.0, places=1)
+        self.assertAlmostEqual(float(lat), 8.0, places=1)
 
     def test_sum_io_details_different_latencies(self) -> None:
         """Test summing IO details with different latencies"""
         rbdfio = RBDFIO(self.test_path, "json_output")
 
-        existing_values = {
+        existing_values: IodepthDataType = {
             "io_bytes": "1000000000",
             "iops": "4000.0",
             "bandwidth_bytes": "16666666",
@@ -143,7 +155,7 @@ class TestRBDFIO(unittest.TestCase):
             "std_deviation": "0.5",
         }
 
-        new_values = {
+        new_values: IoDetailsType = {
             "io_bytes": "1000000000",
             "iops": "4000.0",
             "bandwidth_bytes": "16666666",
@@ -154,8 +166,85 @@ class TestRBDFIO(unittest.TestCase):
 
         result = rbdfio._sum_io_details(existing_values, new_values)
 
+        lat = result["latency"]
+        assert isinstance(lat, str)
         # Weighted average: (5*100000 + 10*200000) / 300000 = 8.333...
-        self.assertAlmostEqual(float(result["latency"]), 8.333, places=2)
+        self.assertAlmostEqual(float(lat), 8.333, places=2)
+
+    def test_sum_io_details_zero_ios_both_sides(self) -> None:
+        """Test summing IO details when both sides have zero IOs"""
+        rbdfio = RBDFIO(self.test_path, "json_output")
+
+        existing_values: IodepthDataType = {
+            "io_bytes": "0",
+            "iops": "0.0",
+            "bandwidth_bytes": "0",
+            "total_ios": "0",
+            "latency": "0.0",
+            "std_deviation": "0.0",
+        }
+        new_values: IoDetailsType = {
+            "io_bytes": "0",
+            "iops": "0.0",
+            "bandwidth_bytes": "0",
+            "total_ios": "0",
+            "latency": "0.0",
+            "std_deviation": "0.0",
+        }
+
+        result = rbdfio._sum_io_details(existing_values, new_values)
+
+        lat = result["latency"]
+        std_dev = result["std_deviation"]
+        assert isinstance(lat, str)
+        assert isinstance(std_dev, str)
+        self.assertEqual(result["total_ios"], "0")
+        self.assertEqual(float(lat), 0.0)
+        self.assertEqual(float(std_dev), 0.0)
+
+    def test_sum_io_details_zero_ios_one_side(self) -> None:
+        """Test that a zero-IO side does not skew latency or std_deviation of an active side"""
+        rbdfio = RBDFIO(self.test_path, "json_output")
+
+        zero_values: IoDetailsType = {
+            "io_bytes": "0",
+            "iops": "0.0",
+            "bandwidth_bytes": "0",
+            "total_ios": "0",
+            "latency": "0.0",
+            "std_deviation": "0.0",
+        }
+        active_values: IoDetailsType = {
+            "io_bytes": "1000000000",
+            "iops": "4000.0",
+            "bandwidth_bytes": "16666666",
+            "total_ios": "100000",
+            "latency": "5.5",
+            "std_deviation": "0.75",
+        }
+
+        existing_zero: IodepthDataType = {**zero_values}
+        existing_active: IodepthDataType = {**active_values}
+
+        # Zero on existing side
+        result1 = rbdfio._sum_io_details(existing_zero, active_values)
+        lat1 = result1["latency"]
+        std1 = result1["std_deviation"]
+        assert isinstance(lat1, str)
+        assert isinstance(std1, str)
+        self.assertEqual(result1["total_ios"], "100000")
+        self.assertAlmostEqual(float(lat1), 5.5)
+        self.assertAlmostEqual(float(std1), 0.75)
+
+        # Zero on new side
+        result2 = rbdfio._sum_io_details(existing_active, zero_values)
+        lat2 = result2["latency"]
+        std2 = result2["std_deviation"]
+        assert isinstance(lat2, str)
+        assert isinstance(std2, str)
+        self.assertEqual(result2["total_ios"], "100000")
+        self.assertAlmostEqual(float(lat2), 5.5)
+        self.assertAlmostEqual(float(std2), 0.75)
 
     def test_create_benchmark_result(self) -> None:
         """Test creating benchmark result returns FIO instance"""
@@ -331,7 +420,7 @@ class TestRBDFIO(unittest.TestCase):
         self.assertEqual(len(ts_files), 1, "Should have exactly one timeseries file")
 
         # Load and verify the aggregated data
-        with open(ts_files[0]) as f:
+        with open(ts_files[0], encoding="utf-8") as f:
             aggregated_data = json.load(f)
 
         # CRITICAL TEST: Verify aggregation across all 3 volumes
