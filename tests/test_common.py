@@ -1,12 +1,13 @@
 """Unit tests for the Common class"""
 
-import uuid
-import shutil
-import warnings
 import os
+import shutil
 import tempfile
 import unittest
 import unittest.mock
+import uuid
+import warnings
+
 import common
 
 VAR_NAME = "CBT_TEST_NODES"

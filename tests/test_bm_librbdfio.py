@@ -1,8 +1,9 @@
 """Unit tests for the Benchmarklibrbdfio class"""
 
-import unittest
 import hashlib
 import json
+import unittest
+
 import benchmarkfactory
 import settings
 from cluster.ceph import Ceph
@@ -28,7 +29,7 @@ class TestBenchmarklibrbdfio(unittest.TestCase):
         cls.md5_returned = hashlib.md5(data).hexdigest()
         settings.mock_initialize(config_file=cls.cl_name)
         cls.cluster = Ceph.mockinit(settings.cluster)
-        with open(cls.bl_name, "r") as f:
+        with open(cls.bl_name) as f:
             cls.bl_json = json.load(f)
             f.close()
 

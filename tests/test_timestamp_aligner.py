@@ -5,7 +5,6 @@ This module tests timestamp alignment and aggregation functionality for
 time-series data from multiple volumes.
 """
 
-import numpy as np
 import pandas as pd
 import pytest
 
