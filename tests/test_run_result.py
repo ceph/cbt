@@ -5,854 +5,438 @@ This module tests the abstract base class functionality and helper methods
 that are inherited by concrete implementations like RBDFIO.
 """
 
-# pylint: disable=protected-access,too-many-locals,too-few-public-methods
-
 import json
-import tempfile
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import Mock, patch
 
 import pytest
 
-from post_processing.post_processing_types import InternalFormattedOutputType, IodepthDataType, IoDetailsType
-from post_processing.run_results.benchmark_result import BenchmarkResult
+from post_processing.post_processing_types import InternalFormattedOutputType
 from post_processing.run_results.rbdfio import RBDFIO
+from post_processing.run_results.resource_result import ResourceResult
+
+GET_ALL_RESOURCES = "post_processing.run_results.run_result.get_all_resources"
+
+
+@pytest.fixture(name="results_dir")
+def results_dir_fixture(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """
+    An empty results directory.
+
+    The directory name is fixed on purpose: ``tmp_path`` is named after the test, and a test whose name
+    contains "precond" would put every file it creates under a path that ``file_is_precondition`` matches.
+    """
+    return tmp_path_factory.mktemp("results")
+
+
+def _fio_output(
+    iops: float = 4000.0, sys_cpu: float = 5.5, usr_cpu: float = 10.2, jobname: Optional[str] = None
+) -> dict[str, Any]:
+    """Build the contents of a single-job FIO json output file for a 4096 byte randread run at iodepth 32."""
+    job: dict[str, Any] = {
+        "read": {
+            "io_bytes": 1000000000,
+            "bw_bytes": 16666666,
+            "iops": iops,
+            "total_ios": 244140,
+            "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
+        },
+        "write": {
+            "io_bytes": 0,
+            "bw_bytes": 0,
+            "iops": 0.0,
+            "total_ios": 0,
+            "clat_ns": {"mean": 0.0, "stddev": 0.0},
+        },
+        "sys_cpu": sys_cpu,
+        "usr_cpu": usr_cpu,
+    }
+    if jobname is not None:
+        job["jobname"] = jobname
+
+    return {
+        "global options": {"bs": "4096", "rw": "randread", "iodepth": "32", "numjobs": "1", "runtime": "60"},
+        "jobs": [job],
+    }
+
+
+def _write_fio_file(path: Path, **kwargs: Any) -> Path:
+    """Write a FIO json output file (see _fio_output for the keyword arguments), creating parent directories."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_fio_output(**kwargs)), encoding="utf8")
+    return path
+
+
+def _iodepth_entry(data: InternalFormattedOutputType) -> dict[str, Any]:
+    """Return the entry for randread / 1 job / 4096 / iodepth 32, failing if it is missing or not a dict."""
+    entry = data["randread"]["1"]["4096"]["32"]
+    assert isinstance(entry, dict), f"Expected a dict at randread/1/4096/32, got {entry!r}"
+    return entry
+
+
+def _resource(source: str, cpu: str, memory: str = "0.00") -> Mock:
+    """A stand-in for a ResourceResult that reports fixed cpu and memory values."""
+    resource = Mock(spec=ResourceResult)
+    resource.source = source
+    resource.get.return_value = {"cpu": cpu, "memory": memory}
+    return resource
+
+
+def _process_volumes_with_resources(results_dir: Path, resources_per_volume: list[list[Mock]]) -> dict[str, Any]:
+    """
+    Process one FIO file per entry of resources_per_volume and return the aggregated iodepth entry.
+
+    Only the discovery of resource parsers is replaced: the Nth call to get_all_resources returns the Nth list.
+    The FIO files themselves are real and are parsed by the real code.
+    """
+    for index in range(len(resources_per_volume)):
+        _write_fio_file(results_dir / f"json_output.{index}")
+
+    with patch(GET_ALL_RESOURCES, side_effect=resources_per_volume):
+        return _iodepth_entry(RBDFIO(results_dir, "json_output").get())
 
 
 class TestRunResultInitialization:
     """Test RunResult initialization through concrete subclass."""
 
-    def test_initialization_basic(self) -> None:
-        """Test basic initialization of RunResult."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
+    def test_construction_does_not_process_files(self, results_dir: Path) -> None:
+        """Constructing a result must not read any file; processing is lazy."""
+        _write_fio_file(results_dir / "json_output.0")
 
-            assert result._path == path
-            assert result._has_been_processed is False
-            assert result._include_timeseries is False
-            assert isinstance(result._files, list)
-            assert isinstance(result._processed_data, dict)
-            assert isinstance(result._timeseries_data, dict)
+        with patch.object(RBDFIO, "process", autospec=True) as process:
+            RBDFIO(results_dir, "json_output")
 
-    def test_initialization_with_timeseries(self) -> None:
-        """Test initialization with timeseries enabled."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output", include_timeseries=True)
+        process.assert_not_called()
 
-            assert result._include_timeseries is True
+    def test_new_result_has_not_been_processed(self, results_dir: Path) -> None:
+        """A new result reports that it has not been processed."""
+        result = RBDFIO(results_dir, "json_output")
+
+        # There is no public accessor for the processed flag; this test pins its initial value.
+        # pylint: disable-next=protected-access
+        assert result._has_been_processed is False
+
+    def test_timeseries_is_off_by_default(self, results_dir: Path) -> None:
+        """Time-series output is opt-in."""
+        result = RBDFIO(results_dir, "json_output")
+
+        # There is no public accessor: the flag only changes what process() writes to disk.
+        # pylint: disable-next=protected-access
+        assert result._include_timeseries is False
+
+    def test_timeseries_can_be_enabled(self, results_dir: Path) -> None:
+        """include_timeseries=True is remembered."""
+        result = RBDFIO(results_dir, "json_output", include_timeseries=True)
+
+        # There is no public accessor: the flag only changes what process() writes to disk.
+        # pylint: disable-next=protected-access
+        assert result._include_timeseries is True
 
 
 class TestProcessMethod:
     """Test the process() method."""
 
-    def test_process_with_no_files(self) -> None:
+    def test_process_with_no_files(self, results_dir: Path) -> None:
         """Test process() when no files are found."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
+        result = RBDFIO(results_dir, "json_output")
 
-            # No files created, so _files should be empty
-            result.process()
+        result.process()
 
-            assert result._has_been_processed is True
-            assert len(result._processed_data) == 0
+        assert not result.get(), "A directory with no result files must produce no data"
 
-    def test_process_with_files(self) -> None:
+    def test_process_with_files(self, results_dir: Path) -> None:
         """Test process() with valid files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
+        _write_fio_file(results_dir / "json_output.0")
 
-            # Create test data
-            test_data: dict[str, Any] = {
-                "global options": {
-                    "bs": "4096",
-                    "rw": "randread",
-                    "iodepth": "32",
-                    "numjobs": "1",
-                    "runtime": "60",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000000000,
-                            "bw_bytes": 16666666,
-                            "iops": 4000.0,
-                            "total_ios": 244140,
-                            "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                        "sys_cpu": 5.5,
-                        "usr_cpu": 10.2,
-                    }
-                ],
-            }
+        result = RBDFIO(results_dir, "json_output")
+        result.process()
 
-            # Create test file
-            test_file = path / "json_output.0"
-            with open(test_file, "w", encoding="utf-8") as f:
-                json.dump(test_data, f)
-
-            result = RBDFIO(path, "json_output")
-            result.process()
-
-            assert result._has_been_processed is True
-            assert len(result._processed_data) > 0
+        assert float(_iodepth_entry(result.get())["iops"]) == pytest.approx(4000.0)
 
 
 class TestGetMethods:
-    """Test get() and get_timeseries() methods."""
+    """Test get() method."""
 
-    def test_get_without_processing(self) -> None:
-        """Test get() automatically processes if not done."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
+    def test_get_processes_lazily_and_only_once(self, results_dir: Path) -> None:
+        """get() processes the files on first use, and never again."""
+        _write_fio_file(results_dir / "json_output.0")
+        result = RBDFIO(results_dir, "json_output")
 
-            assert result._has_been_processed is False
+        with patch.object(RBDFIO, "process", autospec=True, side_effect=RBDFIO.process) as process:
+            first = result.get()
+            second = result.get()
 
+        assert process.call_count == 1, "process() must run exactly once, on the first get()"
+        assert first == second
+        assert float(_iodepth_entry(first)["iops"]) == pytest.approx(4000.0)
+
+    def test_get_after_explicit_process_does_not_process_again(self, results_dir: Path) -> None:
+        """Calling process() explicitly means get() just returns the stored data."""
+        _write_fio_file(results_dir / "json_output.0")
+        result = RBDFIO(results_dir, "json_output")
+        result.process()
+
+        with patch.object(RBDFIO, "process", autospec=True) as process:
             data = result.get()
 
-            assert result._has_been_processed is True
-            assert isinstance(data, dict)
-
-    def test_get_after_processing(self) -> None:
-        """Test get() returns data after processing."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
-
-            result.process()
-            data = result.get()
-
-            assert isinstance(data, dict)
-
-    # Tests for get_timeseries() removed - with memory-efficient approach,
-    # timeseries data is written immediately during process() and not stored in memory
+        process.assert_not_called()
+        assert float(_iodepth_entry(data)["iops"]) == pytest.approx(4000.0)
 
 
 class TestProcessTestRunFiles:
-    """Test _process_test_run_files() method."""
+    """Test how files are selected for processing."""
 
-    def test_process_empty_file(self) -> None:
-        """Test processing skips empty files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
+    def test_empty_file_is_skipped_with_a_warning(self, results_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
+        """An empty result file produces no data and a warning that names the file."""
+        empty_file = results_dir / "json_output.0"
+        empty_file.touch()
 
-            # Create empty file
-            empty_file = path / "json_output.0"
-            empty_file.touch()
+        with caplog.at_level(logging.WARNING, logger="cbt.formatter"):
+            data = RBDFIO(results_dir, "json_output").get()
 
-            result = RBDFIO(path, "json_output")
-            result.process()
+        assert not data, "An empty file must produce no data"
+        assert f"Cannot process file {empty_file} as it is empty" in caplog.text
 
-            # Should complete without error, but no data processed
-            assert result._has_been_processed is True
+    def test_only_precondition_file_produces_no_data(self, results_dir: Path) -> None:
+        """A directory that holds nothing but a precondition run has nothing to report."""
+        _write_fio_file(results_dir / "precond" / "json_output.0", jobname="precondition")
 
-    def test_process_precondition_file(self) -> None:
-        """Test processing skips precondition files."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
+        assert not RBDFIO(results_dir, "json_output").get(), "A precondition file must produce no data"
 
-            # Create test data
-            test_data: dict[str, Any] = {
-                "global options": {
-                    "bs": "4096",
-                    "rw": "randread",
-                    "iodepth": "32",
-                    "numjobs": "1",
-                    "runtime": "60",
-                },
-                "jobs": [
-                    {
-                        "jobname": "precondition",
-                        "read": {
-                            "io_bytes": 1000000000,
-                            "bw_bytes": 16666666,
-                            "iops": 4000.0,
-                            "total_ios": 244140,
-                            "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                        "sys_cpu": 5.5,
-                        "usr_cpu": 10.2,
-                    }
-                ],
-            }
+    @pytest.mark.parametrize("precondition_position", [0, 1, 2], ids=["first", "middle", "last"])
+    def test_precondition_file_is_skipped_wherever_it_is_listed(
+        self, results_dir: Path, precondition_position: int
+    ) -> None:
+        """
+        The precondition file is neither processed nor allowed to hide a real file.
 
-            # Create precondition file
-            precond_file = path / "json_output.0"
-            with open(precond_file, "w", encoding="utf-8") as f:
-                json.dump(test_data, f)
+        Removing entries from the list that is being iterated skips the entry that follows the removed
+        one, so a real volume was silently dropped when a precondition file was listed before it.
+        The order of the file list comes from the file system, so it is fixed here.
+        """
+        precondition = _write_fio_file(results_dir / "precond" / "json_output.0", iops=9000.0, jobname="precondition")
+        volumes = [
+            _write_fio_file(results_dir / "iodepth-32" / "json_output.0", iops=1000.0),
+            _write_fio_file(results_dir / "iodepth-32" / "json_output.1", iops=2000.0),
+        ]
+        listed_files = list(volumes)
+        listed_files.insert(precondition_position, precondition)
 
-            result = RBDFIO(path, "json_output")
-            result.process()
+        with patch.object(RBDFIO, "_find_files_for_testrun", return_value=listed_files):
+            result = RBDFIO(results_dir, "json_output")
+        data = result.get()
 
-            # Should complete without error
-            assert result._has_been_processed is True
+        assert float(_iodepth_entry(data)["iops"]) == pytest.approx(
+            3000.0
+        ), "Both real volumes, and only those, must be summed"
+        # No public accessor exposes which files were kept; this pins that a skipped file is dropped from the list.
+        # pylint: disable-next=protected-access
+        assert sorted(result._files) == volumes, "The precondition file must be removed from the files to process"
 
 
-class TestExtractTestConfiguration:
-    """Test _extract_test_configuration() method."""
+class TestProcessingFileContents:
+    """Test the conversion of the contents of result files."""
 
-    def test_extract_configuration(self) -> None:
-        """Test extracting configuration from benchmark result."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
+    def test_single_volume_values_are_reported_unchanged(self, results_dir: Path) -> None:
+        """With one volume there is nothing to merge: the values are those in the file."""
+        _write_fio_file(results_dir / "json_output.0")
 
-            # Create mock benchmark result
-            mock_benchmark = Mock(spec=BenchmarkResult)
-            mock_benchmark.operation = "randread"
-            mock_benchmark.blocksize = "4096"
-            mock_benchmark.iodepth = "32"
-            mock_benchmark.number_of_jobs = "1"
+        entry = _iodepth_entry(RBDFIO(results_dir, "json_output").get())
 
-            config = result._extract_test_configuration(mock_benchmark)
+        assert float(entry["io_bytes"]) == pytest.approx(1000000000.0)
+        assert float(entry["iops"]) == pytest.approx(4000.0)
 
-            assert config == ("randread", "4096", "32", "1")
+    def test_two_volumes_are_summed(self, results_dir: Path) -> None:
+        """Volumes with the same test parameters have their io_bytes and iops added together."""
+        _write_fio_file(results_dir / "json_output.0")
+        _write_fio_file(results_dir / "json_output.1")
 
+        entry = _iodepth_entry(RBDFIO(results_dir, "json_output").get())
 
-class TestMergeIODetails:
-    """Test _merge_io_details() method."""
+        assert float(entry["io_bytes"]) == pytest.approx(2000000000.0)
+        assert float(entry["iops"]) == pytest.approx(8000.0)
 
-    def test_merge_with_no_existing_data(self) -> None:
-        """Test merge when no existing data exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
+    def test_file_that_is_not_json_raises(self, results_dir: Path) -> None:
+        """A file that is not valid JSON is read as empty, which the benchmark result rejects."""
+        (results_dir / "json_output.0").write_text("invalid json", encoding="utf8")
 
-            test_config = ("randread", "4096", "32", "1")
-            new_io_details: IoDetailsType = {
-                "io_bytes": "1000000000",
-                "iops": "4000.0",
-                "bandwidth_bytes": "16666666",
-                "total_ios": "244140",
-                "latency": "8.0",
-                "std_deviation": "0.5",
-            }
+        with pytest.raises(ValueError, match="is empty"):
+            RBDFIO(results_dir, "json_output").get()
 
-            merged = result._merge_io_details(test_config, new_io_details)
-
-            # Should return new_io_details unchanged
-            assert merged == new_io_details
-
-    def test_merge_with_existing_data(self) -> None:
-        """Test merge when existing data exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            result = RBDFIO(path, "json_output")
-
-            # Set up existing data
-            test_config = ("randread", "4096", "32", "1")
-            existing_io: IodepthDataType = {
-                "io_bytes": "1000000000",
-                "iops": "4000.0",
-                "bandwidth_bytes": "16666666",
-                "total_ios": "244140",
-                "latency": "8.0",
-                "std_deviation": "0.5",
-            }
-
-            existing_processed_data: InternalFormattedOutputType = {"randread": {"1": {"4096": {"32": existing_io}}}}
-            result._processed_data = existing_processed_data
-
-            new_io_details: IoDetailsType = {
-                "io_bytes": "1000000000",
-                "iops": "4000.0",
-                "bandwidth_bytes": "16666666",
-                "total_ios": "244140",
-                "latency": "8.0",
-                "std_deviation": "0.5",
-            }
-
-            merged = result._merge_io_details(test_config, new_io_details)
-
-            # Should sum the values
-            io_bytes_val = merged["io_bytes"]
-            iops_val = merged["iops"]
-            assert isinstance(io_bytes_val, str)
-            assert isinstance(iops_val, str)
-            assert float(io_bytes_val) == 2000000000.0
-            assert float(iops_val) == 8000.0
-
-
-class TestConvertFile:
-    """Test _convert_file() method."""
-
-    def test_convert_file_success(self) -> None:
-        """Test successful file conversion."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-
-            # Create test data
-            test_data: dict[str, Any] = {
-                "global options": {
-                    "bs": "4096",
-                    "rw": "randread",
-                    "iodepth": "32",
-                    "numjobs": "1",
-                    "runtime": "60",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000000000,
-                            "bw_bytes": 16666666,
-                            "iops": 4000.0,
-                            "total_ios": 244140,
-                            "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                        "sys_cpu": 5.5,
-                        "usr_cpu": 10.2,
-                    }
-                ],
-            }
-
-            test_file = path / "json_output.0"
-            with open(test_file, "w", encoding="utf-8") as f:
-                json.dump(test_data, f)
-
-            result = RBDFIO(path, "json_output")
-            result._convert_file(test_file)
-
-            # Should have processed data
-            assert len(result._processed_data) > 0
-
-    def test_convert_file_with_error(self) -> None:
-        """Test file conversion with error handling."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-
-            # Create invalid JSON file
-            test_file = path / "json_output.0"
-            with open(test_file, "w", encoding="utf-8") as f:
-                f.write("invalid json")
-
-            result = RBDFIO(path, "json_output")
-
-            # Invalid JSON is read as an empty result, which BenchmarkResult rejects
-            with pytest.raises(ValueError, match="is empty"):
-                result._convert_file(test_file)
-
-
-class TestIntegration:
-    """Integration tests for RunResult."""
-
-    def test_full_workflow_single_volume(self) -> None:
+    def test_full_workflow_single_volume(self, results_dir: Path) -> None:
         """Test complete workflow with single volume."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
+        _write_fio_file(results_dir / "json_output.0")
 
-            # Create test data
-            test_data: dict[str, Any] = {
-                "global options": {
-                    "bs": "4096",
-                    "rw": "randread",
-                    "iodepth": "32",
-                    "numjobs": "1",
-                    "runtime": "60",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000000000,
-                            "bw_bytes": 16666666,
-                            "iops": 4000.0,
-                            "total_ios": 244140,
-                            "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                        "sys_cpu": 5.5,
-                        "usr_cpu": 10.2,
-                    }
-                ],
-            }
+        data = RBDFIO(results_dir, "json_output").get()
 
-            test_file = path / "json_output.0"
-            with open(test_file, "w", encoding="utf-8") as f:
-                json.dump(test_data, f)
+        assert list(data) == ["randread"]
+        assert list(data["randread"]) == ["1"]
+        assert list(data["randread"]["1"]) == ["4096"]
+        assert list(data["randread"]["1"]["4096"]) == ["32"]
 
-            result = RBDFIO(path, "json_output")
-            data = result.get()
+    def test_full_workflow_multiple_volumes(self, results_dir: Path) -> None:
+        """Test complete workflow with multiple volumes: 3 volumes of 4000 iops add up to 12000."""
+        for index in range(3):
+            _write_fio_file(results_dir / f"json_output.{index}")
 
-            assert "randread" in data
-            assert "1" in data["randread"]
-            assert "4096" in data["randread"]["1"]
-            assert "32" in data["randread"]["1"]["4096"]
+        entry = _iodepth_entry(RBDFIO(results_dir, "json_output").get())
 
-    def test_full_workflow_multiple_volumes(self) -> None:
-        """Test complete workflow with multiple volumes."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-
-            # Create test data for multiple volumes
-            test_data: dict[str, Any] = {
-                "global options": {
-                    "bs": "4096",
-                    "rw": "randread",
-                    "iodepth": "32",
-                    "numjobs": "1",
-                    "runtime": "60",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000000000,
-                            "bw_bytes": 16666666,
-                            "iops": 4000.0,
-                            "total_ios": 244140,
-                            "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                        "sys_cpu": 5.5,
-                        "usr_cpu": 10.2,
-                    }
-                ],
-            }
-
-            # Create multiple volume files
-            for i in range(3):
-                test_file = path / f"json_output.{i}"
-                with open(test_file, "w", encoding="utf-8") as f:
-                    json.dump(test_data, f)
-
-            result = RBDFIO(path, "json_output")
-            data = result.get()
-
-            # Data should be aggregated from all volumes
-            assert "randread" in data
-            # Navigate through nested structure
-            randread_data = data["randread"]
-            assert isinstance(randread_data, dict)
-            numjobs_data = randread_data["1"]
-            assert isinstance(numjobs_data, dict)
-            blocksize_data = numjobs_data["4096"]
-            assert isinstance(blocksize_data, dict)
-            iodepth_data = blocksize_data["32"]
-            assert isinstance(iodepth_data, dict)
-            iops_raw = iodepth_data["iops"]
-            assert isinstance(iops_raw, str)
-            iops_value = float(iops_raw)
-            # Should be sum of 3 volumes: 4000 * 3 = 12000
-            assert iops_value == pytest.approx(12000.0, rel=0.01)
+        assert float(entry["iops"]) == pytest.approx(12000.0, rel=0.01)
 
 
 class TestMergeResourceData:
-    """Test _merge_resource_data() aggregates CPU/memory correctly across volumes."""
+    """Test that CPU/memory are aggregated correctly across volumes."""
 
-    def _make_rbdfio(self, tmpdir: str) -> RBDFIO:
-        return RBDFIO(Path(tmpdir), "json_output")
+    def test_first_volume_is_reported_unchanged(self, results_dir: Path) -> None:
+        """First volume has no existing data, so its resource data is reported as-is."""
+        entry = _process_volumes_with_resources(results_dir, [[_resource("fio", "15.70")]])
 
-    def test_first_volume_returns_unchanged(self) -> None:
-        """First volume has no existing data — resource data is returned as-is."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
-            resource_data: dict[str, dict[str, str]] = {"cpu": {"fio": "15.70"}, "memory": {"fio": "0.00"}}
+        assert entry["cpu"] == {"fio": "15.70"}
+        assert entry["memory"] == {"fio": "0.00"}
 
-            merged = result._merge_resource_data(test_config, resource_data)
-
-            assert merged == resource_data
-
-    def test_fio_cpu_is_summed_across_volumes(self) -> None:
+    def test_fio_cpu_is_summed_across_volumes(self, results_dir: Path) -> None:
         """FIO CPU values should be summed because each volume file is independent."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
+        entry = _process_volumes_with_resources(results_dir, [[_resource("fio", "10.00")], [_resource("fio", "15.00")]])
 
-            # Simulate first volume already stored
-            stored_data: InternalFormattedOutputType = {
-                "randread": {"1": {"4096": {"32": {"cpu": {"fio": "10.00"}, "memory": {"fio": "0.00"}}}}}
-            }
-            result._processed_data = stored_data
-            result._resource_volume_counts[test_config] = 1
+        assert float(entry["cpu"]["fio"]) == pytest.approx(25.00)
 
-            resource_data: dict[str, dict[str, str]] = {"cpu": {"fio": "15.00"}, "memory": {"fio": "0.00"}}
-            merged = result._merge_resource_data(test_config, resource_data)
-
-            assert float(merged["cpu"]["fio"]) == pytest.approx(25.00)
-
-    def test_shared_source_cpu_is_averaged_across_volumes(self) -> None:
+    def test_shared_source_cpu_is_averaged_across_volumes(self, results_dir: Path) -> None:
         """collectl/top CPU should be averaged because they share one directory."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
+        entry = _process_volumes_with_resources(
+            results_dir, [[_resource("collectl", "40.00")], [_resource("collectl", "60.00")]]
+        )
 
-            # One volume already stored, count == 1
-            stored_data: InternalFormattedOutputType = {
-                "randread": {"1": {"4096": {"32": {"cpu": {"collectl": "40.00"}, "memory": {"collectl": "0.00"}}}}}
-            }
-            result._processed_data = stored_data
-            result._resource_volume_counts[test_config] = 1
-            result._resource_source_counts[(test_config, "collectl")] = 1
+        # (40 * 1 + 60) / 2 = 50
+        assert float(entry["cpu"]["collectl"]) == pytest.approx(50.00)
 
-            resource_data: dict[str, dict[str, str]] = {"cpu": {"collectl": "60.00"}, "memory": {"collectl": "0.00"}}
-            merged = result._merge_resource_data(test_config, resource_data)
+    def test_shared_source_average_uses_volume_count(self, results_dir: Path) -> None:
+        """Running average uses the number of volumes seen so far for a third+ volume."""
+        entry = _process_volumes_with_resources(
+            results_dir,
+            [[_resource("top", "40.00")], [_resource("top", "60.00")], [_resource("top", "62.00")]],
+        )
 
-            # (40 * 1 + 60) / 2 = 50
-            assert float(merged["cpu"]["collectl"]) == pytest.approx(50.00)
+        # Running average after two volumes is 50, so (50 * 2 + 62) / 3 = 54
+        assert float(entry["cpu"]["top"]) == pytest.approx(54.00)
 
-    def test_shared_source_average_uses_volume_count(self) -> None:
-        """Running average uses the stored volume count for a third+ volume."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
-
-            # Two volumes already processed, running average is 50, source_count == 2
-            stored_data: InternalFormattedOutputType = {
-                "randread": {"1": {"4096": {"32": {"cpu": {"top": "50.00"}, "memory": {"top": "0.00"}}}}}
-            }
-            result._processed_data = stored_data
-            result._resource_volume_counts[test_config] = 2
-            result._resource_source_counts[(test_config, "top")] = 2
-
-            resource_data: dict[str, dict[str, str]] = {"cpu": {"top": "62.00"}, "memory": {"top": "0.00"}}
-            merged = result._merge_resource_data(test_config, resource_data)
-
-            # (50 * 2 + 62) / 3 = 162 / 3 = 54
-            assert float(merged["cpu"]["top"]) == pytest.approx(54.00)
-
-    def test_multiple_sources_merged_independently(self) -> None:
-        """FIO is summed while collectl is averaged in the same merge call."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
-
-            stored_data: InternalFormattedOutputType = {
-                "randread": {
-                    "1": {
-                        "4096": {
-                            "32": {
-                                "cpu": {"fio": "10.00", "collectl": "40.00"},
-                                "memory": {"fio": "0.00", "collectl": "0.00"},
-                            }
-                        }
-                    }
-                }
-            }
-            result._processed_data = stored_data
-            result._resource_volume_counts[test_config] = 1
-            result._resource_source_counts[(test_config, "collectl")] = 1
-
-            resource_data: dict[str, dict[str, str]] = {
-                "cpu": {"fio": "15.00", "collectl": "60.00"},
-                "memory": {"fio": "0.00", "collectl": "0.00"},
-            }
-            merged = result._merge_resource_data(test_config, resource_data)
-
-            assert float(merged["cpu"]["fio"]) == pytest.approx(25.00)  # summed
-            assert float(merged["cpu"]["collectl"]) == pytest.approx(50.00)  # averaged
-
-    def test_merge_metric_dict_direct(self) -> None:
-        """_merge_metric_dict merges single metric dictionary directly across sources."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
-            result._resource_source_counts[(test_config, "collectl")] = 1
-
-            existing_metrics = {"fio": "10.00", "collectl": "40.00"}
-            new_metrics = {"fio": "15.00", "collectl": "60.00"}
-            merged = result._merge_metric_dict(test_config, existing_metrics, new_metrics, set())
-
-            assert float(merged["fio"]) == pytest.approx(25.00)
-            assert float(merged["collectl"]) == pytest.approx(50.00)
-
-    def _merge_with_stored(
-        self,
-        result: RBDFIO,
-        new_resource: dict[str, dict[str, str]],
-    ) -> dict[str, dict[str, str]]:
-        """Merge new_resource into stored collectl cpu=40.00/memory=100.00 after one volume."""
-        test_config = ("randread", "4096", "32", "1")
-        stored_data: InternalFormattedOutputType = {
-            "randread": {"1": {"4096": {"32": {"cpu": {"collectl": "40.00"}, "memory": {"collectl": "100.00"}}}}}
-        }
-        result._processed_data = stored_data
-        result._resource_volume_counts[test_config] = 1
-        result._resource_source_counts[(test_config, "collectl")] = 1
-        return result._merge_resource_data(test_config, new_resource)
-
-    def test_shared_source_zero_cpu_nonzero_memory_is_still_aggregated(self) -> None:
-        """A shared source is only 'missing' if BOTH cpu and memory are zero."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            merged = self._merge_with_stored(
-                result,
-                {"cpu": {"collectl": "0.00"}, "memory": {"collectl": "200.00"}},
-            )
-
-            # Real (idle-cpu) volume is averaged in for both metrics
-            assert float(merged["cpu"]["collectl"]) == pytest.approx(20.00)
-            assert float(merged["memory"]["collectl"]) == pytest.approx(150.00)
-
-    def test_shared_source_zero_memory_nonzero_cpu_is_still_aggregated(self) -> None:
-        """A zero memory value alongside non-zero cpu must not be treated as a missing source."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            merged = self._merge_with_stored(
-                result,
-                {"cpu": {"collectl": "60.00"}, "memory": {"collectl": "0.00"}},
-            )
-
-            assert float(merged["cpu"]["collectl"]) == pytest.approx(50.00)
-            assert float(merged["memory"]["collectl"]) == pytest.approx(50.00)
-
-    def test_shared_source_both_zero_is_treated_as_missing(self) -> None:
-        """Both cpu and memory zero means missing directory: accumulated values are unchanged."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            merged = self._merge_with_stored(
-                result,
-                {"cpu": {"collectl": "0.00"}, "memory": {"collectl": "0.00"}},
-            )
-
-            assert merged["cpu"]["collectl"] == "40.00"
-            assert merged["memory"]["collectl"] == "100.00"
-
-    def test_previously_seen_source_absent_from_volume_raises(self) -> None:
-        """A shared source seen in earlier volumes but absent now indicates corrupted source data."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = self._make_rbdfio(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
-            stored_data: InternalFormattedOutputType = {
-                "randread": {"1": {"4096": {"32": {"cpu": {"collectl": "40.00"}, "memory": {"collectl": "100.00"}}}}}
-            }
-            result._processed_data = stored_data
-            result._resource_volume_counts[test_config] = 1
-            result._resource_source_counts[(test_config, "collectl")] = 1
-
-            with pytest.raises(ValueError, match="collectl"):
-                result._merge_resource_data(test_config, {"cpu": {"fio": "15.00"}, "memory": {"fio": "0.00"}})
-
-
-class TestResourceAggregationIntegration:
-    """Integration tests confirming CPU is correctly aggregated across multiple volumes."""
-
-    def _make_volume_data(self, sys_cpu: float = 5.0, usr_cpu: float = 10.0) -> dict[str, Any]:
-        return {
-            "global options": {
-                "bs": "4096",
-                "rw": "randread",
-                "iodepth": "32",
-                "numjobs": "1",
-                "runtime": "60",
-            },
-            "jobs": [
-                {
-                    "read": {
-                        "io_bytes": 1000000000,
-                        "bw_bytes": 16666666,
-                        "iops": 4000.0,
-                        "total_ios": 244140,
-                        "clat_ns": {"mean": 8000000.0, "stddev": 500000.0},
-                    },
-                    "write": {
-                        "io_bytes": 0,
-                        "bw_bytes": 0,
-                        "iops": 0.0,
-                        "total_ios": 0,
-                        "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                    },
-                    "sys_cpu": sys_cpu,
-                    "usr_cpu": usr_cpu,
-                }
+    def test_multiple_sources_merged_independently(self, results_dir: Path) -> None:
+        """FIO is summed while collectl is averaged in the same merge."""
+        entry = _process_volumes_with_resources(
+            results_dir,
+            [
+                [_resource("fio", "10.00"), _resource("collectl", "40.00")],
+                [_resource("fio", "15.00"), _resource("collectl", "60.00")],
             ],
-        }
+        )
 
-    def test_fio_cpu_summed_across_three_volumes(self) -> None:
-        """FIO CPU from three identical volumes should appear as 3x the per-volume normalised value."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            sys_cpu, usr_cpu = 5.5, 10.2
-            cpu_count = 4
-            per_volume_cpu = (sys_cpu + usr_cpu) / cpu_count  # normalised per-volume value
+        assert float(entry["cpu"]["fio"]) == pytest.approx(25.00)  # summed
+        assert float(entry["cpu"]["collectl"]) == pytest.approx(50.00)  # averaged
 
-            for i in range(3):
-                (path / f"json_output.{i}").write_text(
-                    json.dumps(self._make_volume_data(sys_cpu=sys_cpu, usr_cpu=usr_cpu))
-                )
+    def test_shared_source_zero_cpu_nonzero_memory_is_still_aggregated(self, results_dir: Path) -> None:
+        """A shared source is only 'missing' if BOTH cpu and memory are zero."""
+        entry = _process_volumes_with_resources(
+            results_dir,
+            [[_resource("collectl", "40.00", "100.00")], [_resource("collectl", "0.00", "200.00")]],
+        )
 
-            with patch("post_processing.run_results.resources.fio_resource.os.cpu_count", return_value=cpu_count):
-                result = RBDFIO(path, "json_output")
-                data = result.get()
-            iodepth_entry = data["randread"]["1"]["4096"]["32"]
-            assert isinstance(iodepth_entry, dict)
-            cpu_entry = iodepth_entry["cpu"]
-            assert isinstance(cpu_entry, dict)
+        # The idle-cpu volume is averaged in for both metrics
+        assert float(entry["cpu"]["collectl"]) == pytest.approx(20.00)
+        assert float(entry["memory"]["collectl"]) == pytest.approx(150.00)
 
-            fio_cpu = float(cpu_entry["fio"])
-            assert fio_cpu == pytest.approx(per_volume_cpu * 3, rel=0.01)
+    def test_shared_source_zero_memory_nonzero_cpu_is_still_aggregated(self, results_dir: Path) -> None:
+        """A zero memory value alongside non-zero cpu must not be treated as a missing source."""
+        entry = _process_volumes_with_resources(
+            results_dir,
+            [[_resource("collectl", "40.00", "100.00")], [_resource("collectl", "60.00", "0.00")]],
+        )
 
-    def test_single_volume_fio_cpu_unchanged(self) -> None:
-        """Single-volume result should have exactly the per-volume normalised FIO CPU value."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            sys_cpu, usr_cpu = 5.5, 10.2
-            cpu_count = 4
-            per_volume_cpu = (sys_cpu + usr_cpu) / cpu_count
+        assert float(entry["cpu"]["collectl"]) == pytest.approx(50.00)
+        assert float(entry["memory"]["collectl"]) == pytest.approx(50.00)
 
-            (path / "json_output.0").write_text(json.dumps(self._make_volume_data(sys_cpu=sys_cpu, usr_cpu=usr_cpu)))
-
-            with patch("post_processing.run_results.resources.fio_resource.os.cpu_count", return_value=cpu_count):
-                result = RBDFIO(path, "json_output")
-                data = result.get()
-            iodepth_entry = data["randread"]["1"]["4096"]["32"]
-            assert isinstance(iodepth_entry, dict)
-            cpu_entry = iodepth_entry["cpu"]
-            assert isinstance(cpu_entry, dict)
-
-            fio_cpu = float(cpu_entry["fio"])
-            assert fio_cpu == pytest.approx(per_volume_cpu, rel=0.01)
-
-    def test_volume_counter_not_stored_in_processed_data(self) -> None:
-        """The internal volume counter must not appear anywhere in the output data."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-
-            for i in range(2):
-                (path / f"json_output.{i}").write_text(json.dumps(self._make_volume_data()))
-
-            result = RBDFIO(path, "json_output")
-            data = result.get()
-            iodepth_entry = data["randread"]["1"]["4096"]["32"]
-            assert isinstance(iodepth_entry, dict)
-
-            # Counter lives in _resource_volume_counts, not inside _processed_data
-            assert "_resource_volume_count" not in iodepth_entry
-            raw_cpu = iodepth_entry.get("cpu", {})
-            if isinstance(raw_cpu, dict):
-                assert "_resource_volume_count" not in raw_cpu
-
-    def test_multi_volume_multi_resource_end_to_end(self) -> None:
+    def test_shared_source_both_zero_is_treated_as_missing(self, results_dir: Path) -> None:
         """
-        Behavioural test: with 3 volume files sharing collectl and top directories,
-        FIO CPU is summed, collectl CPU is averaged, and top CPU/memory are averaged.
+        Both cpu and memory zero means a missing directory: the accumulated values are unchanged,
+        while the independent FIO values are still summed.
         """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            sys_cpu, usr_cpu = 5.5, 10.2
-            cpu_count = 4
-            per_volume_fio_cpu = (sys_cpu + usr_cpu) / cpu_count
+        entry = _process_volumes_with_resources(
+            results_dir,
+            [
+                [_resource("fio", "5.00"), _resource("collectl", "40.00", "100.00")],
+                [_resource("fio", "5.00"), _resource("collectl", "0.00", "0.00")],
+            ],
+        )
 
-            # Create 3 volume files
-            for i in range(3):
-                (path / f"json_output.{i}").write_text(
-                    json.dumps(self._make_volume_data(sys_cpu=sys_cpu, usr_cpu=usr_cpu))
-                )
+        assert entry["cpu"]["collectl"] == "40.00"
+        assert entry["memory"]["collectl"] == "100.00"
+        assert float(entry["cpu"]["fio"]) == pytest.approx(10.00)
 
-            # Create collectl directory with a CPU file (50% CPU)
-            collectl_dir = path / "collectl"
-            collectl_dir.mkdir()
-            (collectl_dir / "client1-20260619.cpu").write_text("#Date;Time;[CPU:0]Totl%\n20260619;17:06:30;50\n")
-
-            # Create top directory with an OSD output file
-            # 2 snapshots: 25% + 35% -> average 30.0 core-units / 4 cores = 7.50%
-            # memory: (0.6 + 0.8) / 2 = 0.70%
-            top_dir = path / "top"
-            top_dir.mkdir()
-            top_content = (
-                "top - 14:32:01 up 2 days\n"
-                "Tasks: 1 total\n\n"
-                "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n"
-                "12345 ceph      20   0  1.234g 234.0m  12.0m S  25.0   0.6   1:23.45 crimson-osd\n\n"
-                "top - 14:32:02 up 2 days\n"
-                "Tasks: 1 total\n\n"
-                "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n"
-                "12345 ceph      20   0  1.234g 234.0m  12.0m S  35.0   0.8   1:24.50 crimson-osd\n"
+    def test_previously_seen_source_absent_from_volume_raises(self, results_dir: Path) -> None:
+        """A shared source seen in earlier volumes but absent now indicates corrupted source data."""
+        with pytest.raises(ValueError, match="collectl"):
+            _process_volumes_with_resources(
+                results_dir,
+                [[_resource("collectl", "40.00", "100.00")], [_resource("fio", "15.00")]],
             )
-            (top_dir / "osd_0.out").write_text(top_content)
 
-            with patch("os.cpu_count", return_value=cpu_count):
-                result = RBDFIO(path, "json_output")
-                data = result.get()
+    @pytest.mark.parametrize("volumes", [1, 3])
+    def test_fio_cpu_from_real_files_is_normalised_then_summed(self, results_dir: Path, volumes: int) -> None:
+        """FIO CPU from identical volumes should be the per-volume normalised value times the volume count."""
+        sys_cpu, usr_cpu, cpu_count = 5.5, 10.2, 4
+        per_volume_cpu = (sys_cpu + usr_cpu) / cpu_count
 
-            iodepth_entry = data["randread"]["1"]["4096"]["32"]
-            assert isinstance(iodepth_entry, dict)
-            cpu_data = iodepth_entry["cpu"]
-            memory_data = iodepth_entry["memory"]
-            assert isinstance(cpu_data, dict)
-            assert isinstance(memory_data, dict)
+        for index in range(volumes):
+            _write_fio_file(results_dir / f"json_output.{index}", sys_cpu=sys_cpu, usr_cpu=usr_cpu)
 
-            # FIO CPU is summed across 3 volumes
-            assert float(cpu_data["fio"]) == pytest.approx(per_volume_fio_cpu * 3, rel=0.01)
-            # Collectl CPU is averaged across 3 volume passes (remains 50.00)
-            assert float(cpu_data["collectl"]) == pytest.approx(50.00, rel=0.01)
-            # Top CPU is averaged across 3 volume passes (remains 7.50)
-            assert float(cpu_data["top"]) == pytest.approx(7.50, rel=0.01)
-            # Top memory is averaged across 3 volume passes (remains 0.70)
-            assert float(memory_data["top"]) == pytest.approx(0.70, rel=0.01)
+        with patch("post_processing.run_results.resources.fio_resource.os.cpu_count", return_value=cpu_count):
+            entry = _iodepth_entry(RBDFIO(results_dir, "json_output").get())
 
-    def test_shared_source_zero_as_missing_behaviour(self) -> None:
+        assert float(entry["cpu"]["fio"]) == pytest.approx(per_volume_cpu * volumes, rel=0.01)
+
+    def test_multi_volume_multi_resource_end_to_end(self, results_dir: Path) -> None:
         """
-        Behavioural test: a volume that produces 0.00 for a shared monitoring source
-        does not reduce or dilute the accumulated average.
+        With 3 volume files sharing collectl and top directories, FIO CPU is summed,
+        collectl CPU is averaged, and top CPU and memory are averaged.
         """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir)
-            test_config = ("randread", "4096", "32", "1")
+        sys_cpu, usr_cpu, cpu_count = 5.5, 10.2, 4
+        per_volume_fio_cpu = (sys_cpu + usr_cpu) / cpu_count
 
-            result = RBDFIO(path, "json_output")
+        for index in range(3):
+            _write_fio_file(results_dir / f"json_output.{index}", sys_cpu=sys_cpu, usr_cpu=usr_cpu)
 
-            # First volume has valid collectl data (60.00)
-            first_resource: dict[str, dict[str, str]] = {
-                "cpu": {"fio": "5.00", "collectl": "60.00"},
-                "memory": {"fio": "0.00", "collectl": "0.00"},
-            }
-            merged1 = result._merge_resource_data(test_config, first_resource)
-            result._resource_volume_counts[test_config] = 1
-            result._resource_source_counts[(test_config, "collectl")] = 1
-            stored_iodepth: IodepthDataType = {
-                "cpu": merged1["cpu"],
-                "memory": merged1["memory"],
-            }
-            stored_data: InternalFormattedOutputType = {"randread": {"1": {"4096": {"32": stored_iodepth}}}}
-            result._processed_data = stored_data
+        # A collectl directory with a CPU file (50% CPU)
+        collectl_dir = results_dir / "collectl"
+        collectl_dir.mkdir()
+        (collectl_dir / "client1-20260619.cpu").write_text(
+            "#Date;Time;[CPU:0]Totl%\n20260619;17:06:30;50\n", encoding="utf8"
+        )
 
-            # Second volume has missing/zero collectl data
-            second_resource: dict[str, dict[str, str]] = {
-                "cpu": {"fio": "5.00", "collectl": "0.00"},
-                "memory": {"fio": "0.00", "collectl": "0.00"},
-            }
-            merged2 = result._merge_resource_data(test_config, second_resource)
+        # A top directory with an OSD output file
+        # 2 snapshots: 25% + 35% -> average 30.0 core-units / 4 cores = 7.50%
+        # memory: (0.6 + 0.8) / 2 = 0.70%
+        top_dir = results_dir / "top"
+        top_dir.mkdir()
+        top_content = (
+            "top - 14:32:01 up 2 days\n"
+            "Tasks: 1 total\n\n"
+            "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n"
+            "12345 ceph      20   0  1.234g 234.0m  12.0m S  25.0   0.6   1:23.45 crimson-osd\n\n"
+            "top - 14:32:02 up 2 days\n"
+            "Tasks: 1 total\n\n"
+            "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n"
+            "12345 ceph      20   0  1.234g 234.0m  12.0m S  35.0   0.8   1:24.50 crimson-osd\n"
+        )
+        (top_dir / "osd_0.out").write_text(top_content, encoding="utf8")
 
-            # FIO CPU is summed (5 + 5 = 10)
-            assert float(merged2["cpu"]["fio"]) == pytest.approx(10.00)
-            # Collectl CPU is NOT halved to 30.00; it remains 60.00
-            assert float(merged2["cpu"]["collectl"]) == pytest.approx(60.00)
+        with patch("os.cpu_count", return_value=cpu_count):
+            entry = _iodepth_entry(RBDFIO(results_dir, "json_output").get())
 
-
-# Made with Bob
+        # FIO CPU is summed across 3 volumes
+        assert float(entry["cpu"]["fio"]) == pytest.approx(per_volume_fio_cpu * 3, rel=0.01)
+        # Collectl CPU is averaged across 3 volume passes, so it remains 50.00
+        assert float(entry["cpu"]["collectl"]) == pytest.approx(50.00, rel=0.01)
+        # Top CPU is averaged across 3 volume passes, so it remains 7.50
+        assert float(entry["cpu"]["top"]) == pytest.approx(7.50, rel=0.01)
+        # Top memory is averaged across 3 volume passes, so it remains 0.70
+        assert float(entry["memory"]["top"]) == pytest.approx(0.70, rel=0.01)
