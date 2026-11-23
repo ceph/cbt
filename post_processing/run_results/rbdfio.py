@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Literal, Union, cast
 
 from post_processing.common import sum_mean_values, sum_standard_deviation_values
-from post_processing.post_processing_types import IodepthDataType, TimeSeriesDataPoint, TimeSeriesFormatType
+from post_processing.post_processing_types import (
+    IodepthDataType,
+    IoDetailsType,
+    TimeSeriesDataPoint,
+    TimeSeriesFormatType,
+)
 from post_processing.run_results.benchmark_result import BenchmarkResult
 from post_processing.run_results.benchmarks.fio import FIO
 from post_processing.run_results.resource_result import ResourceResult
@@ -50,9 +55,7 @@ class RBDFIO(RunResult):
             if re.search(rf"{file_name_root}.\d+$", f"{path}")
         ]
 
-    def _sum_io_details(
-        self, existing_values: Union[str, IodepthDataType], new_values: IodepthDataType
-    ) -> IodepthDataType:
+    def _sum_io_details(self, existing_values: Union[str, IodepthDataType], new_values: IoDetailsType) -> IoDetailsType:
         """
         Aggregate IO statistics from multiple volumes by summing values and computing
         weighted averages for latency and standard deviation.
@@ -65,27 +68,48 @@ class RBDFIO(RunResult):
             Combined IO statistics with properly weighted latency and standard deviation
         """
         assert isinstance(existing_values, dict)
-        combined_data: IodepthDataType = {}
+        combined_data: IoDetailsType = {}
 
-        simple_sum_values: list[str] = ["io_bytes", "iops", "bandwidth_bytes"]
+        for value in ["io_bytes", "iops", "bandwidth_bytes"]:
+            combined_data[value] = f"{float(str(existing_values[value])) + float(str(new_values[value]))}"
 
-        for value in simple_sum_values:
-            combined_data[value] = f"{float(existing_values[value]) + float(new_values[value])}"
+        existing_total_ios = int(str(existing_values["total_ios"]))
+        new_total_ios = int(str(new_values["total_ios"]))
+        total_ios = existing_total_ios + new_total_ios
+        combined_data["total_ios"] = f"{total_ios}"
 
-        combined_data["total_ios"] = f"{int(existing_values['total_ios']) + int(new_values['total_ios'])}"
+        if total_ios == 0:
+            combined_data["latency"] = "0.0"
+            combined_data["std_deviation"] = "0.0"
+            return combined_data
 
-        latencies: list[float] = [float(existing_values["latency"]), float(new_values["latency"])]
-        operations: list[int] = [int(existing_values["total_ios"]), int(new_values["total_ios"])]
-        std_deviations: list[float] = [float(existing_values["std_deviation"]), float(new_values["std_deviation"])]
+        existing_lat = float(str(existing_values["latency"]))
+        new_lat = float(str(new_values["latency"]))
+        existing_std = float(str(existing_values["std_deviation"]))
+        new_std = float(str(new_values["std_deviation"]))
 
-        combined_latency: float = sum_mean_values(
-            latencies,
-            num_ops=operations,
-            total_ios=int(combined_data["total_ios"]),
+        if existing_total_ios == 0:
+            combined_data["latency"] = f"{new_lat}"
+            combined_data["std_deviation"] = f"{new_std}"
+            return combined_data
+
+        if new_total_ios == 0:
+            combined_data["latency"] = f"{existing_lat}"
+            combined_data["std_deviation"] = f"{existing_std}"
+            return combined_data
+
+        combined_latency = sum_mean_values(
+            [existing_lat, new_lat],
+            num_ops=[existing_total_ios, new_total_ios],
+            total_ios=total_ios,
         )
 
-        combined_std_dev: float = sum_standard_deviation_values(
-            std_deviations, operations, latencies, int(combined_data["total_ios"]), combined_latency
+        combined_std_dev = sum_standard_deviation_values(
+            [existing_std, new_std],
+            [existing_total_ios, new_total_ios],
+            [existing_lat, new_lat],
+            total_ios,
+            combined_latency,
         )
 
         combined_data["latency"] = f"{combined_latency}"
@@ -235,7 +259,7 @@ class RBDFIO(RunResult):
             "timestamp_at_max_bandwidth": f"{timestamp_at_max_bandwidth:.6f}",
             "maximum_latency": f"{maximum_latency:.6f}",
             "timestamp_at_max_latency": f"{timestamp_at_max_latency:.6f}",
-            "maximum_cpu_usage": "0.00",  # TODO: Add CPU/memory tracking
+            "maximum_cpu_usage": "0.00",
             "maximum_memory_usage": "0.00",
         }
 

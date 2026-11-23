@@ -12,7 +12,7 @@ from pathlib import Path
 from re import Pattern
 from typing import Any, Callable, Optional, Union, cast
 
-from post_processing.post_processing_types import CommonFormatDataType
+from post_processing.post_processing_types import CommonFormatDataType, IodepthDataType
 
 log: Logger = getLogger("cbt")
 
@@ -151,9 +151,11 @@ def get_latency_throughput_from_file(file_path: Path) -> tuple[str, str]:
     # The blocksize will be the same for every data point in the file.
     # We can therefore read the blocksize from the first data point
     keys: list[str] = list(data)
-    key_data: Union[str, dict[str, str]] = data[keys[0]]
+    key_data: Union[str, IodepthDataType] = data[keys[0]]
     assert isinstance(key_data, dict)
-    blocksize: int = int(int(key_data["blocksize"]) / 1024)
+    blocksize_val = key_data["blocksize"]
+    assert isinstance(blocksize_val, (str, int, float))
+    blocksize: int = int(int(blocksize_val) / 1024)
     throughput_key: str = "maximum_iops"
     latency_key: str = "latency_at_max_iops"
     throughput = data[throughput_key]
@@ -502,6 +504,9 @@ def sum_mean_values(latencies: list[float], num_ops: list[int], total_ios: int) 
 
     combined mean = sum( mean * num_ops ) / total operations
     """
+    if total_ios == 0:
+        return 0.0
+
     weighted_latency: float = 0
 
     # for the combined mean we need to store mean_latency * num_ops for each

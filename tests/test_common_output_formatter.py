@@ -6,7 +6,9 @@ Unit tests for the CommonOutputFormatter class
 #
 # We are OK to ignore private use in unit tests as the whole point of the tests
 # is to validate the functions contained in the module
+# pylint: disable=protected-access
 
+import json
 import re
 import shutil
 import tempfile
@@ -200,6 +202,87 @@ class TestCommonOutputFormatter(unittest.TestCase):
         # Should use the directory name above the file
         self.assertEqual(len(formatter._all_test_run_ids), 1)
         self.assertIn("workload", formatter._all_test_run_ids)
+
+    def test_single_node_suffixed_directory_golden_run(self) -> None:
+        """
+        Characterisation test: a realistic single-node archive with host-suffixed
+        directory (<workload>.<host>) is processed end-to-end to produce intermediate JSON.
+        """
+        archive_path = Path(self.temp_dir)
+        run_dir = (
+            archive_path
+            / "results"
+            / "00000000"
+            / "id-806228fa"
+            / "randwrite_4k.client1.example.com"
+            / "rbdfio"
+            / "numjobs-001"
+            / "total_iodepth-000016"
+            / "iodepth-000016"
+        )
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        fio_data = {
+            "global options": {
+                "bs": "4096",
+                "rw": "randwrite",
+                "iodepth": "16",
+                "numjobs": "1",
+                "runtime": "60",
+            },
+            "jobs": [
+                {
+                    "read": {
+                        "io_bytes": 0,
+                        "bw_bytes": 0,
+                        "iops": 0.0,
+                        "total_ios": 0,
+                        "clat_ns": {"mean": 0.0, "stddev": 0.0},
+                    },
+                    "write": {
+                        "io_bytes": 1000000000,
+                        "bw_bytes": 16666666,
+                        "iops": 4000.0,
+                        "total_ios": 244140,
+                        "clat_ns": {"mean": 4000000.0, "stddev": 200000.0},
+                    },
+                    "sys_cpu": 5.5,
+                    "usr_cpu": 10.2,
+                }
+            ],
+        }
+        (run_dir / "json_output.0").write_text(json.dumps(fio_data))
+
+        collectl_dir = run_dir / "collectl"
+        collectl_dir.mkdir()
+        (collectl_dir / "client1.example.com-20260619.cpu").write_text(
+            "#Date;Time;[CPU:0]Totl%\n20260619;17:06:30;45\n"
+        )
+
+        formatter = CommonOutputFormatter(str(archive_path))
+        formatter.process()
+
+        vis_file = (
+            archive_path
+            / "results"
+            / "00000000"
+            / "id-806228fa"
+            / "randwrite_4k.client1.example.com"
+            / "visualisation"
+            / "4096_1_randwrite.json"
+        )
+        self.assertTrue(vis_file.exists(), f"Expected {vis_file} to be created")
+
+        with vis_file.open(encoding="utf8") as f:
+            output_data = json.load(f)
+
+        self.assertIn("16", output_data)
+        iodepth_data = output_data["16"]
+        self.assertEqual(iodepth_data["iops"], "4000.0")
+        self.assertEqual(iodepth_data["bandwidth_bytes"], "16666666")
+        self.assertEqual(output_data["benchmark"], "rbdfio")
+        self.assertIn("cpu", iodepth_data)
+        self.assertEqual(iodepth_data["cpu"]["collectl"], "45.00")
 
 
 if __name__ == "__main__":

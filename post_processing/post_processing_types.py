@@ -16,7 +16,8 @@ HandlerType = dict[str, dict[str, str]]
 JobsDataType = list[dict[str, Union[str, dict[str, Union[int, float, dict[str, Union[int, float]]]]]]]
 
 # Common formatter data types
-IodepthDataType = dict[str, str]
+IoDetailsType = dict[str, str]
+IodepthDataType = dict[str, Union[str, dict[str, str]]]
 CommonFormatDataType = dict[str, Union[str, IodepthDataType]]
 
 # Common formatter internal data types
@@ -25,7 +26,7 @@ InternalNumJobsDataType = dict[str, InternalBlocksizeDataType]
 InternalFormattedOutputType = dict[str, InternalNumJobsDataType]
 
 # Plotter types
-PlotDataType = dict[str, dict[str, str]]
+PlotDataType = dict[str, IodepthDataType]
 
 
 class CPUPlotType(Enum):
