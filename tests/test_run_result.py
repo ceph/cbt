@@ -344,8 +344,8 @@ class TestConvertFile:
 
             result = RBDFIO(path, "json_output")
 
-            # Should raise an exception
-            with pytest.raises(Exception):
+            # Invalid JSON is read as an empty result, which BenchmarkResult rejects
+            with pytest.raises(ValueError, match="is empty"):
                 result._convert_file(test_file)
 
 

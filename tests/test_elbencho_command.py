@@ -12,8 +12,16 @@ from command.elbencho_command import ElbenchoCommand
 _AUTH = {"config": "access_key=AK;secret_key=SK;url=http://rgw:7480"}
 
 
-def _cmd(workload, bs="4k", threads=1, iodepth=1, run_dir="/tmp/run",
-         auth=_AUTH, cmd_path="/usr/local/bin/elbencho", set_executable=True):
+def _cmd(
+    workload,
+    bs="4k",
+    threads=1,
+    iodepth=1,
+    run_dir="/tmp/run",
+    auth=_AUTH,
+    cmd_path="/usr/local/bin/elbencho",
+    set_executable=True,
+):
     # Auth reaches the command as flat string options (as it does through the
     # Workloads pipeline), not a separate constructor argument.
     options = {
@@ -38,11 +46,11 @@ class TestParseBlocksizeToBytes(unittest.TestCase):
             "128k": 131072,
             "1m": 1048576,
             "1g": 1073741824,
-            "512": 512,          # no suffix -> raw bytes
-            "4K": 4096,          # case-insensitive
+            "512": 512,  # no suffix -> raw bytes
+            "4K": 4096,  # case-insensitive
             "2M": 2097152,
-            "1.5k": 1536,        # fractional multiplier
-            " 4k ": 4096,        # surrounding whitespace tolerated
+            "1.5k": 1536,  # fractional multiplier
+            " 4k ": 4096,  # surrounding whitespace tolerated
         }
         for text, expected in cases.items():
             with self.subTest(blocksize=text):
@@ -60,9 +68,7 @@ class TestBuildAuthFlags(unittest.TestCase):
     def test_full_config_exact_order(self):
         # retry=9 is an unknown key and must be dropped; the emitted flags must
         # be endpoints -> key -> secret in that order.
-        flags = ElbenchoCommand.build_auth_flags(
-            {"config": "access_key=AK;secret_key=SK;url=http://rgw:7480;retry=9"}
-        )
+        flags = ElbenchoCommand.build_auth_flags({"config": "access_key=AK;secret_key=SK;url=http://rgw:7480;retry=9"})
         self.assertEqual(
             ["--s3endpoints", "http://rgw:7480", "--s3key", "AK", "--s3secret", "SK"],
             flags,
@@ -89,16 +95,14 @@ class TestBuildAuthFlags(unittest.TestCase):
 
     def test_session_token_appended_after_config(self):
         self.assertEqual(
-            ["--s3endpoints", "http://rgw:7480", "--s3key", "AK", "--s3secret", "SK",
-             "--s3authtoken", "tok"],
+            ["--s3endpoints", "http://rgw:7480", "--s3key", "AK", "--s3secret", "SK", "--s3authtoken", "tok"],
             ElbenchoCommand.build_auth_flags(
                 {"config": "access_key=AK;secret_key=SK;url=http://rgw:7480", "s3_session_token": "tok"}
             ),
         )
 
     def test_token_only(self):
-        self.assertEqual(["--s3authtoken", "tok"],
-                         ElbenchoCommand.build_auth_flags({"s3_session_token": "tok"}))
+        self.assertEqual(["--s3authtoken", "tok"], ElbenchoCommand.build_auth_flags({"s3_session_token": "tok"}))
 
     def test_empty_auth_and_empty_config_emit_nothing(self):
         self.assertEqual([], ElbenchoCommand.build_auth_flags({}))
@@ -121,12 +125,24 @@ class TestGenerateFullCommand(unittest.TestCase):
         # Every optional field set, plus a session token, at a custom exe/run dir.
         # Pins flag ordering end-to-end.
         workload = {
-            "s3_bucket": "bkt", "mode": "write", "size": "4g", "num_objects": 100,
-            "num_dirs": 4, "duration": 30, "deldirs": True, "s3nompcheck": True,
-            "hosts": "c1,c2", "s3_region": "us-east-1", "mkdirs": True,
+            "s3_bucket": "bkt",
+            "mode": "write",
+            "size": "4g",
+            "num_objects": 100,
+            "num_dirs": 4,
+            "duration": 30,
+            "deldirs": True,
+            "s3nompcheck": True,
+            "hosts": "c1,c2",
+            "s3_region": "us-east-1",
+            "mkdirs": True,
         }
         cmd = _cmd(
-            workload, bs="128k", threads=8, iodepth=16, run_dir="/tmp/myrun",
+            workload,
+            bs="128k",
+            threads=8,
+            iodepth=16,
+            run_dir="/tmp/myrun",
             cmd_path="/opt/elbencho",
             auth={"config": "access_key=AK;secret_key=SK;url=http://rgw:7480", "s3_session_token": "tok"},
         )
@@ -144,8 +160,17 @@ class TestGenerateFullCommand(unittest.TestCase):
         # A minimal workload must not leak flags for options the user didn't set
         # (e.g. "--files None" or an always-on "--mkdirs").
         cmd = _cmd({"s3_bucket": "bkt", "mode": "write"})
-        for flag in ["--size", "--files", "--dirs", "--timelimit", "--deldirs",
-                     "--s3nompcheck", "--hosts", "--mkdirs", "--s3authtoken"]:
+        for flag in [
+            "--size",
+            "--files",
+            "--dirs",
+            "--timelimit",
+            "--deldirs",
+            "--s3nompcheck",
+            "--hosts",
+            "--mkdirs",
+            "--s3authtoken",
+        ]:
             with self.subTest(flag=flag):
                 self.assertNotIn(flag, cmd)
 

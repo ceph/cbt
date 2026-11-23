@@ -54,7 +54,7 @@ class TestCollectlResourceInitialization:
             collectl_dir = base_path / "collectl"
             collectl_dir.mkdir()
 
-            with pytest.raises(FileNotFoundError, match="No .cpu files found"):
+            with pytest.raises(FileNotFoundError, match=r"No \.cpu files found"):
                 CollectlResource(file_path)
 
 

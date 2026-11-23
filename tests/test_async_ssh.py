@@ -30,7 +30,7 @@ class TestSshArgvConstruction(unittest.TestCase):
 
     @patch.dict("settings.cluster", {"user": "bob"}, clear=True)
     def test_ssh_args_with_user(self):
-        self.assertEqual(_SSH_BASE + ["-l", "bob"], AsyncSSHExecutor()._build_ssh_args())
+        self.assertEqual([*_SSH_BASE, "-l", "bob"], AsyncSSHExecutor()._build_ssh_args())
 
     def test_scp_args(self):
         self.assertEqual(
@@ -43,14 +43,14 @@ class TestSshArgvConstruction(unittest.TestCase):
     def test_run_command_passes_expected_argv(self, mock_exec):
         mock_exec.return_value = _make_proc(returncode=0)
         AsyncSSHExecutor().run_command("h1", "ls -l")
-        self.assertEqual(list(mock_exec.call_args.args), _SSH_BASE + ["h1", "ls -l"])
+        self.assertEqual(list(mock_exec.call_args.args), [*_SSH_BASE, "h1", "ls -l"])
 
     @patch.dict("settings.cluster", {"user": "bob"}, clear=True)
     @patch("remote.async_ssh.asyncio.create_subprocess_exec", new_callable=AsyncMock)
     def test_run_command_includes_user_in_argv(self, mock_exec):
         mock_exec.return_value = _make_proc(returncode=0)
         AsyncSSHExecutor().run_command("h1", "whoami")
-        self.assertEqual(list(mock_exec.call_args.args), _SSH_BASE + ["-l", "bob", "h1", "whoami"])
+        self.assertEqual(list(mock_exec.call_args.args), [*_SSH_BASE, "-l", "bob", "h1", "whoami"])
 
 
 class TestRunCommandResults(unittest.TestCase):

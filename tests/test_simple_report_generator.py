@@ -24,7 +24,7 @@ class TestSimpleReportGenerator(unittest.TestCase):
         """Set up test fixtures"""
         self.temp_dir = tempfile.mkdtemp()
         self.archive_dir = Path(self.temp_dir) / "test_archive"
-        
+
         # Use new nested structure: operation/visualisation/
         self.vis_dir = self.archive_dir / "read" / "visualisation"
         self.vis_dir.mkdir(parents=True)
@@ -112,62 +112,62 @@ class TestSimpleReportGenerator(unittest.TestCase):
         """Test report generation with new directory structure (operation/visualisation)"""
         # Clean up legacy structure
         shutil.rmtree(self.vis_dir, ignore_errors=True)
-        
+
         # Create new structure: archive/operation/visualisation/
         randread_vis = self.archive_dir / "randread" / "visualisation"
         randread_vis.mkdir(parents=True)
         test_data = {"data": [{"x": 1, "y": 100}]}
         with open(randread_vis / "4096_1_randread.json", "w") as f:
             json.dump(test_data, f)
-        
+
         randwrite_vis = self.archive_dir / "randwrite" / "visualisation"
         randwrite_vis.mkdir(parents=True)
         with open(randwrite_vis / "8192_1_randwrite.json", "w") as f:
             json.dump(test_data, f)
-        
+
         output_dir = f"{self.temp_dir}/output"
-        
+
         generator = SimpleReportGenerator(
             archive_directories=[str(self.archive_dir)],
             output_directory=output_dir,
         )
-        
+
         # With new nested structure, _data_directories contains one entry per operation
         # So with 2 operations (randread, randwrite), we have 2 data directories
         self.assertEqual(len(generator._data_directories), 2)
         self.assertIn(randread_vis, generator._data_directories)
         self.assertIn(randwrite_vis, generator._data_directories)
-    
+
     @patch("post_processing.reports.simple_report_generator.SimplePlotter")
     def test_new_structure_creates_plots_per_operation(self, mock_plotter_class: MagicMock) -> None:
         """Test that plots are created for new structure with multiple operations"""
         # Clean up legacy structure
         shutil.rmtree(self.vis_dir, ignore_errors=True)
-        
+
         # Create new structure with multiple operations
         randread_vis = self.archive_dir / "randread" / "visualisation"
         randread_vis.mkdir(parents=True)
         test_data = {"data": [{"x": 1, "y": 100}]}
         with open(randread_vis / "4096_1_randread.json", "w") as f:
             json.dump(test_data, f)
-        
+
         randwrite_vis = self.archive_dir / "randwrite" / "visualisation"
         randwrite_vis.mkdir(parents=True)
         with open(randwrite_vis / "8192_1_randwrite.json", "w") as f:
             json.dump(test_data, f)
-        
+
         output_dir = f"{self.temp_dir}/output"
-        
+
         mock_plotter = MagicMock()
         mock_plotter_class.return_value = mock_plotter
-        
+
         generator = SimpleReportGenerator(
             archive_directories=[str(self.archive_dir)],
             output_directory=output_dir,
         )
-        
+
         generator._copy_images()
-        
+
         # With new nested structure, SimplePlotter is called once per operation directory
         # So with 2 operations (randread, randwrite), it should be called twice
         self.assertEqual(mock_plotter_class.call_count, 2)

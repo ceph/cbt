@@ -1,29 +1,32 @@
-""" Unit tests for the Common class """
+"""Unit tests for the Common class"""
 
-import uuid
-import shutil
-import warnings
 import os
+import shutil
 import tempfile
 import unittest
 import unittest.mock
+import uuid
+import warnings
+
 import common
 
 VAR_NAME = "CBT_TEST_NODES"
 MSG = f"No test VM provided. Set {VAR_NAME} env var"
+
 
 def iter_nodes(nodes):
     """
     Iterator to produce each individual node
     """
     for node in nodes.split(","):
-        if '@' in node:
+        if "@" in node:
             node = node.split("@", 1)[1]
         yield node
 
 
 class TestCommon(unittest.TestCase):
-    """ Sanity tests for common.py """
+    """Sanity tests for common.py"""
+
     def test_mkdirp(self):
         """
         Can create a directory
@@ -31,7 +34,7 @@ class TestCommon(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             with tempfile.TemporaryDirectory() as tmp:
-                fname = os.path.join(tmp, 'a', 'b12', 'zasdasd')
+                fname = os.path.join(tmp, "a", "b12", "zasdasd")
                 common.mkdir_p(fname)
                 self.assertTrue(os.path.isdir(fname))
                 shutil.rmtree(fname)
@@ -57,7 +60,7 @@ class TestCommon(unittest.TestCase):
         proc = common.pdsh(nodes, "unknown_cmd_131321")
         proc.communicate()
         # log(proc)
-        #self.assertNotEqual(proc.myrtncode, 0)
+        # self.assertNotEqual(proc.myrtncode, 0)
         self.assertEqual(proc.myrtncode, 0)
 
     @unittest.skipIf(VAR_NAME not in os.environ, MSG)
@@ -69,22 +72,22 @@ class TestCommon(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             tmp = uuid.uuid4().hex
-            fname = os.path.join('/tmp/',tmp)
+            fname = os.path.join("/tmp/", tmp)
             val = str(uuid.uuid1())
-            with open(fname, "w", encoding='UTF-8') as fd:
+            with open(fname, "w", encoding="UTF-8") as fd:
                 fd.write(val)
             try:
                 common.pdcp(nodes, None, fname, fname).communicate()
                 out, _err = common.pdsh(nodes, "cat " + fname).communicate()
                 for _node in iter_nodes(nodes):
-                    #self.assertIn(f"{node}: {val}\n", out)
-                    self.assertIn(out,f"{val}\n")
+                    # self.assertIn(f"{node}: {val}\n", out)
+                    self.assertIn(out, f"{val}\n")
             finally:
                 pass
 
             common.rpdcp(nodes, None, fname, os.path.dirname(fname)).communicate()
             try:
-                with open(fname,encoding='UTF-8') as fd:
+                with open(fname, encoding="UTF-8") as fd:
                     self.assertEqual(fd.read(), val)
             finally:
                 try:
