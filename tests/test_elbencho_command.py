@@ -11,6 +11,9 @@ from command.elbencho_command import ElbenchoCommand
 
 _AUTH = {"config": "access_key=AK;secret_key=SK;url=http://rgw:7480"}
 
+# Boolean workload options and the elbencho flag each one switches on.
+_BOOLEAN_FLAGS = {"deldirs": "--deldirs", "s3nompcheck": "--s3nompcheck", "mkdirs": "--mkdirs"}
+
 
 def _cmd(
     workload,
@@ -123,7 +126,7 @@ class TestGenerateFullCommand(unittest.TestCase):
 
     def test_all_options_command_exact(self):
         # Every optional field set, plus a session token, at a custom exe/run dir.
-        # Pins flag ordering end-to-end.
+        # Pins flag ordering end-to-end. Booleans are the "true" strings the Workloads layer produces.
         workload = {
             "s3_bucket": "bkt",
             "mode": "write",
@@ -131,11 +134,11 @@ class TestGenerateFullCommand(unittest.TestCase):
             "num_objects": 100,
             "num_dirs": 4,
             "duration": 30,
-            "deldirs": True,
-            "s3nompcheck": True,
+            "deldirs": "true",
+            "s3nompcheck": "true",
             "hosts": "c1,c2",
             "s3_region": "us-east-1",
-            "mkdirs": True,
+            "mkdirs": "true",
         }
         cmd = _cmd(
             workload,
@@ -173,6 +176,21 @@ class TestGenerateFullCommand(unittest.TestCase):
         ]:
             with self.subTest(flag=flag):
                 self.assertNotIn(flag, cmd)
+
+    def test_boolean_flags_are_emitted_when_true(self) -> None:
+        """The Workloads layer hands boolean options to the command as "true"/"false" strings."""
+        for option, flag in _BOOLEAN_FLAGS.items():
+            with self.subTest(option=option):
+                cmd = _cmd({"s3_bucket": "bkt", "mode": "write", option: "true"})
+                self.assertIn(flag, cmd)
+
+    def test_boolean_flags_are_omitted_when_false(self) -> None:
+        """The string "false" is non-empty and so truthy: it must still not switch the flag on."""
+        for option, flag in _BOOLEAN_FLAGS.items():
+            for value in ("false", False):
+                with self.subTest(option=option, value=value):
+                    cmd = _cmd({"s3_bucket": "bkt", "mode": "write", option: value})
+                    self.assertNotIn(flag, cmd)
 
     def test_num_objects_zero_still_emits_files_flag(self):
         # 0 is a meaningful value: the builder keys off "is not None", so

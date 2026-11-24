@@ -94,9 +94,9 @@ class ElbenchoCommand(Command):
             value = options.get(key)
             parsed_options[key] = str(value) if value is not None else None
 
-        # Boolean presence flags: "true" when truthy, None otherwise.
+        # Boolean presence flags: the workloads layer stringifies booleans, so only the string "true" turns one on.
         for key in ("deldirs", "s3nompcheck", "mkdirs"):
-            parsed_options[key] = "true" if options.get(key) else None
+            parsed_options[key] = "true" if options.get(key) == "true" else None
 
         parsed_options["s3_auth_config"] = options.get("s3_auth_config", "")
         parsed_options["s3_session_token"] = options.get("s3_session_token", "")

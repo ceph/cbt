@@ -4,6 +4,7 @@ Validates construction, config handling, factory integration,
 CLI command building, run loop fan-out, and pdsh-free lifecycle.
 """
 
+import shutil
 import tempfile
 import unittest
 from typing import Any, Optional
@@ -366,6 +367,82 @@ class TestRunLoop(unittest.TestCase):
             any("elbencho/write_131072/threads-008/iodepth-016" in d for d in run_dirs),
             f"byte-based run dir not found in: {run_dirs}",
         )
+
+
+class TestElbenchoBooleanOptions(unittest.TestCase):
+    """Boolean workload options as a test plan supplies them: real booleans, stringified by Workloads."""
+
+    _FLAGS = ("--deldirs", "--s3nompcheck", "--mkdirs")
+
+    cluster: Ceph
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
+        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call]
+
+    def setUp(self) -> None:
+        # run() writes benchmark_config.yaml into archive_dir, so give each test its own directory.
+        self.archive_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.archive_dir)
+
+        # run() wraps each command group in monitoring; stub it so the tests don't touch real monitors.
+        for target in (
+            "monitoring.monitoring_factory.MonitoringFactory.start",
+            "monitoring.monitoring_factory.MonitoringFactory.stop",
+        ):
+            patcher = patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _run(self, **boolean_options: bool) -> str:
+        """Run a one-cell write workload through Elbencho.run() and return the single command that was sent."""
+        config = dict(
+            _MINIMAL_CONFIG,
+            cmd_path="/usr/local/bin/elbencho",
+            auth={},
+            workloads={
+                "w": {
+                    "s3_bucket": "bkt",
+                    "mode": "write",
+                    "blocksize": ["4k"],
+                    "threads": [1],
+                    "iodepth": [1],
+                    **boolean_options,
+                }
+            },
+        )
+        benchmark = benchmarkfactory.get_object(  # type: ignore[no-untyped-call]
+            self.archive_dir, self.cluster, "elbencho", config
+        )
+        assert isinstance(benchmark, Elbencho)
+
+        with (
+            patch.object(AsyncSSHExecutor, "run_command", return_value=[]) as run_command,
+            patch.object(AsyncSSHExecutor, "make_remote_dir"),
+            patch.object(AsyncSSHExecutor, "sync_files"),
+            patch.object(Elbencho, "dropcaches"),
+            patch.object(Ceph, "dump_config"),
+            patch.object(Ceph, "set_osd_param"),
+        ):
+            benchmark.run()
+
+        self.assertEqual(1, run_command.call_count)
+        return str(run_command.call_args.args[1])
+
+    def test_options_set_to_true_emit_their_flags(self) -> None:
+        """A test plan with `deldirs: true` (and the others) reaches the command line as flags."""
+        cmd = self._run(deldirs=True, s3nompcheck=True, mkdirs=True)
+
+        for flag in self._FLAGS:
+            self.assertIn(flag, cmd, f"{flag} must be emitted for an option set to true")
+
+    def test_options_set_to_false_emit_no_flags(self) -> None:
+        """Workloads stringifies False to "false", which must not switch the flags on."""
+        cmd = self._run(deldirs=False, s3nompcheck=False, mkdirs=False)
+
+        for flag in self._FLAGS:
+            self.assertNotIn(flag, cmd, f"{flag} must not be emitted for an option set to false")
 
 
 class TestElbenchoNoPdsh(unittest.TestCase):
