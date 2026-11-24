@@ -30,7 +30,7 @@ from post_processing.common import (
 )
 
 
-class TestCommonFunctions(unittest.TestCase):
+class TestCommonFunctions(unittest.TestCase):  # pylint: disable=too-many-public-methods
     """Test cases for common.py utility functions"""
 
     def test_get_blocksize_percentage_operation_from_file_name_simple(self) -> None:
@@ -134,7 +134,8 @@ class TestCommonFunctions(unittest.TestCase):
             temp_path = Path(f.name)
 
         try:
-            cpu, memory = get_resource_details_from_file(temp_path)
+            # pylint cannot see that the cast() in get_resource_details_from_file gives a 2-tuple
+            cpu, memory = get_resource_details_from_file(temp_path)  # pylint: disable=unbalanced-tuple-unpacking
             self.assertEqual(cpu, "45.67")
             self.assertEqual(memory, "2048.89")
         finally:
@@ -149,7 +150,8 @@ class TestCommonFunctions(unittest.TestCase):
             temp_path = Path(f.name)
 
         try:
-            cpu, memory = get_resource_details_from_file(temp_path)
+            # pylint cannot see that the cast() in get_resource_details_from_file gives a 2-tuple
+            cpu, memory = get_resource_details_from_file(temp_path)  # pylint: disable=unbalanced-tuple-unpacking
             self.assertEqual(cpu, "0.00")
             self.assertEqual(memory, "0.00")
         finally:
@@ -483,6 +485,87 @@ class TestCommonFunctions(unittest.TestCase):
         """Test detecting non-precondition file"""
         path = Path("/some/path/regular_test.json")
         self.assertFalse(file_is_precondition(path))
+
+    def test_sum_standard_deviation_values_single_io_returns_zero(self) -> None:
+        """A single I/O has no spread, and must not divide by (total_ios - 1) == 0"""
+        result = sum_standard_deviation_values(
+            std_deviations=[0.0], operations=[1], latencies=[1000000.0], total_ios=1, combined_latency=1000000.0
+        )
+
+        self.assertEqual(result, 0.0, "A single I/O should have a standard deviation of 0")
+
+    def test_sum_standard_deviation_values_one_io_split_across_jobs_returns_zero(self) -> None:
+        """One I/O in total, spread over a read job and an empty write job, must not divide by zero"""
+        result = sum_standard_deviation_values(
+            std_deviations=[0.0, 0.0],
+            operations=[1, 0],
+            latencies=[1000000.0, 0.0],
+            total_ios=1,
+            combined_latency=1000000.0,
+        )
+
+        self.assertEqual(result, 0.0, "One I/O in total should have a standard deviation of 0")
+
+    def test_sum_standard_deviation_values_zero_total_ios_returns_zero(self) -> None:
+        """No I/O at all must not divide by (total_ios - 1) == -1 and take the root of a negative number"""
+        result = sum_standard_deviation_values(
+            std_deviations=[0.0], operations=[0], latencies=[0.0], total_ios=0, combined_latency=0.0
+        )
+
+        self.assertEqual(result, 0.0, "No I/O should give a standard deviation of 0")
+
+    def test_sum_standard_deviation_values_identical_latencies_returns_zero(self) -> None:
+        """
+        Floating point rounding can make the value under the square root very slightly
+        negative when every I/O has the same latency. Each of these latency / I/O count
+        pairs raised ValueError("math domain error") before the radicand was clamped.
+        """
+        for latency, total_ios in [(33333.3, 1000), (33333.3, 100000), (33333.3, 1000000), (123456.789, 100000)]:
+            with self.subTest(latency=latency, total_ios=total_ios):
+                combined_latency = sum_mean_values([latency], [total_ios], total_ios)
+
+                result = sum_standard_deviation_values(
+                    std_deviations=[0.0],
+                    operations=[total_ios],
+                    latencies=[latency],
+                    total_ios=total_ios,
+                    combined_latency=combined_latency,
+                )
+
+                self.assertEqual(result, 0.0, "Identical latencies should give a standard deviation of 0")
+
+    def test_sum_standard_deviation_values_single_job_returns_its_own_deviation(self) -> None:
+        """Combining one job with itself must give back that job's standard deviation"""
+        total_ios = 1000000
+        latency = 250000.0
+        std_deviation = 40000.0
+
+        result = sum_standard_deviation_values(
+            std_deviations=[std_deviation],
+            operations=[total_ios],
+            latencies=[latency],
+            total_ios=total_ios,
+            combined_latency=sum_mean_values([latency], [total_ios], total_ios),
+        )
+
+        self.assertAlmostEqual(result, std_deviation, places=3)
+
+    def test_sum_standard_deviation_values_two_jobs_matches_pooled_deviation(self) -> None:
+        """
+        Compare the combined value with the sample standard deviation of the whole data set.
+
+        Job A is the values 1, 2, 3 and job B is the values 4, 5, 6, so the combined
+        data set 1..6 has a sample standard deviation of sqrt(3.5).
+        """
+        result = sum_standard_deviation_values(
+            std_deviations=[1.0, 1.0],
+            operations=[3, 3],
+            latencies=[2.0, 5.0],
+            total_ios=6,
+            combined_latency=3.5,
+        )
+
+        self.assertAlmostEqual(result, 3.5**0.5, places=9)
 
     def test_sum_mean_values(self) -> None:
         """Test calculating combined mean from multiple means"""
