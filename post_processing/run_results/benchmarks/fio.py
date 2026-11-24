@@ -53,6 +53,10 @@ class FIO(BenchmarkResult):
         if "runtime" in fio_global_options:
             global_options_details["runtime_seconds"] = f"{fio_global_options['runtime']}"
 
+        # fio only reports log_avg_msec when it was set; _get_log_avg_msec() validates it and supplies the default
+        if "log_avg_msec" in fio_global_options:
+            global_options_details["log_avg_msec"] = f"{fio_global_options['log_avg_msec']}"
+
         # if rwmixread exists in the output then so does rwmixwrite
         if fio_global_options.get("rwmixread", None):
             # if "rwmixread" in fio_global_options.keys():
