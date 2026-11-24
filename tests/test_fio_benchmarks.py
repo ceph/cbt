@@ -6,15 +6,32 @@ Tests cover error handling, edge cases, and time-series data processing.
 
 import json
 import logging
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Union
 from unittest.mock import Mock, patch
 
+import pandas as pd
 import pytest
 
 from post_processing.post_processing_types import TimeSeriesFormatType
 from post_processing.run_results.benchmarks.fio import FIO
+
+# The shape of a single read/write section in fio's JSON output, as taken by the metric extraction helpers
+_JobData = dict[str, Union[int, float, dict[str, Union[int, float]]]]
+
+
+def _extract_int_metric(fio: FIO, job_data: _JobData, key: str) -> int:
+    """Call FIO._extract_int_metric directly: constructing an FIO wraps its error in a generic ValueError"""
+    # pylint: disable-next=protected-access
+    return fio._extract_int_metric(job_data, key, "read")
+
+
+def _extract_float_metric(fio: FIO, job_data: _JobData, key: str) -> float:
+    """Call FIO._extract_float_metric directly: constructing an FIO wraps its error in a generic ValueError"""
+    # pylint: disable-next=protected-access
+    return fio._extract_float_metric(job_data, key, "read")
 
 
 class TestFIOExtractMetrics:
@@ -52,13 +69,13 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"io_bytes": 1000, "total_ios": 50}
+            job_data: _JobData = {"io_bytes": 1000, "total_ios": 50}
 
-            result = fio._extract_int_metric(job_data, "io_bytes", "read")
+            result = _extract_int_metric(fio, job_data, "io_bytes")
             assert result == 1000
 
     def test_extract_int_metric_missing(self) -> None:
@@ -93,14 +110,14 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"io_bytes": 1000}
+            job_data: _JobData = {"io_bytes": 1000}
 
             with pytest.raises(ValueError, match="Missing or invalid 'total_ios'"):
-                fio._extract_int_metric(job_data, "total_ios", "read")
+                _extract_int_metric(fio, job_data, "total_ios")
 
     def test_extract_int_metric_wrong_type(self) -> None:
         """Test integer metric extraction with wrong type."""
@@ -134,14 +151,14 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"io_bytes": "not_an_int"}  # type: ignore[dict-item]
+            job_data: _JobData = {"io_bytes": "not_an_int"}  # type: ignore[dict-item]
 
             with pytest.raises(ValueError, match="expected int, got str"):
-                fio._extract_int_metric(job_data, "io_bytes", "read")
+                _extract_int_metric(fio, job_data, "io_bytes")
 
     def test_extract_float_metric_success(self) -> None:
         """Test successful float metric extraction."""
@@ -175,13 +192,13 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"iops": 10.5}
+            job_data: _JobData = {"iops": 10.5}
 
-            result = fio._extract_float_metric(job_data, "iops", "read")
+            result = _extract_float_metric(fio, job_data, "iops")
             assert result == 10.5
 
     def test_extract_float_metric_from_int(self) -> None:
@@ -216,13 +233,13 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"iops": 10}
+            job_data: _JobData = {"iops": 10}
 
-            result = fio._extract_float_metric(job_data, "iops", "read")
+            result = _extract_float_metric(fio, job_data, "iops")
             assert result == 10.0
 
     def test_extract_float_metric_wrong_type(self) -> None:
@@ -257,14 +274,14 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"iops": "not_a_float"}  # type: ignore[dict-item]
+            job_data: _JobData = {"iops": "not_a_float"}  # type: ignore[dict-item]
 
             with pytest.raises(ValueError, match="expected float, got str"):
-                fio._extract_float_metric(job_data, "iops", "read")
+                _extract_float_metric(fio, job_data, "iops")
 
 
 class TestFIOGetIODetails:
@@ -296,7 +313,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -336,7 +353,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             with pytest.raises(ValueError, match="Invalid job data structure"):
@@ -374,7 +391,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -418,7 +435,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -578,7 +595,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -619,12 +636,12 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            # Modify the path to non-existent directory
-            fio._resource_file_path = Path("/nonexistent/path/test.json")
+            # The results file has been read, so the directory it came from can now go away
+            shutil.rmtree(tmpdir)
 
             result = fio.get_timeseries_data()
 
@@ -681,7 +698,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             # Setup mocks
@@ -712,12 +729,12 @@ class TestFIOGetTimeseriesData:
     @patch("post_processing.run_results.benchmarks.fio.TimestampAligner")
     @patch("post_processing.run_results.benchmarks.fio.FIOLogParser")
     @patch("post_processing.run_results.benchmarks.fio.FIOTimeSeriesParser")
+    # The test wires up three mocked collaborators and the dataframes each one hands back
+    # pylint: disable-next=too-many-locals
     def test_get_timeseries_data_with_percentile_calculation(
         self, mock_parser_ts_class: Any, mock_parser_class: Any, mock_aligner_class: Any
     ) -> None:
         """Test that percentiles are calculated from clat data."""
-        import pandas as pd
-
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
             test_file = log_dir / "output.0"
@@ -756,7 +773,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             # Setup mock parser to return clat data
@@ -862,7 +879,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             # Setup mock parser to return None for clat
