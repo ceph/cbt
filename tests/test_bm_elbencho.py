@@ -479,12 +479,12 @@ class TestElbenchoNoPdsh(unittest.TestCase):
         settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
         cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call]
 
-    def _make(self) -> Elbencho:
+    def _make(self, workloads: Optional[dict[str, Any]] = None) -> Elbencho:
         cfg = dict(
             _MINIMAL_CONFIG,
             cmd_path="/usr/local/bin/elbencho",
             auth={},
-            workloads={},
+            workloads=workloads or {},
         )
         b = benchmarkfactory.get_object(  # type: ignore[no-untyped-call]
             self.archive_dir, self.cluster, "elbencho", cfg
@@ -514,23 +514,36 @@ class TestElbenchoNoPdsh(unittest.TestCase):
         self.assertIn("sync", commands)
         self.assertTrue(any("drop_caches" in cmd for cmd in commands))
 
-    @patch.object(AsyncSSHExecutor, "sync_files")
-    @patch.object(AsyncSSHExecutor, "make_remote_dir")
-    @patch.object(AsyncSSHExecutor, "run_command")
-    def test_run_does_not_call_pdsh(self, mock_exec: Any, _mock_mkdir: Any, _mock_sync: Any) -> None:
-        """run() never calls pdsh."""
-        mock_exec.return_value = []
-        b = self._make()
+    def test_run_does_not_call_pdsh(self) -> None:
+        """run() sends a real workload to the clients through the remote executor and never through pdsh."""
+        # run() writes benchmark_config.yaml into archive_dir, so use a directory of its own.
+        self.archive_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.archive_dir)
+        b = self._make(
+            {"w": {"s3_bucket": "bkt", "mode": "write", "blocksize": ["4k"], "threads": [1], "iodepth": [1]}}
+        )
+
+        # The cluster and monitoring still use pdsh, so they are stubbed out. Everything else, including the
+        # dropping of caches and the running of the workload, is Elbencho's own and goes through the executor.
         with (
-            patch.object(b, "dropcaches"),
-            patch.object(b.cluster, "dump_config"),
-            patch.object(b.cluster, "set_osd_param"),
+            patch.object(AsyncSSHExecutor, "run_command", return_value=[]) as run_command,
+            patch.object(AsyncSSHExecutor, "make_remote_dir"),
+            patch.object(AsyncSSHExecutor, "sync_files"),
+            patch.object(Ceph, "dump_config"),
+            patch.object(Ceph, "set_osd_param"),
             patch("monitoring.monitoring_factory.MonitoringFactory.start"),
             patch("monitoring.monitoring_factory.MonitoringFactory.stop"),
-            patch.object(b, "_run_workloads"),
+            patch.object(common, "pdsh") as common_pdsh,
+            patch("workloads.workloads.pdsh") as workloads_pdsh,
         ):
-            with patch.object(common, "pdsh", side_effect=AssertionError("pdsh called")):
-                b.run()
+            b.run()
+
+        self.assertTrue(
+            any("/usr/local/bin/elbencho" in call.args[1] for call in run_command.call_args_list),
+            "the workload must have been run through the remote executor",
+        )
+        common_pdsh.assert_not_called()
+        workloads_pdsh.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
