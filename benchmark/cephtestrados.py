@@ -84,7 +84,7 @@ class CephTestRados(Benchmark):
         logger.info('Running ceph_test_rados.')
         ps = []
         for i in range(1):
-            p = common.pdsh(settings.getnodes('clients'), self.mkcmd())
+            p = common.pdsh_checked(settings.getnodes('clients'), self.mkcmd())
             ps.append(p)
         for p in ps:
             p.wait()

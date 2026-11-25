@@ -146,7 +146,7 @@ class Fio(Benchmark):
         logger.info("Attempting to prefill fio files...")
         for ep_num in range(self.endpoints_per_client):
             logger.info("Prefilling endpoint %d/%d...", ep_num + 1, self.endpoints_per_client)
-            p = common.pdsh(settings.getnodes("clients"), self.prefill_command(ep_num))
+            p = common.pdsh_checked(settings.getnodes("clients"), self.prefill_command(ep_num))
             ps.append(p)
         for p in ps:
             p.wait()
@@ -245,7 +245,7 @@ class Fio(Benchmark):
         logger.info("Running fio %s test.", self.mode)
         ps = []
         for i in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes("clients"), self.run_command(i))
+            p = common.pdsh_checked(settings.getnodes("clients"), self.run_command(i))
             ps.append(p)
         for p in ps:
             p.wait()

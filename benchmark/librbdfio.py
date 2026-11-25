@@ -172,7 +172,7 @@ class LibrbdFio(Benchmark):
             number_of_volumes: int = len(self._iodepth_per_volume.keys())
             for i in range(number_of_volumes):
                 fio_cmd = self.mkfiocmd(i)
-                p = common.pdsh(settings.getnodes("clients"), fio_cmd)
+                p = common.pdsh_checked(settings.getnodes("clients"), fio_cmd)
                 ps.append(p)
             for p in ps:
                 p.wait()
@@ -349,7 +349,7 @@ class LibrbdFio(Benchmark):
                     f" --size {self.vol_size:d}M {self.names}"
                     f" --output-format={self.fio_out_format} > /dev/null"
                 )
-                p = common.pdsh(settings.getnodes("clients"), pre_cmd)
+                p = common.pdsh_checked(settings.getnodes("clients"), pre_cmd)
                 ps.append(p)
             for p in ps:
                 p.wait()

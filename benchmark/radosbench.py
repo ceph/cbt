@@ -210,7 +210,7 @@ class Radosbench(Benchmark):
                     stderr=objecter_log,
                     stdout=out_file,
                 )
-                p = common.pdsh(settings.getnodes("clients"), rados_bench_cmd)
+                p = common.pdsh_checked(settings.getnodes("clients"), rados_bench_cmd)
                 ps.append(p)
             for p in ps:
                 p.wait()

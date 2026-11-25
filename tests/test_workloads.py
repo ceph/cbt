@@ -134,7 +134,7 @@ class TestWorkloads(unittest.TestCase):
 
         self.assertNotIn("prefill", workloads._global_options)
 
-    @patch("workloads.workloads.pdsh")
+    @patch("workloads.workloads.pdsh_checked")
     @patch("workloads.workloads.make_remote_dir")
     @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
@@ -162,7 +162,7 @@ class TestWorkloads(unittest.TestCase):
         self.assertTrue(mock_monitoring.start.called)
         self.assertTrue(mock_monitoring.stop.called)
 
-    @patch("workloads.workloads.pdsh")
+    @patch("workloads.workloads.pdsh_checked")
     @patch("workloads.workloads.make_remote_dir")
     @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
@@ -224,7 +224,7 @@ class TestWorkloads(unittest.TestCase):
         # Should not raise an exception, just log an error
         workloads.run()
 
-    @patch("workloads.workloads.pdsh")
+    @patch("workloads.workloads.pdsh_checked")
     @patch("workloads.workloads.make_remote_dir")
     @patch("workloads.workloads.MonitoringFactory")
     @patch("workloads.workloads.getnodes")
