@@ -282,6 +282,86 @@ def test_perf_get_cpu_cycles_returns_none_when_cycles_missing() -> None:
         assert monitor.get_cpu_cycles("/tmp/output") is None
 
 
+_NOT_SUPPORTED_STAT = (
+    "# started on Sun Nov 22 04:51:22 2026\n"
+    "\n"
+    "\n"
+    " Performance counter stats for process id '13237':\n"
+    "\n"
+    "   <not supported>      cpu-cycles                       #      nan GHz  cycles_frequency     \n"
+    "\n"
+    "      11.323283524 seconds time elapsed\n"
+)
+
+_SUPPORTED_STAT = (
+    "# started on Sun Nov 22 04:51:22 2026\n"
+    "\n"
+    "\n"
+    " Performance counter stats for process id '13237':\n"
+    "\n"
+    "     1,234,567,890      cpu-cycles                       #      2.345 GHz  cycles_frequency     \n"
+    "\n"
+    "      11.323283524 seconds time elapsed\n"
+)
+
+_LEGACY_STAT = (
+    " Performance counter stats for process id '13237':\n"
+    "\n"
+    "     1,234,567,890      cycles                    #    2.345 GHz\n"
+    "\n"
+    "      11.323283524 seconds time elapsed\n"
+)
+
+
+def _get_cpu_cycles_for_files(file_contents: list[str]) -> Optional[int]:
+    """Run PerfMonitoring.get_cpu_cycles() against in-memory perf stat files."""
+    with (
+        patch("monitoring.monitoring.settings") as mock_base_settings,
+        patch("monitoring.perf_monitoring.os.path.isdir", return_value=True),
+        patch(
+            "monitoring.perf_monitoring.os.listdir",
+            return_value=[f"perf_stat.{index}" for index in range(len(file_contents))],
+        ),
+        patch(
+            "builtins.open",
+            side_effect=[mock_open(read_data=content).return_value for content in file_contents],
+        ),
+    ):
+        mock_base_settings.getnodes.return_value = "resolved-nodes"
+        mock_base_settings.cluster.get.side_effect = lambda key, default=None: {"user": "ceph"}.get(key, default)
+        monitor = PerfMonitoring({"args": _ARGS})
+
+        return monitor.get_cpu_cycles("/tmp/output")
+
+
+def test_perf_get_cpu_cycles_returns_none_when_counter_not_supported() -> None:
+    """get_cpu_cycles() returns None, not a ValueError, when perf reports the cycles counter as <not supported>."""
+    result = _get_cpu_cycles_for_files([_NOT_SUPPORTED_STAT, _NOT_SUPPORTED_STAT, _NOT_SUPPORTED_STAT])
+
+    assert result is None, f"Expected None for unsupported cycles counters, got {result!r}"
+
+
+def test_perf_get_cpu_cycles_parses_cpu_cycles_event_with_cycles_frequency_label() -> None:
+    """get_cpu_cycles() reads the count from a 'cpu-cycles ... cycles_frequency' line, not the trailing label."""
+    result = _get_cpu_cycles_for_files([_SUPPORTED_STAT, _SUPPORTED_STAT])
+
+    assert result == 2 * 1_234_567_890, f"Expected the two counts to be summed, got {result!r}"
+
+
+def test_perf_get_cpu_cycles_parses_legacy_cycles_event_name() -> None:
+    """get_cpu_cycles() still reads the count from older perf output that names the event 'cycles'."""
+    result = _get_cpu_cycles_for_files([_LEGACY_STAT])
+
+    assert result == 1_234_567_890, f"Expected the legacy cycles count, got {result!r}"
+
+
+def test_perf_get_cpu_cycles_returns_none_when_any_file_has_no_valid_count() -> None:
+    """get_cpu_cycles() returns None rather than a partial total if one file has no usable cycles count."""
+    result = _get_cpu_cycles_for_files([_SUPPORTED_STAT, _NOT_SUPPORTED_STAT])
+
+    assert result is None, f"Expected None instead of a partial total, got {result!r}"
+
+
 def test_perf_get_cpu_cycles_returns_none_when_no_perf_dir() -> None:
     """PerfMonitoring.get_cpu_cycles() returns None when the perf directory does not exist."""
     with (

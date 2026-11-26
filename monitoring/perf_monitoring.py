@@ -12,6 +12,10 @@ from monitoring.monitoring import Monitoring
 
 logger: Logger = getLogger("cbt")
 
+# Matches the perf stat cycles line, e.g. "1,234,567,890  cpu-cycles  # 2.345 GHz  cycles_frequency".
+# The count must be numeric, so "<not supported>" lines and the trailing "cycles_frequency" label never match.
+_CYCLES_LINE = re.compile(r"^\s*([\d,]+)\s+(?:cpu-)?cycles\b", re.M | re.I)
+
 
 class PerfMonitoring(Monitoring):
     """Monitoring backend that captures perf output.
@@ -87,14 +91,12 @@ class PerfMonitoring(Monitoring):
         total_cpu_cycles = 0
         for perf_out_fname in perf_stat_fnames:
             with open(f"{perf_dir_name}/{perf_out_fname}", encoding="utf-8") as perf_output_file:
-                match = re.search(r"(.*) cycles(.*?) .*", perf_output_file.read(), re.M | re.I)
-            if match:
-                cpu_cycles = match.group(1).strip()
-            else:
+                match = _CYCLES_LINE.search(perf_output_file.read())
+            if not match:
                 logger.warning(
-                    "get_cpu_cycles: no cycles line found in %s — returning None",
+                    "get_cpu_cycles: no numeric cycles count found in %s (counter may be unsupported) — returning None",
                     perf_out_fname,
                 )
                 return None
-            total_cpu_cycles = total_cpu_cycles + int(cpu_cycles.replace(",", ""))
+            total_cpu_cycles = total_cpu_cycles + int(match.group(1).replace(",", ""))
         return cast(Optional[int], total_cpu_cycles)
