@@ -109,6 +109,7 @@ cbt/
 ├── tests/                          # pytest suite — mirrors src layout
 │   ├── test_bm_<name>.py           # benchmark unit tests (one per benchmark)
 │   ├── test_bm_force_prefill.py    # force_prefill option across librbdfio / fio / hsbench
+│   ├── test_fio_command.py         # FioCommand option handling (via RbdFioCommand)
 │   ├── test_elbencho_command.py
 │   ├── test_workload.py
 │   ├── test_workloads.py
