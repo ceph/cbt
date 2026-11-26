@@ -130,8 +130,9 @@ class TestMemoryPlotter:
         # Pass a custom colour, but it should be ignored
         plotter.plot(x_data=x_data, colour="#FF0000")
 
-        # Verify plot was called (colour is determined internally)
+        # The line is drawn in the colour for its source, not the one that was passed in
         mock_memory_axes.plot.assert_called_once()
+        assert mock_memory_axes.plot.call_args.kwargs["color"] == MEMORY_SOURCE_COLOURS["default"]
 
     def test_plot_sets_y_label_on_axis(self) -> None:
         """Test that plot sets the y-axis label"""

@@ -224,8 +224,12 @@ class TestDirectoryComparisonPlotter(unittest.TestCase):
 
         plotter.draw_and_save()
 
-        # Verify that the plotter completed successfully
-        # (plot is called on a twinx axis, not the main axes directly)
+        # errorbar() is what draws each line, so it is called once per directory. The std_deviation in
+        # the data (0.5 ms) must not reach it: no error values and no caps.
+        self.assertEqual(2, mock_axes.errorbar.call_count)
+        for call in mock_axes.errorbar.call_args_list:
+            self.assertEqual([0.0], call.kwargs["yerr"])
+            self.assertEqual(0, call.kwargs["capsize"])
         mock_savefig.assert_called_once()
 
     @patch("post_processing.plotter.directory_comparison_plotter.find_common_data_file_names")

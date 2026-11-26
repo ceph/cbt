@@ -222,8 +222,11 @@ class TestFileComparisonPlotter(unittest.TestCase):
 
         plotter.draw_and_save()
 
-        # Verify that the plotter completed successfully
-        # (plot is called on a twinx axis, not the main axes directly)
+        # errorbar() is what draws the line. The std_deviation in the data (0.5 ms) must not reach it:
+        # no error values and no caps.
+        mock_axes.errorbar.assert_called_once()
+        self.assertEqual([0.0], mock_axes.errorbar.call_args.kwargs["yerr"])
+        self.assertEqual(0, mock_axes.errorbar.call_args.kwargs["capsize"])
         mock_savefig.assert_called_once()
 
     @patch("post_processing.plotter.file_comparison_plotter.read_intermediate_file")
