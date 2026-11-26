@@ -32,6 +32,8 @@ class TestFileComparisonPlotter(unittest.TestCase):
 
     def test_initialization(self) -> None:
         """Test FileComparisonPlotter initialization"""
+        # The plotter has no public way to read back what it was constructed with.
+        # pylint: disable=protected-access
         files = [str(self.test_file1), str(self.test_file2)]
         plotter = FileComparisonPlotter(output_directory=str(self.output_dir), files=files)
 
@@ -43,6 +45,8 @@ class TestFileComparisonPlotter(unittest.TestCase):
 
     def test_set_labels(self) -> None:
         """Test setting custom labels for plot lines"""
+        # The plotter has no public way to read back its labels.
+        # pylint: disable=protected-access
         files = [str(self.test_file1), str(self.test_file2)]
         plotter = FileComparisonPlotter(output_directory=str(self.output_dir), files=files)
 
@@ -53,6 +57,8 @@ class TestFileComparisonPlotter(unittest.TestCase):
 
     def test_generate_output_file_name_single_file(self) -> None:
         """Test generating output file name with single file"""
+        # The output name is only built inside draw_and_save(), which needs the whole plot mocked.
+        # pylint: disable=protected-access
         files = [str(self.test_file1)]
         plotter = FileComparisonPlotter(output_directory=str(self.output_dir), files=files)
 
@@ -63,6 +69,8 @@ class TestFileComparisonPlotter(unittest.TestCase):
 
     def test_generate_output_file_name_multiple_files(self) -> None:
         """Test generating output file name with multiple files"""
+        # The output name is only built inside draw_and_save(), which needs the whole plot mocked.
+        # pylint: disable=protected-access
         files = [str(self.test_file1), str(self.test_file2)]
         plotter = FileComparisonPlotter(output_directory=str(self.output_dir), files=files)
 
@@ -77,6 +85,8 @@ class TestFileComparisonPlotter(unittest.TestCase):
     @patch("matplotlib.pyplot.subplots")
     @patch("matplotlib.pyplot.savefig")
     @patch("matplotlib.pyplot.close")
+    # One argument for each patched collaborator
+    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def test_draw_and_save_without_labels(
         self,
         mock_close: MagicMock,
@@ -131,9 +141,11 @@ class TestFileComparisonPlotter(unittest.TestCase):
     @patch("matplotlib.pyplot.subplots")
     @patch("matplotlib.pyplot.savefig")
     @patch("matplotlib.pyplot.close")
+    # One argument for each patched collaborator
+    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def test_draw_and_save_with_labels(
         self,
-        mock_close: MagicMock,
+        _mock_close: MagicMock,
         mock_savefig: MagicMock,
         mock_subplots: MagicMock,
         mock_get_details_common: MagicMock,
@@ -186,9 +198,11 @@ class TestFileComparisonPlotter(unittest.TestCase):
     @patch("matplotlib.pyplot.subplots")
     @patch("matplotlib.pyplot.savefig")
     @patch("matplotlib.pyplot.close")
+    # One argument for each patched collaborator
+    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def test_draw_and_save_no_error_bars(
         self,
-        mock_close: MagicMock,
+        _mock_close: MagicMock,
         mock_savefig: MagicMock,
         mock_subplots: MagicMock,
         mock_get_details_common: MagicMock,
@@ -235,10 +249,12 @@ class TestFileComparisonPlotter(unittest.TestCase):
     @patch("matplotlib.pyplot.subplots")
     @patch("matplotlib.pyplot.savefig")
     @patch("matplotlib.pyplot.close")
+    # One argument for each patched collaborator
+    # pylint: disable-next=too-many-arguments,too-many-positional-arguments
     def test_draw_and_save_adds_legend(
         self,
-        mock_close: MagicMock,
-        mock_savefig: MagicMock,
+        _mock_close: MagicMock,
+        _mock_savefig: MagicMock,
         mock_subplots: MagicMock,
         mock_get_details_common: MagicMock,
         mock_get_details: MagicMock,

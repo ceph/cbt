@@ -25,8 +25,10 @@ class TestMemoryPlotter:
         mock_axes = MagicMock()
         plotter = MemoryPlotter(main_axis=mock_axes)
 
-        assert plotter._main_axes == mock_axes
-        assert not plotter._y_data_by_source
+        # With no data added there is nothing to plot, so no secondary axis is created
+        plotter.plot(x_data=[1.0])
+
+        mock_axes.twinx.assert_not_called()
 
     def test_memory_constants(self) -> None:
         """Test that memory constants are defined correctly"""
@@ -44,9 +46,12 @@ class TestMemoryPlotter:
         plotter.add_y_data("100.5")
         plotter.add_y_data("200.75")
         plotter.add_y_data("150.25")
+        plotter.plot(x_data=[1.0, 2.0, 3.0])
 
-        assert "default" in plotter._y_data_by_source
-        assert plotter._y_data_by_source["default"] == [100.5, 200.75, 150.25]
+        memory_axes = mock_axes.twinx.return_value
+        memory_axes.plot.assert_called_once()
+        assert memory_axes.plot.call_args.args[1] == [100.5, 200.75, 150.25]
+        assert memory_axes.plot.call_args.kwargs["label"] == MEMORY_PLOT_LABEL
 
     def test_add_y_data_multi_source_format(self) -> None:
         """Test adding memory data in multi-source dict format"""
@@ -55,11 +60,16 @@ class TestMemoryPlotter:
 
         plotter.add_y_data({"fio": "100.5", "collectl": "105.0"})
         plotter.add_y_data({"fio": "200.75", "collectl": "210.0"})
+        plotter.plot(x_data=[1.0, 2.0])
 
-        assert "fio" in plotter._y_data_by_source
-        assert "collectl" in plotter._y_data_by_source
-        assert plotter._y_data_by_source["fio"] == [100.5, 200.75]
-        assert plotter._y_data_by_source["collectl"] == [105.0, 210.0]
+        # Each source is plotted as its own line, labelled with the source name
+        y_data_by_label = {
+            call.kwargs["label"]: call.args[1] for call in mock_axes.twinx.return_value.plot.call_args_list
+        }
+        assert y_data_by_label == {
+            f"{MEMORY_PLOT_LABEL} (collectl)": [105.0, 210.0],
+            f"{MEMORY_PLOT_LABEL} (fio)": [100.5, 200.75],
+        }
 
     def test_add_y_data_converts_string_to_float(self) -> None:
         """Test that add_y_data converts string values to float"""
@@ -67,8 +77,11 @@ class TestMemoryPlotter:
         plotter = MemoryPlotter(main_axis=mock_axes)
 
         plotter.add_y_data("42")
-        assert plotter._y_data_by_source["default"] == [42.0]
-        assert isinstance(plotter._y_data_by_source["default"][0], float)
+        plotter.plot(x_data=[1.0])
+
+        y_data = mock_axes.twinx.return_value.plot.call_args.args[1]
+        assert y_data == [42.0]
+        assert isinstance(y_data[0], float)
 
     def test_plot_legacy_single_source(self) -> None:
         """Test plotting memory data with legacy single source"""
