@@ -119,7 +119,7 @@ class Elbencho(Benchmark):
 
         self.dropcaches()
         # TODO: call super().run() once Benchmark.run() is executor-driven and
-        # is no longer using AsyncIO.
+        # is no longer using pdsh.
         self._remote.make_remote_dir(settings.getnodes("clients"), self.run_dir)  # type: ignore[no-untyped-call]
         self.cluster.dump_config(self.run_dir)
 
@@ -166,20 +166,29 @@ class Elbencho(Benchmark):
         self._workloads.set_benchmark_type("elbencho")
         self._workloads.set_executable(self.cmd_path)
 
+        # An uneven total_iodepth split gives a cell's commands different
+        # iodepth-* directories, so create every one of them up front (as the
+        # fio path does) rather than only the first command's.
+        for directory in self._workloads.get_output_directories():
+            self._remote.make_remote_dir(clients, directory)
+
         for output_directory, commands in self._workloads.command_groups():
             live_commands = [cmd for cmd in commands if cmd]
             if not live_commands:
                 continue
 
-            self._remote.make_remote_dir(
-                settings.getnodes("clients"),  # type: ignore[no-untyped-call]
-                output_directory,
-            )
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
-            MonitoringFactory.start(output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
-                self._remote.run_command(clients, cmd, continue_if_error=False)
-            MonitoringFactory.stop()
+
+            # Per-bucket commands must run at once to produce the aggregate load
+            # total_iodepth describes, so launch the whole cell concurrently.
+            MonitoringFactory.start(output_directory)
+            try:
+                self._remote.run_commands(clients, live_commands, continue_if_error=False)
+            finally:
+                # run_commands raises if any bucket's process fails; the
+                # collectors must still be stopped.
+                MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")

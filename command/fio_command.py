@@ -12,10 +12,10 @@ should be created that parses these options
 
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
-from typing import Optional
+from typing import ClassVar, Optional
 
 from cli_options import CliOptions
-from command.command import Command
+from command.command import Command, require_int
 
 log: Logger = getLogger("cbt")
 
@@ -26,14 +26,14 @@ class FioCommand(Command, ABC):
     line that can be run on a local or remote client system.
     """
 
-    _REQUIRED_OPTIONS = {"invalidate": "0", "direct": "1"}
-    _DIRECT_TRANSLATIONS: list[str] = ["numjobs", "iodepth"]
+    _REQUIRED_OPTIONS: ClassVar[dict[str, str]] = {"invalidate": "0", "direct": "1"}
+    _DIRECT_TRANSLATIONS: ClassVar[list[str]] = ["numjobs", "iodepth"]
 
     def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
-        self._target_number: int = int(options["target_number"])
+        # Must be set before super().__init__(), which calls _parse_options().
+        self._target_number: int = require_int("target_number", options["target_number"])
         self._total_iodepth: Optional[str] = options.get("total_iodepth", None)
-        self._workload_output_directory: str = workload_output_directory
-        super().__init__(options)
+        super().__init__(options, workload_output_directory)
 
     @abstractmethod
     def _parse_ioengine_specific_parameters(self, options: dict[str, str]) -> dict[str, str]:

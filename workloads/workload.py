@@ -7,13 +7,21 @@ from collections.abc import Generator
 from logging import Logger, getLogger
 from typing import Optional
 
-from command.command import Command
+from command.command import Command, require_int
 from command.elbencho_command import ElbenchoCommand
 from command.rbd_fio_command import RbdFioCommand
 from common import all_configs  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload_types import WorkloadType
 
 log: Logger = getLogger("cbt")
+
+# The Command subclass to build for each benchmark type. Anything that differs
+# between benchmarks (fan-out, output path layout) is asked of the class rather
+# than branched on here, so this stays the only place that names a benchmark.
+_COMMAND_CLASSES: dict[str, type[Command]] = {
+    "rbdfio": RbdFioCommand,
+    "elbencho": ElbenchoCommand,
+}
 
 
 class Workload:
@@ -162,37 +170,47 @@ class Workload:
         if a value exists already in the configuration then ignore it
         """
         for key, value in global_options.items():
-            if key not in self._all_options.keys():
+            if key not in self._all_options:
                 self._all_options[key] = value
+
+    def _command_class(self) -> type[Command]:
+        """
+        The Command subclass that builds the command lines for this workload
+        """
+        command_class: Optional[type[Command]] = _COMMAND_CLASSES.get(self._parent_benchmark_type or "")
+        if command_class is None:
+            log.error("Benchmark Class %s is not supported by workloads yet", self._parent_benchmark_type)
+            raise NotImplementedError
+
+        return command_class
 
     def _create_command_class(self, options: dict[str, str]) -> Command:
         """
         Create the concrete command classes for each command for this workload
         """
-        if self._parent_benchmark_type == "rbdfio":
-            return RbdFioCommand(options, f"{self._base_run_directory}{self._name}")
+        command_class: type[Command] = self._command_class()
 
-        if self._parent_benchmark_type == "elbencho":
-            # Elbencho builds its own output path (mode/blocksize-bytes/threads/
-            # iodepth) from the base run directory, with no workload-name segment.
-            return ElbenchoCommand(options, self._base_run_directory)
-
-        log.error("Benchmark Class %s is not supported by workloads yet", self._parent_benchmark_type)
-        raise NotImplementedError
+        return command_class(options, command_class.workload_output_directory(self._base_run_directory, self._name))
 
     def _create_commands_from_options(self) -> None:
         unique_options: dict[str, str]
+        command_class: type[Command] = self._command_class()
 
-        set_number: int = 0
-        for unique_options in all_configs(self._all_options):  # type: ignore[no-untyped-call]
+        for set_number, unique_options in enumerate(all_configs(self._all_options)):  # type: ignore[no-untyped-call]
             iodepth_key: str = self._get_iodepth_key(list(unique_options.keys()))
             unique_options["iodepth_key"] = iodepth_key
-            iodepth: int = int(unique_options.get(iodepth_key, 16))
-            number_of_volumes: int = int(unique_options.get("volumes_per_client", 1))
+            iodepth: int = require_int(iodepth_key, unique_options.get(iodepth_key, 16))
             iodepth_per_target: dict[int, int] = self._calculate_iodepth_per_target(
-                number_of_volumes, iodepth, iodepth_key
+                command_class.target_count(unique_options), iodepth, iodepth_key
             )
             unique_options["name"] = self._name
+
+            # The fan-out actually used, which is not always the requested one:
+            # a total_iodepth too small to give every target a depth of 1 runs
+            # fewer targets. Commands that behave differently when they are one
+            # of several must read this rather than re-deriving it from the
+            # requested count, or the two answers can disagree.
+            unique_options["target_count"] = f"{len(iodepth_per_target)}"
 
             command_list: list[Command] = []
             for target_number, iodepth in iodepth_per_target.items():
@@ -202,7 +220,6 @@ class Workload:
                 command_list.append(self._create_command_class(unique_options))
 
             self._commands[set_number] = command_list
-            set_number += 1
 
             # The above will overwrite the iodepth to be used for the command,
             # while still retaining a total_iodepth value if one is passed. We can then

@@ -16,17 +16,22 @@ class RemoteExecutor(ABC):
     """A way of running a single command on one or more cluster nodes."""
 
     @abstractmethod
-    def run_command(
+    def run_commands(
         self,
         nodes: str,
-        command: str,
+        commands: list[str],
         continue_if_error: bool = True,
     ) -> list[tuple[str, str, str, int]]:
-        """Run command on all nodes in parallel.
+        """Launch every command on every node at once, then wait for them all.
 
         Return a list of ``(host, stdout, stderr, exit_status)`` tuples, one
-        per node.  If continue_if_error is False and any node exits non-zero
-        (or fails to launch), raise ``RuntimeError``.
+        per (command, node).  If continue_if_error is False and any of them
+        exits non-zero (or fails to launch), raise ``RuntimeError``.
+
+        This is the single primitive a transport has to implement: running one
+        command is the one-element case, and a run cell that is several
+        processes which must overlap (one elbencho process per bucket) is the
+        general one.
         """
 
     @abstractmethod
@@ -34,9 +39,18 @@ class RemoteExecutor(ABC):
         """Pull remote_dir from nodes into local_dir."""
 
     # ------------------------------------------------------------------
-    # Concrete helpers built on run_command(); transport-agnostic, so
+    # Concrete helpers built on run_commands(); transport-agnostic, so
     # every subclass inherits the same implementation.
     # ------------------------------------------------------------------
+
+    def run_command(
+        self,
+        nodes: str,
+        command: str,
+        continue_if_error: bool = True,
+    ) -> list[tuple[str, str, str, int]]:
+        """Run a single command on all nodes in parallel."""
+        return self.run_commands(nodes, [command], continue_if_error)
 
     def run_command_with_error_checking(self, nodes: str, command: str) -> None:
         """Run command on all nodes; raise ``RuntimeError`` if any fail."""

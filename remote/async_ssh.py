@@ -35,10 +35,14 @@ async def _ssh_exec_one(
 
 async def _ssh_exec_all(
     node_list: list[str],
-    command: str,
+    commands: list[str],
     ssh_args: list[str],
 ) -> list[Union[tuple[str, str, str, int], BaseException]]:
-    tasks = [_ssh_exec_one(h, command, ssh_args) for h in node_list]
+    tasks = [
+        _ssh_exec_one(h, command, ssh_args)
+        for command in commands
+        for h in node_list
+    ]
     return await asyncio.gather(*tasks, return_exceptions=True)
 
 
@@ -53,33 +57,45 @@ class AsyncSSHExecutor(RemoteExecutor):
             ssh_args += ["-l", str(user)]
         return ssh_args
 
-    def run_command(
+    def run_commands(
         self,
         nodes: str,
-        command: str,
+        commands: list[str],
         continue_if_error: bool = True,
     ) -> list[tuple[str, str, str, int]]:
         node_list: list[str] = expanded_node_list(nodes)
-        ssh_args = self._build_ssh_args()
+        raw = asyncio.run(_ssh_exec_all(node_list, commands, self._build_ssh_args()))
+        return self._collect_results(raw, continue_if_error)
 
-        raw = asyncio.run(_ssh_exec_all(node_list, command, ssh_args))
+    @staticmethod
+    def _collect_results(
+        raw: list[Union[tuple[str, str, str, int], BaseException]],
+        continue_if_error: bool,
+        transport: str = "ssh",
+    ) -> list[tuple[str, str, str, int]]:
+        """Turn gather() output into result tuples, raising on any failure.
 
+        A process that never launched comes back as an exception rather than a
+        tuple and is always an error; a non-zero exit is only an error when the
+        caller asked for one. transport names the tool in the messages, since
+        ssh and scp failures read very differently to whoever is debugging.
+        """
         results: list[tuple[str, str, str, int]] = []
         errors: list[str] = []
         for item in raw:
             if isinstance(item, BaseException):
                 errors.append(str(item))
-                logger.warning("ssh: failed to launch process: %s", item)
+                logger.warning("%s: failed to launch process: %s", transport, item)
                 continue
             host, stdout, stderr, exit_status = item
-            logger.debug("ssh [%s] exit=%d", host, exit_status)
+            logger.debug("%s [%s] exit=%d", transport, host, exit_status)
             if stdout:
-                logger.debug("ssh [%s] stdout: %s", host, stdout.rstrip())
+                logger.debug("%s [%s] stdout: %s", transport, host, stdout.rstrip())
             if stderr:
-                logger.debug("ssh [%s] stderr: %s", host, stderr.rstrip())
+                logger.debug("%s [%s] stderr: %s", transport, host, stderr.rstrip())
             if exit_status != 0:
                 detail = (stderr or stdout).rstrip()
-                msg = f"ssh [{host}] exited {exit_status}: {detail}"
+                msg = f"{transport} [{host}] exited {exit_status}: {detail}"
                 if not continue_if_error:
                     errors.append(msg)
                 else:
@@ -88,7 +104,7 @@ class AsyncSSHExecutor(RemoteExecutor):
 
         if errors:
             raise RuntimeError(
-                "asyncssh_exec failed on one or more hosts:\n" + "\n".join(errors)
+                f"async {transport} failed on one or more hosts:\n" + "\n".join(errors)
             )
 
         return results
@@ -100,35 +116,19 @@ class AsyncSSHExecutor(RemoteExecutor):
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
 
-        if 'user' in settings.cluster:
+        if "user" in settings.cluster:
             self.run_command_with_error_checking(
                 nodes,
-                'sudo chown -R {0}.{0} {1}'.format(settings.cluster['user'], remote_dir),
+                f"sudo chown -R {settings.cluster['user']}.{settings.cluster['user']} {remote_dir}",
             )
 
-        user = settings.cluster.get("user")
-        scp_base_args = _build_scp_args()
+        raw = asyncio.run(
+            _scp_pull_all(node_list, remote_dir, local_dir, _build_scp_args(), settings.cluster.get("user"))
+        )
 
-        raw = asyncio.run(_scp_pull_all(node_list, remote_dir, local_dir, scp_base_args, user))
-
-        errors: list[str] = []
-        for item in raw:
-            # TODO: the BaseException branch duplicates the same pattern in
-            # run_command(); consolidate into a shared helper once the pattern
-            # stabilises.
-            if isinstance(item, BaseException):
-                errors.append(str(item))
-                logger.warning("scp: failed to launch process: %s", item)
-                continue
-            host, stdout, stderr, exit_status = item
-            if exit_status != 0:
-                detail = (stderr or stdout).rstrip()
-                errors.append(f"scp [{host}] exited {exit_status}: {detail}")
-
-        if errors:
-            raise RuntimeError(
-                "async_sync_files failed on one or more hosts:\n" + "\n".join(errors)
-            )
+        # A partial copy is a silently incomplete result set, so never tolerate
+        # a failing host here.
+        self._collect_results(raw, continue_if_error=False, transport="scp")
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,13 @@ async def _scp_pull_all(
     user: Optional[str],
 ) -> list[Union[tuple[str, str, str, int], BaseException]]:
     tasks = [
-        _scp_pull_one(_bare_host(h), remote_dir, local_dir, scp_base_args, user=str(user) if user else None)
+        _scp_pull_one(
+            _bare_host(h),
+            remote_dir,
+            local_dir,
+            scp_base_args,
+            user=str(user) if user else None,
+        )
         for h in node_list
     ]
     return await asyncio.gather(*tasks, return_exceptions=True)

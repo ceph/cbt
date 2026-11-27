@@ -145,11 +145,11 @@ class CheckedPopenLocal(CheckedPopen):
 # work correctly.
 
 
-def expanded_node_list(nodes):
+def expanded_node_list(nodes: str) -> list[str]:
     # nodes is a comma-separated list for pdsh "-w" parameter
     # nodes may have some entries with '^' prefix, pdsh syntax meaning
     # we should read list of actual hostnames/ips from a file
-    node_list = []
+    node_list: list[str] = []
     for h in nodes.split(','):
         if h.startswith('^'):  # pdsh syntax for file containing list of nodes
             with open(h[1:], 'r') as nodefile:
