@@ -7,7 +7,7 @@ time-series format.
 """
 
 from enum import Enum, auto
-from typing import NamedTuple, TypedDict, Union
+from typing import NamedTuple, Optional, TypedDict, Union
 
 # Log setup types
 HandlerType = dict[str, dict[str, str]]
@@ -133,3 +133,110 @@ class TimeSeriesFormatType(TypedDict):
     timestamp_at_max_latency: str
     maximum_cpu_usage: str
     maximum_memory_usage: str
+
+
+# ---------------------------------------------------------------------------
+# Regression detection types
+# ---------------------------------------------------------------------------
+
+
+class Band(Enum):
+    """
+    Result band for a single regression flag.
+
+    VALID        — evaluated; worsening is below the weak threshold (no problem).
+    WEAK         — evaluated; worsening is ≥ weak but < strong threshold.
+    STRONG       — evaluated; worsening is ≥ strong threshold (or zero-crossing).
+    NOT_EVALUABLE — could not be computed (missing field, non-numeric value);
+                   contributes to REVIEW in the workload verdict.
+    """
+
+    VALID = auto()
+    WEAK = auto()
+    STRONG = auto()
+    NOT_EVALUABLE = auto()
+
+
+class FlagTier(Enum):
+    """Tier of a flag: H (high-priority) or M (medium-priority)."""
+
+    H = auto()
+    M = auto()
+
+
+class FlagResult(NamedTuple):
+    """
+    Result of evaluating a single regression flag.
+
+    Fields:
+        tier          — H or M.
+        band          — VALID / WEAK / STRONG / NOT_EVALUABLE.
+        baseline_value — raw baseline float (None when NOT_EVALUABLE due to bad data).
+        candidate_value — raw candidate float (None when NOT_EVALUABLE due to bad data).
+        pct_change    — unrounded fractional change (None when NOT_EVALUABLE).
+        reason        — human-readable explanation, required for NOT_EVALUABLE.
+        iodepth       — iodepth key reported for H3 / M3 (None for headline flags).
+    """
+
+    tier: FlagTier
+    band: Band
+    baseline_value: Optional[float]
+    candidate_value: Optional[float]
+    pct_change: Optional[float]
+    reason: Optional[str]
+    iodepth: Optional[str]
+
+
+class Thresholds(NamedTuple):
+    """
+    Tunable thresholds for regression detection.
+
+    weak      — fractional worsening at or above which a flag is WEAK (default 0.08).
+    strong    — fractional worsening at or above which a flag is STRONG (default 0.12).
+    h3_weak   — overriding weak threshold for H3 low-depth latency (default 0.25).
+    h3_strong — overriding strong threshold for H3 low-depth latency (default 0.35).
+    """
+
+    weak: float = 0.08
+    strong: float = 0.12
+    h3_weak: float = 0.25
+    h3_strong: float = 0.35
+
+
+class Decision(Enum):
+    """
+    Overall decision for a workload or a run comparison.
+
+    PASS   — no significant regression detected.
+    REVIEW — possible regression; needs human review.
+    FAIL   — regression detected above the strong threshold.
+    """
+
+    PASS = auto()
+    REVIEW = auto()
+    FAIL = auto()
+
+
+class WorkloadDecision(NamedTuple):
+    """Decision for a single paired workload."""
+
+    stem: str
+    decision: Decision
+    flags: list[FlagResult]
+
+
+class RunDecision(NamedTuple):
+    """
+    Decision for the overall run comparison.
+
+    num_workloads — N: total baseline workloads (paired + missing).
+    fail_target   — the number of FAILs needed to fail the run.
+    fail_count    — FC: number of FAIL workloads.
+    review_count  — RC: number of REVIEW workloads.
+    """
+
+    decision: Decision
+    num_workloads: int
+    fail_target: int
+    fail_count: int
+    review_count: int
