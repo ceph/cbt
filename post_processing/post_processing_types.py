@@ -7,6 +7,7 @@ time-series format.
 """
 
 from enum import Enum, auto
+from pathlib import Path
 from typing import NamedTuple, TypedDict, Union
 
 # Log setup types
@@ -64,6 +65,20 @@ class ReportOptions(NamedTuple):
     no_error_bars: bool
     report_type: ReportType
     plot_resources: bool
+
+
+class DirectoryGroup(NamedTuple):
+    """
+    The directories that together make up a single workload when it was run on several nodes.
+
+    The primary is the first (sorted) directory that contains result files; it is never a
+    monitoring-only directory. The other directories with result files are the result peers
+    and the directories that only hold monitoring data are the monitoring peers.
+    """
+
+    primary: Path
+    result_peers: list[Path]
+    monitoring_peers: list[Path]
 
 
 # New types for time-series format
