@@ -5,14 +5,33 @@ Tests cover error handling, edge cases, and time-series data processing.
 """
 
 import json
+import logging
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Union
 from unittest.mock import Mock, patch
 
+import pandas as pd
 import pytest
 
+from post_processing.post_processing_types import TimeSeriesFormatType
 from post_processing.run_results.benchmarks.fio import FIO
+
+# The shape of a single read/write section in fio's JSON output, as taken by the metric extraction helpers
+_JobData = dict[str, Union[int, float, dict[str, Union[int, float]]]]
+
+
+def _extract_int_metric(fio: FIO, job_data: _JobData, key: str) -> int:
+    """Call FIO._extract_int_metric directly: constructing an FIO wraps its error in a generic ValueError"""
+    # pylint: disable-next=protected-access
+    return fio._extract_int_metric(job_data, key, "read")
+
+
+def _extract_float_metric(fio: FIO, job_data: _JobData, key: str) -> float:
+    """Call FIO._extract_float_metric directly: constructing an FIO wraps its error in a generic ValueError"""
+    # pylint: disable-next=protected-access
+    return fio._extract_float_metric(job_data, key, "read")
 
 
 class TestFIOExtractMetrics:
@@ -50,13 +69,13 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"io_bytes": 1000, "total_ios": 50}
+            job_data: _JobData = {"io_bytes": 1000, "total_ios": 50}
 
-            result = fio._extract_int_metric(job_data, "io_bytes", "read")
+            result = _extract_int_metric(fio, job_data, "io_bytes")
             assert result == 1000
 
     def test_extract_int_metric_missing(self) -> None:
@@ -91,14 +110,14 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"io_bytes": 1000}
+            job_data: _JobData = {"io_bytes": 1000}
 
             with pytest.raises(ValueError, match="Missing or invalid 'total_ios'"):
-                fio._extract_int_metric(job_data, "total_ios", "read")
+                _extract_int_metric(fio, job_data, "total_ios")
 
     def test_extract_int_metric_wrong_type(self) -> None:
         """Test integer metric extraction with wrong type."""
@@ -132,14 +151,14 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"io_bytes": "not_an_int"}  # type: ignore[dict-item]
+            job_data: _JobData = {"io_bytes": "not_an_int"}  # type: ignore[dict-item]
 
             with pytest.raises(ValueError, match="expected int, got str"):
-                fio._extract_int_metric(job_data, "io_bytes", "read")
+                _extract_int_metric(fio, job_data, "io_bytes")
 
     def test_extract_float_metric_success(self) -> None:
         """Test successful float metric extraction."""
@@ -173,13 +192,13 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"iops": 10.5}
+            job_data: _JobData = {"iops": 10.5}
 
-            result = fio._extract_float_metric(job_data, "iops", "read")
+            result = _extract_float_metric(fio, job_data, "iops")
             assert result == 10.5
 
     def test_extract_float_metric_from_int(self) -> None:
@@ -214,13 +233,13 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"iops": 10}
+            job_data: _JobData = {"iops": 10}
 
-            result = fio._extract_float_metric(job_data, "iops", "read")
+            result = _extract_float_metric(fio, job_data, "iops")
             assert result == 10.0
 
     def test_extract_float_metric_wrong_type(self) -> None:
@@ -255,14 +274,14 @@ class TestFIOExtractMetrics:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            job_data: dict[str, Union[int, float, dict[str, Union[int, float]]]] = {"iops": "not_a_float"}  # type: ignore[dict-item]
+            job_data: _JobData = {"iops": "not_a_float"}  # type: ignore[dict-item]
 
             with pytest.raises(ValueError, match="expected float, got str"):
-                fio._extract_float_metric(job_data, "iops", "read")
+                _extract_float_metric(fio, job_data, "iops")
 
 
 class TestFIOGetIODetails:
@@ -294,7 +313,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -334,7 +353,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             with pytest.raises(ValueError, match="Invalid job data structure"):
@@ -372,7 +391,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -416,7 +435,7 @@ class TestFIOGetIODetails:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -426,175 +445,119 @@ class TestFIOGetIODetails:
             assert io_details["total_ios"] == "50"
 
 
+# Three samples 100 ms apart, as fio writes them when log_avg_msec is 100
+_SAMPLES_100MS_APART: tuple[int, ...] = (150, 250, 350)
+
+
+def _write_fio_output(directory: Path, **global_options: str) -> Path:
+    """
+    Write a single job FIO json output file called output.0 and return its path.
+
+    The global options are those of a 32k sequential read at iodepth 4, plus any given as keywords.
+    """
+    output = {
+        "global options": {
+            "bs": "32768",
+            "rw": "read",
+            "iodepth": "4",
+            "numjobs": "1",
+            "runtime": "90",
+            **global_options,
+        },
+        "jobs": [
+            {
+                "read": {
+                    "io_bytes": 1000,
+                    "bw_bytes": 100,
+                    "iops": 10.0,
+                    "total_ios": 50,
+                    "clat_ns": {"mean": 5000.0, "stddev": 500.0},
+                },
+                "write": {
+                    "io_bytes": 0,
+                    "bw_bytes": 0,
+                    "iops": 0.0,
+                    "total_ios": 0,
+                    "clat_ns": {"mean": 0.0, "stddev": 0.0},
+                },
+            }
+        ],
+    }
+    output_file = directory / "output.0"
+    output_file.write_text(json.dumps(output), encoding="utf8")
+    return output_file
+
+
+def _write_timeseries_logs(directory: Path, timestamps_ms: tuple[int, ...]) -> None:
+    """Write iops, bw and clat logs for output.0 with one sample at each of the given times."""
+    for metric, value in (("iops", 1500), ("bw", 100), ("clat", 5000000)):
+        lines = [f"{timestamp}, {value}, 0, 32768, 0" for timestamp in timestamps_ms]
+        (directory / f"output.0_{metric}.1.log").write_text("\n".join(lines) + "\n", encoding="utf8")
+
+
+def _get_timeseries(directory: Path, timestamps_ms: tuple[int, ...], **global_options: str) -> TimeSeriesFormatType:
+    """Build an FIO result from output.0 and its logs and return the time series it produces."""
+    output_file = _write_fio_output(directory, **global_options)
+    _write_timeseries_logs(directory, timestamps_ms)
+
+    timeseries = FIO(output_file).get_timeseries_data()
+
+    assert timeseries is not None, "Expected time series data for a directory with logs"
+    return timeseries
+
+
 class TestFIOGetLogAvgMsec:
-    """Test _get_log_avg_msec method."""
+    """
+    Test that the log averaging interval fio was run with sets the time series window.
 
-    def test_get_log_avg_msec_default(self) -> None:
-        """Test default log_avg_msec value."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_file = Path(tmpdir) / "test.json"
-            test_data = {
-                "global options": {
-                    "bs": "4K",
-                    "rw": "randread",
-                    "iodepth": "4",
-                    "numjobs": "1",
-                    "runtime": "60",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000,
-                            "bw_bytes": 100,
-                            "iops": 10.0,
-                            "total_ios": 50,
-                            "clat_ns": {"mean": 5000.0, "stddev": 500.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                    }
-                ],
-            }
+    Samples written by fio with log_avg_msec=100 are already averages over 100 ms, so they must not
+    be summed into larger windows.
+    """
 
-            with open(test_file, "w") as f:
-                json.dump(test_data, f)
+    def test_log_avg_msec_is_kept_in_global_options(self, tmp_path: Path) -> None:
+        """log_avg_msec is part of the global options fio reports, so it is available from the result."""
+        fio = FIO(_write_fio_output(tmp_path, log_avg_msec="100"))
 
-            fio = FIO(test_file)
-            log_avg_msec = fio._get_log_avg_msec()
+        assert fio.global_options["log_avg_msec"] == "100"
 
-            assert log_avg_msec == 1000
+    def test_window_is_the_log_avg_msec_that_fio_ran_with(self, tmp_path: Path) -> None:
+        """With log_avg_msec 100 each sample is its own window, rather than all three being summed."""
+        timeseries = _get_timeseries(tmp_path, _SAMPLES_100MS_APART, log_avg_msec="100")
 
-    def test_get_log_avg_msec_custom_value(self) -> None:
-        """Test custom log_avg_msec value."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_file = Path(tmpdir) / "test.json"
-            test_data = {
-                "global options": {
-                    "bs": "4K",
-                    "rw": "randread",
-                    "iodepth": "4",
-                    "numjobs": "1",
-                    "runtime": "60",
-                    "log_avg_msec": "500",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000,
-                            "bw_bytes": 100,
-                            "iops": 10.0,
-                            "total_ios": 50,
-                            "clat_ns": {"mean": 5000.0, "stddev": 500.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                    }
-                ],
-            }
+        assert timeseries["metadata"]["log_avg_msec"] == 100
+        assert len(timeseries["timeseries"]) == 3
+        assert [point["iops"] for point in timeseries["timeseries"]] == [1500, 1500, 1500]
 
-            with open(test_file, "w") as f:
-                json.dump(test_data, f)
+    def test_window_defaults_to_one_second_when_log_avg_msec_was_not_set(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Without log_avg_msec fio logs every I/O; the default window sums them, and that is not an error."""
+        with caplog.at_level(logging.WARNING, logger="cbt.formatter"):
+            timeseries = _get_timeseries(tmp_path, _SAMPLES_100MS_APART)
 
-            fio = FIO(test_file)
-            # Manually add log_avg_msec to _global_options since it's not copied by _get_global_options
-            fio._global_options["log_avg_msec"] = "500"
-            log_avg_msec = fio._get_log_avg_msec()
+        assert timeseries["metadata"]["log_avg_msec"] == 1000
+        assert len(timeseries["timeseries"]) == 1
+        assert timeseries["timeseries"][0]["iops"] == 4500
+        assert "log_avg_msec" not in caplog.text, "A missing log_avg_msec must not produce a warning"
 
-            assert log_avg_msec == 500
+    @pytest.mark.parametrize(
+        "value, warning",
+        [
+            ("-100", "Invalid log_avg_msec value -100 (must be positive), using default 1000"),
+            ("0", "Invalid log_avg_msec value 0 (must be positive), using default 1000"),
+            ("invalid", "Cannot convert log_avg_msec 'invalid' to int"),
+        ],
+        ids=["negative", "zero", "not_a_number"],
+    )
+    def test_invalid_log_avg_msec_falls_back_to_the_default_and_warns(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, value: str, warning: str
+    ) -> None:
+        """A log_avg_msec that is not a positive integer is replaced by 1000, with a warning saying so."""
+        with caplog.at_level(logging.WARNING, logger="cbt.formatter"):
+            timeseries = _get_timeseries(tmp_path, _SAMPLES_100MS_APART, log_avg_msec=value)
 
-    def test_get_log_avg_msec_invalid_negative(self) -> None:
-        """Test log_avg_msec with negative value."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_file = Path(tmpdir) / "test.json"
-            test_data = {
-                "global options": {
-                    "bs": "4K",
-                    "rw": "randread",
-                    "iodepth": "4",
-                    "numjobs": "1",
-                    "runtime": "60",
-                    "log_avg_msec": "-100",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000,
-                            "bw_bytes": 100,
-                            "iops": 10.0,
-                            "total_ios": 50,
-                            "clat_ns": {"mean": 5000.0, "stddev": 500.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                    }
-                ],
-            }
-
-            with open(test_file, "w") as f:
-                json.dump(test_data, f)
-
-            fio = FIO(test_file)
-            log_avg_msec = fio._get_log_avg_msec()
-
-            # Should return default value
-            assert log_avg_msec == 1000
-
-    def test_get_log_avg_msec_invalid_string(self) -> None:
-        """Test log_avg_msec with non-numeric string."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_file = Path(tmpdir) / "test.json"
-            test_data = {
-                "global options": {
-                    "bs": "4K",
-                    "rw": "randread",
-                    "iodepth": "4",
-                    "numjobs": "1",
-                    "runtime": "60",
-                    "log_avg_msec": "invalid",
-                },
-                "jobs": [
-                    {
-                        "read": {
-                            "io_bytes": 1000,
-                            "bw_bytes": 100,
-                            "iops": 10.0,
-                            "total_ios": 50,
-                            "clat_ns": {"mean": 5000.0, "stddev": 500.0},
-                        },
-                        "write": {
-                            "io_bytes": 0,
-                            "bw_bytes": 0,
-                            "iops": 0.0,
-                            "total_ios": 0,
-                            "clat_ns": {"mean": 0.0, "stddev": 0.0},
-                        },
-                    }
-                ],
-            }
-
-            with open(test_file, "w") as f:
-                json.dump(test_data, f)
-
-            fio = FIO(test_file)
-            log_avg_msec = fio._get_log_avg_msec()
-
-            # Should return default value
-            assert log_avg_msec == 1000
+        assert timeseries["metadata"]["log_avg_msec"] == 1000
+        assert warning in caplog.text
 
 
 class TestFIOGetTimeseriesData:
@@ -632,7 +595,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
@@ -673,12 +636,12 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             fio = FIO(test_file)
-            # Modify the path to non-existent directory
-            fio._resource_file_path = Path("/nonexistent/path/test.json")
+            # The results file has been read, so the directory it came from can now go away
+            shutil.rmtree(tmpdir)
 
             result = fio.get_timeseries_data()
 
@@ -735,7 +698,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             # Setup mocks
@@ -766,12 +729,12 @@ class TestFIOGetTimeseriesData:
     @patch("post_processing.run_results.benchmarks.fio.TimestampAligner")
     @patch("post_processing.run_results.benchmarks.fio.FIOLogParser")
     @patch("post_processing.run_results.benchmarks.fio.FIOTimeSeriesParser")
+    # The test wires up three mocked collaborators and the dataframes each one hands back
+    # pylint: disable-next=too-many-locals
     def test_get_timeseries_data_with_percentile_calculation(
         self, mock_parser_ts_class: Any, mock_parser_class: Any, mock_aligner_class: Any
     ) -> None:
         """Test that percentiles are calculated from clat data."""
-        import pandas as pd
-
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
             test_file = log_dir / "output.0"
@@ -810,7 +773,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             # Setup mock parser to return clat data
@@ -916,7 +879,7 @@ class TestFIOGetTimeseriesData:
                 ],
             }
 
-            with open(test_file, "w") as f:
+            with open(test_file, "w", encoding="utf8") as f:
                 json.dump(test_data, f)
 
             # Setup mock parser to return None for clat

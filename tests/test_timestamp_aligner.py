@@ -126,6 +126,17 @@ class TestAlignAndAggregate:
         assert len(result) == 3
         assert result["timestamp_sec"].tolist() == [0.0, 0.1, 0.2]
 
+    def test_samples_on_window_boundaries_are_not_merged(self):
+        """Samples exactly one window apart must land in separate windows (no float floor-division error)."""
+        aligner = TimestampAligner(window_size_ms=100)
+        timestamps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9]
+        df = pd.DataFrame({"timestamp_sec": timestamps, "iops": [10] * len(timestamps)})
+        result = aligner.align_and_aggregate([df], "iops", "sum")
+
+        assert result["timestamp_sec"].tolist() == timestamps
+        assert result["num_samples"].tolist() == [1] * len(timestamps)
+        assert result["iops"].tolist() == [10] * len(timestamps)
+
     def test_large_window_size(self):
         """Test with large window size (5 seconds)."""
         aligner = TimestampAligner(window_size_ms=5000)
@@ -196,6 +207,17 @@ class TestCalculatePercentiles:
 
         assert len(result) == 2
         assert result["timestamp_sec"].tolist() == [0.0, 1.0]
+
+    def test_samples_on_window_boundaries_are_not_merged(self):
+        """Samples exactly one window apart must land in separate percentile windows."""
+        aligner = TimestampAligner(window_size_ms=100)
+        timestamps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9]
+        latencies = [float(i) for i in range(len(timestamps))]
+        df = pd.DataFrame({"timestamp_sec": timestamps, "latency_ms": latencies})
+        result = aligner.calculate_percentiles([df], percentiles=[50])
+
+        assert result["timestamp_sec"].tolist() == timestamps
+        assert result["p50_latency_ms"].tolist() == latencies
 
     def test_multiple_dataframes(self):
         """Test percentiles with multiple dataframes."""

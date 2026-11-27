@@ -165,7 +165,8 @@ class RunResult(ABC):  # pylint: disable=too-many-instance-attributes
         data from the fio output directly into our output format
         """
 
-        for file_path in self._files:
+        # Iterate over a copy: precondition files are removed from self._files below
+        for file_path in list(self._files):
             if not file_is_empty(file_path):
                 if not file_is_precondition(file_path):
                     log.debug("Processing file %s", file_path)

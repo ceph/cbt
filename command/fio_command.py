@@ -83,7 +83,7 @@ class FioCommand(Command, ABC):
         if options.get("no_sudo", "false") != "true":
             fio_cli_options["sudo"] = ""
 
-        if options.get("norandommap", None) is not None:
+        if options.get("norandommap", "false") == "true":
             fio_cli_options["norandommap"] = ""
 
         if "recovery_test" in options.keys():

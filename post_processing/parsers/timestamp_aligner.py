@@ -37,8 +37,19 @@ class TimestampAligner:
         Args:
             window_size_sec: Size of time windows in seconds (default: 1000ms = 1s)
         """
+        self._window_size_ms = window_size_ms
         self._window_size_sec = window_size_ms / 1000.0
         log.debug("Initialized TimestampAligner with window size %dms", window_size_ms)
+
+    def _window_start_sec(self, timestamp_sec: "pd.Series[float]") -> "pd.Series[float]":
+        """
+        Return the start of the time window, in seconds, that each timestamp falls into.
+
+        The binning is done on whole milliseconds. Floor division on float seconds gets
+        boundaries wrong, e.g. 0.3 // 0.1 is 2.0, which would merge adjacent samples.
+        """
+        timestamp_ms = (timestamp_sec * 1000).round().astype("int64")
+        return (timestamp_ms // self._window_size_ms * self._window_size_ms) / 1000.0
 
     def align_and_aggregate(
         self,
@@ -81,8 +92,8 @@ class TimestampAligner:
         combined = pd.concat(valid_dfs, ignore_index=True)
         log.debug("Combined %d dataframes into %d total samples", len(valid_dfs), len(combined))
 
-        # Create time windows using vectorized floor division
-        combined["time_window"] = (combined["timestamp_sec"] // self._window_size_sec) * self._window_size_sec
+        # Create time windows from integer milliseconds
+        combined["time_window"] = self._window_start_sec(combined["timestamp_sec"])
 
         # Aggregate by time window and count samples in single operation
         grouped = combined.groupby("time_window")
@@ -128,8 +139,8 @@ class TimestampAligner:
         # Combine all dataframes
         combined = pd.concat(valid_dfs, ignore_index=True)
 
-        # Create time windows using vectorized floor division (consistent with align_and_aggregate)
-        combined["time_window"] = (combined["timestamp_sec"] // self._window_size_sec) * self._window_size_sec
+        # Create time windows from integer milliseconds (consistent with align_and_aggregate)
+        combined["time_window"] = self._window_start_sec(combined["timestamp_sec"])
 
         # Calculate percentiles per window
         quantiles = [p / 100.0 for p in percentiles]
