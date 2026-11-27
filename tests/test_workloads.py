@@ -385,6 +385,76 @@ class TestWorkloads(unittest.TestCase):
             self.assertIsInstance(element, str, f"Expected str, got {type(element)} for value {element!r}")
 
 
+class TestNullOptionsAreDropped(unittest.TestCase):
+    """A yaml key written with no value (``total_iodepth:``) parses as None.
+
+    These go through Workloads rather than constructing a Workload directly,
+    because the stringifying is what a None has to survive and it only happens
+    here.
+    """
+
+    @staticmethod
+    def _elbencho_commands(config: dict[str, Any]) -> list[tuple[str, list[str]]]:
+        workloads = Workloads(config, "/tmp/run/")
+        workloads.set_benchmark_type("elbencho")
+        workloads.set_executable("/usr/local/bin/elbencho")
+        return list(workloads.command_groups())
+
+    def test_null_workload_option_is_absent_not_the_string_none(self) -> None:
+        workload = Workloads(
+            {"workloads": {"test": {"mode": "randwrite", "total_iodepth": None}}},
+            "/tmp/run/",
+        )._workloads[0]
+
+        self.assertNotIn(
+            "total_iodepth",
+            workload._all_options,
+            "a valueless yaml key must be dropped, not stringified to 'None'",
+        )
+
+    def test_null_global_option_is_absent_not_the_string_none(self) -> None:
+        workloads = Workloads(
+            {"total_iodepth": None, "workloads": {"test": {"mode": "randwrite"}}},
+            "/tmp/run/",
+        )
+
+        self.assertNotIn("total_iodepth", workloads._global_options)
+
+    def test_null_total_iodepth_falls_back_to_plain_iodepth(self) -> None:
+        # The whole point of dropping the key: a null total_iodepth must leave
+        # the plain iodepth path intact rather than reaching int("None").
+        groups = self._elbencho_commands(
+            {
+                "workloads": {
+                    "test": {
+                        "mode": "write",
+                        "s3_bucket": "bkt",
+                        "threads": 4,
+                        "iodepth": 8,
+                        "total_iodepth": None,
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(1, len(groups), "expected a single run cell")
+        output_directory, commands = groups[0]
+        self.assertNotIn("total_iodepth", output_directory, "a null total_iodepth must not add a path segment")
+        self.assertIn("iodepth-008", output_directory)
+        self.assertEqual(1, len(commands), "a null total_iodepth must not fan out into buckets")
+        self.assertIn("--iodepth 8", commands[0])
+
+    def test_null_time_alongside_duration_is_not_mutually_exclusive(self) -> None:
+        # Same root cause: a stringified None reads as a value that is set, so
+        # a null time next to a duration used to trip the exclusivity check.
+        workloads = Workloads(
+            {"time": None, "workloads": {"test": {"mode": "write", "duration": 30}}},
+            "/tmp/run/",
+        )
+
+        self.assertEqual(30, workloads.estimate_duration())
+
+
 if __name__ == "__main__":
     unittest.main()
 

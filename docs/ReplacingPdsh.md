@@ -16,12 +16,19 @@ Rather than swap `pdsh` for `asyncio` in place, the fan-out mechanism is moved
 behind an interface so it can be replaced incrementally — one benchmark at a
 time — without a big-bang migration. The `remote/` package holds this:
 
-- **`remote/remote_executor.py`** — `RemoteExecutor`, an abstract base class with
-  `run_command(nodes, command, continue_if_error=True)`,
-  `run_command_with_error_checking(nodes, command)`, and the directory/result
-  helpers `make_remote_dir`, `clean_remote_dir`, and `sync_files`. This is the
-  single interface the rest of the code calls; the transport is an implementation
+- **`remote/remote_executor.py`** — `RemoteExecutor`, an abstract base class.
+  An implementation supplies two methods: `run_commands(nodes, commands,
+  continue_if_error=True)`, which launches every command on every node at once
+  and waits for them all, and `sync_files`. Everything else is concrete on the
+  base and inherited — `run_command(nodes, command, ...)` is the one-element
+  case of `run_commands`, and `run_command_with_error_checking`,
+  `make_remote_dir` and `clean_remote_dir` build on that. This is the single
+  interface the rest of the code calls; the transport is an implementation
   detail.
+
+  Running several commands at once is the general case rather than a
+  convenience: an elbencho run cell that splits a `total_iodepth` across
+  buckets is only the load it claims to be if all of its processes overlap.
 
 - **`remote/async_ssh.py`** — `AsyncSSHExecutor(RemoteExecutor)`, a stdlib-only
   implementation using Python's `asyncio` and the system `/usr/bin/ssh` binary

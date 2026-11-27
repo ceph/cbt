@@ -18,6 +18,7 @@ benchmarks:
       config: access_key=<your-access-key>;secret_key=<your-secret-key>;url=http://192.168.110.51:8000;retry=9
 
     workloads:
+      # Single-bucket write sweep with per-process iodepth
       write_small:
         s3_bucket: 'cbt-benchmark'
         mode: 'write'
@@ -29,12 +30,26 @@ benchmarks:
         num_objects: 100
         duration: 30
 
+      # Single-bucket read sweep matching write parameters
       read_small:
         s3_bucket: 'cbt-benchmark'
         mode: 'read'
         threads: [1, 4]
         iodepth: [1, 4]
         blocksize: ['5m', '16m']
+        size: '5g'
+        num_objects: 100
+        duration: 30
+
+      # Multi-bucket write sweep with aggregate total_iodepth split across buckets
+      write_multi_bucket:
+        s3_bucket: 'cbt-benchmark'
+        mode: 'write'
+        mkdirs: True
+        threads: [4]
+        total_iodepth: [8, 16]
+        num_buckets: 4
+        blocksize: ['5m']
         size: '5g'
         num_objects: 100
         duration: 30

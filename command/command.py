@@ -15,15 +15,31 @@ from cli_options import CliOptions
 log: Logger = getLogger("cbt")
 
 
+def require_int(key: str, value: object) -> int:
+    """
+    Convert an option value to int, naming the offending key on failure.
+
+    Option values arrive as strings from the yaml, so a typo surfaces as a
+    conversion error a long way from the key that caused it. Use this instead
+    of a bare int() wherever the value came from a configuration file.
+    """
+    try:
+        return int(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} value {value!r} is not an integer") from exc
+
+
 class Command(ABC):
     """
     A class that encapsulates a single CLI command that can be run on a
     system
     """
 
-    def __init__(self, options: dict[str, str]) -> None:
+    def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
         self._executable: Optional[str] = None
         self._output_directory: str = ""
+        # Set before _parse_options(), which subclasses may use it from.
+        self._workload_output_directory: str = workload_output_directory
         self._options: CliOptions = self._parse_options(options)
 
     @abstractmethod
@@ -62,6 +78,30 @@ class Command(ABC):
         """
         Return the benchmark type for this command type
         """
+
+    @staticmethod
+    def target_count(options: dict[str, str]) -> int:
+        """
+        How many parallel targets a single run cell fans out to.
+
+        The Workload builds one Command per target and divides the cell's
+        iodepth between them, so this is what decides the fan-out. What a
+        target *is* belongs to the benchmark: fio drives one per volume, so
+        that is the default. Override in a subclass that fans out over
+        something else rather than teaching Workload about it.
+        """
+        return require_int("volumes_per_client", options.get("volumes_per_client", 1))
+
+    @staticmethod
+    def workload_output_directory(base_run_directory: str, workload_name: str) -> str:
+        """
+        Root directory beneath which this command writes its results.
+
+        Defaults to a per-workload subtree so that two workloads in one test
+        plan cannot collide. Override where the benchmark's own path layout
+        already distinguishes its runs.
+        """
+        return f"{base_run_directory}{workload_name}"
 
     def get(self) -> str:
         """

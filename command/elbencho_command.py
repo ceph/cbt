@@ -8,32 +8,29 @@ import os
 import re
 import shlex
 from logging import Logger, getLogger
+from typing import ClassVar
 
 from cli_options import CliOptions
-from command.command import Command
+from command.command import Command, require_int
+from common import get_fqdn_cmd
 
 log: Logger = getLogger("cbt")
 
-_BS_SUFFIXES = {"k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
+_BS_SUFFIXES = {"k": 1024, "m": 1024**2, "g": 1024**3}
 
 
 class ElbenchoCommand(Command):
     """A single elbencho S3 command line for one run cell."""
 
-    _MODE_FLAGS = {
-        "write":     ["--write"],
-        "read":      ["--read"],
+    _MODE_FLAGS: ClassVar[dict[str, list[str]]] = {
+        "write": ["--write"],
+        "read": ["--read"],
         "readwrite": ["--write", "--read"],
-        "stat":      ["--stat"],
-        "list":      ["--s3listobjpar"],
+        "stat": ["--stat"],
+        "list": ["--s3listobjpar"],
     }
 
-    _MODES_NO_BLOCKSIZE = {"stat", "list"}
-
-    def __init__(self, options: dict[str, str], workload_output_directory: str) -> None:
-        # Must be set before super().__init__() because the base constructor calls _parse_options().
-        self._workload_output_directory: str = workload_output_directory
-        super().__init__(options)
+    _MODES_NO_BLOCKSIZE: ClassVar[set[str]] = {"stat", "list"}
 
     @classmethod
     def mode_is_supported(cls, mode: str) -> bool:
@@ -41,7 +38,26 @@ class ElbenchoCommand(Command):
         return mode not in cls._MODES_NO_BLOCKSIZE
 
     @staticmethod
+    def target_count(options: dict[str, str]) -> int:
+        """Elbencho fans out over S3 buckets, one process per bucket.
+
+        num_buckets exists to divide an aggregate total_iodepth; on its own
+        there is nothing to divide, so a single process runs against the base
+        bucket (see docs/workloads/elbencho-s3.md).
+        """
+        if options.get("total_iodepth") is None:
+            return 1
+        return require_int("num_buckets", options.get("num_buckets", 1))
+
+    @staticmethod
+    def workload_output_directory(base_run_directory: str, workload_name: str) -> str:
+        """Elbencho builds its own output path (mode/blocksize-bytes/threads/
+        iodepth) from the base run directory, with no workload-name segment."""
+        return base_run_directory
+
+    @staticmethod
     def parse_blocksize_to_bytes(blocksize: str) -> int:
+        """Convert a blocksize string (e.g. '4k', '16m') into byte count."""
         s = str(blocksize).strip().lower()
         m = re.fullmatch(r"(\d+(?:\.\d+)?)([kmg]?)", s)
         if not m:
@@ -89,14 +105,24 @@ class ElbenchoCommand(Command):
         parsed_options["blocksize"] = str(options.get("blocksize", "4k"))
         parsed_options["iodepth"] = str(options.get("iodepth", 1))
 
+        # Multi-bucket / aggregate-iodepth bookkeeping. These never appear on the
+        # elbencho command line directly; they shape the output path and, when
+        # this is one of several processes, the per-target bucket name.
+        total_iodepth = options.get("total_iodepth")
+        parsed_options["total_iodepth"] = str(total_iodepth) if total_iodepth is not None else None
+        parsed_options["target_count"] = str(options.get("target_count", 1))
+        parsed_options["target_number"] = str(options.get("target_number", 0))
+
         # Optional value flags
         for key in ("size", "num_objects", "num_dirs", "duration", "hosts"):
             value = options.get(key)
             parsed_options[key] = str(value) if value is not None else None
 
-        # Boolean presence flags: "true" when truthy, None otherwise.
+        # Boolean presence flags: "true" when enabled, None otherwise. The
+        # workloads layer stringifies every value, so a yaml ``false`` arrives
+        # as the string "false" — which is truthy. Compare, don't test.
         for key in ("deldirs", "s3nompcheck", "mkdirs"):
-            parsed_options[key] = "true" if options.get(key) else None
+            parsed_options[key] = "true" if options.get(key, "false") == "true" else None
 
         parsed_options["s3_auth_config"] = options.get("s3_auth_config", "")
         parsed_options["s3_session_token"] = options.get("s3_session_token", "")
@@ -107,19 +133,53 @@ class ElbenchoCommand(Command):
         return CliOptions(options)
 
     def _generate_output_directory_path(self) -> str:
-        # {base}/elbencho/{mode}_{blocksize_bytes}/threads-{NNN}/iodepth-{NNN}
+        # {base}/elbencho/{mode}_{blocksize_bytes}/threads-{NNN}/[total_iodepth-{N}/]iodepth-{NNN}
         options = self._options
         mode = str(options["mode"])
         blocksize = str(options["blocksize"])
-        threads = int(str(options["threads"]))
-        iodepth = int(str(options["iodepth"]))
-        return os.path.join(
+        threads = require_int("threads", options["threads"])
+        iodepth = require_int("iodepth", options["iodepth"])
+        path_parts: list[str] = [
             self._workload_output_directory,
             self.benchmark,
             f"{mode}_{self.parse_blocksize_to_bytes(blocksize)}",
             f"threads-{threads:03d}",
-            f"iodepth-{iodepth:03d}",
-        )
+        ]
+        # The post-processor recovers the aggregate depth from this segment, so
+        # it must sit between threads- and iodepth- when total_iodepth is in use.
+        if options["total_iodepth"] is not None:
+            path_parts.append(f"total_iodepth-{options['total_iodepth']}")
+        path_parts.append(f"iodepth-{iodepth:03d}")
+        return os.path.join(*path_parts)
+
+    def _is_multi_bucket(self) -> bool:
+        """True when this process is one of several sharing a run cell.
+
+        The Workload decides the fan-out and reports it as target_count.
+        Re-deriving it here from num_buckets would let the two disagree: a
+        total_iodepth too small to split runs fewer buckets than were asked
+        for, and this process would still suffix its bucket and result file as
+        though the others existed.
+        """
+        return require_int("target_count", self._options["target_count"]) > 1
+
+    def _bucket_target(self) -> str:
+        """S3 target for this run cell. When multiple buckets share a
+        total_iodepth, each target gets its own suffixed bucket so the parallel
+        processes do not collide."""
+        base_bucket = str(self._options["s3_bucket"])
+        if not self._is_multi_bucket():
+            return base_bucket
+        return f"{base_bucket}-{require_int('target_number', self._options['target_number'])}"
+
+    def _result_filename(self) -> str:
+        """Per-target result file. The parallel per-bucket processes in one run
+        cell share an output directory, so each must write a distinct result
+        file (mirrors fio's output.{target}); a single result.csv would let them
+        overwrite each other. Single-bucket runs keep the plain name."""
+        if not self._is_multi_bucket():
+            return "result.csv"
+        return f"result-{require_int('target_number', self._options['target_number'])}.csv"
 
     @property
     def benchmark(self) -> str:
@@ -158,9 +218,9 @@ class ElbenchoCommand(Command):
             cmd_parts += ["--dirs", str(options["num_dirs"])]
         if options["duration"] is not None:
             cmd_parts += ["--timelimit", str(options["duration"])]
-        if options["deldirs"]:
+        if options.get("deldirs") == "true":
             cmd_parts += ["--deldirs"]
-        if options["s3nompcheck"]:
+        if options.get("s3nompcheck") == "true":
             cmd_parts += ["--s3nompcheck"]
         if options["hosts"] is not None:
             cmd_parts += ["--hosts", str(options["hosts"])]
@@ -170,11 +230,22 @@ class ElbenchoCommand(Command):
             "s3_session_token": options["s3_session_token"] or "",
         })
         cmd_parts += ["--s3region", str(options["s3_region"])]
-        cmd_parts += ["--resfile", os.path.join(self._generate_output_directory_path(), "result.csv")]
+        cmd_parts += [
+            "--resfile",
+            os.path.join(self._generate_output_directory_path(), self._result_filename()),
+        ]
 
-        if options["mkdirs"]:
+        if options.get("mkdirs") == "true":
             cmd_parts += ["--mkdirs"]
-        cmd_parts += [f"s3://{options['s3_bucket']}"]
 
-        # Safely quote arguments for remote shell execution.
-        return shlex.join(cmd_parts)
+        # shlex.join() quotes the $(hostname -s) in the target away, so join the
+        # fixed arguments first and append the target unquoted.
+        return f"{shlex.join(cmd_parts)} {self._s3_target()}"
+
+    def _s3_target(self) -> str:
+        """Positional S3 target, namespaced per client with the client's FQDN so
+        that concurrent clients writing the same bucket do not overwrite each
+        other's keys. The substitution is expanded by the remote client shell.
+        Uses get_fqdn_cmd() (hostname -f) as the rbd fio command does, so hosts
+        in different domains with the same short name do not collide."""
+        return f"s3://{shlex.quote(self._bucket_target())}/$({get_fqdn_cmd()})"  # type: ignore[no-untyped-call]

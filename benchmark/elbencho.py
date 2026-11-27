@@ -13,6 +13,7 @@ import settings
 from monitoring.monitoring_factory import MonitoringFactory
 from remote.async_ssh import AsyncSSHExecutor
 from remote.remote_executor import RemoteExecutor
+from workloads.workloads import IGNORED_GLOBALS
 
 from .benchmark import Benchmark
 
@@ -44,7 +45,7 @@ class Elbencho(Benchmark):
         workloads = config.get("workloads", {})
         if not isinstance(workloads, dict):
             raise ValueError(f"workloads must be a dict, got {type(workloads).__name__}")
-        self._validate_workloads(workloads)
+        self._validate_workloads(config)
 
         for wl_name, wl_params in workloads.items():
             logger.info("Elbencho workload '%s': %s", wl_name, wl_params)
@@ -119,7 +120,7 @@ class Elbencho(Benchmark):
 
         self.dropcaches()
         # TODO: call super().run() once Benchmark.run() is executor-driven and
-        # is no longer using AsyncIO.
+        # is no longer using pdsh.
         self._remote.make_remote_dir(settings.getnodes("clients"), self.run_dir)  # type: ignore[no-untyped-call]
         self.cluster.dump_config(self.run_dir)
 
@@ -138,23 +139,56 @@ class Elbencho(Benchmark):
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_workloads(self, workloads: dict[str, Any]) -> None:
-        """Fail early with a precise error rather than mid-run inside the pipeline."""
+    def _validate_workloads(self, config: dict[str, Any]) -> None:
+        """Fail early with a precise error rather than mid-run inside the pipeline.
+
+        Validates each workload's *merged* options, because that is what the
+        pipeline runs: Workload.add_global_options() fills in every top-level
+        key the workload does not set for itself, so a top-level num_buckets
+        reaches the same arithmetic as a per-workload one and has to clear the
+        same bar.
+        """
+        workloads: dict[str, Any] = config.get("workloads", {})
+        global_options: dict[str, Any] = {
+            key: value for key, value in config.items() if key not in IGNORED_GLOBALS and value is not None
+        }
+
         for name, params in workloads.items():
             if not isinstance(params, dict):
                 raise ValueError(f"workload '{name}' must be a dict")
-            for field in ("mode", "s3_bucket"):
-                if field not in params:
-                    raise ValueError(f"workload '{name}' missing required key '{field}'")
-            for field in ("threads", "iodepth"):
-                values = params.get(field)
-                if values is None:
-                    continue
-                for value in (values if isinstance(values, list) else [values]):
-                    try:
-                        int(value)
-                    except (TypeError, ValueError) as exc:
-                        raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+            # A key written with no value in the yaml is dropped by the
+            # workloads layer, so treat it as absent here too.
+            merged: dict[str, Any] = {
+                **global_options,
+                **{key: value for key, value in params.items() if value is not None},
+            }
+            self._validate_workload_options(name, merged)
+
+    @staticmethod
+    def _validate_workload_options(name: str, options: dict[str, Any]) -> None:
+        """Check one workload's fully merged options."""
+        for field in ("mode", "s3_bucket"):
+            if field not in options:
+                raise ValueError(f"workload '{name}' missing required key '{field}'")
+
+        if "iodepth" in options and "total_iodepth" in options:
+            raise ValueError(f"workload '{name}': 'iodepth' and 'total_iodepth' are mutually exclusive — set only one")
+
+        # total_iodepth and num_buckets drive the per-bucket split, so a
+        # zero or negative value would divide by zero or yield no commands;
+        # require them to be >= 1.
+        positive_fields = ("total_iodepth", "num_buckets")
+        for field in ("threads", "iodepth", "total_iodepth", "num_buckets"):
+            values = options.get(field)
+            if values is None:
+                continue
+            for value in (values if isinstance(values, list) else [values]):
+                try:
+                    parsed = int(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+                if field in positive_fields and parsed < 1:
+                    raise ValueError(f"workload '{name}': {field} value {value!r} must be >= 1")
 
     # ------------------------------------------------------------------
     # Run loop
@@ -166,20 +200,29 @@ class Elbencho(Benchmark):
         self._workloads.set_benchmark_type("elbencho")
         self._workloads.set_executable(self.cmd_path)
 
+        # An uneven total_iodepth split gives a cell's commands different
+        # iodepth-* directories, so create every one of them up front (as the
+        # fio path does) rather than only the first command's.
+        for directory in self._workloads.get_output_directories():
+            self._remote.make_remote_dir(clients, directory)
+
         for output_directory, commands in self._workloads.command_groups():
             live_commands = [cmd for cmd in commands if cmd]
             if not live_commands:
                 continue
 
-            self._remote.make_remote_dir(
-                settings.getnodes("clients"),  # type: ignore[no-untyped-call]
-                output_directory,
-            )
             logger.info("Elbencho: running %d command(s) → %s", len(live_commands), output_directory)
-            MonitoringFactory.start(output_directory)
             for cmd in live_commands:
                 logger.debug("Elbencho cmd: %s", cmd)
-                self._remote.run_command(clients, cmd, continue_if_error=False)
-            MonitoringFactory.stop()
+
+            # Per-bucket commands must run at once to produce the aggregate load
+            # total_iodepth describes, so launch the whole cell concurrently.
+            MonitoringFactory.start(output_directory)
+            try:
+                self._remote.run_commands(clients, live_commands, continue_if_error=False)
+            finally:
+                # run_commands raises if any bucket's process fails; the
+                # collectors must still be stopped.
+                MonitoringFactory.stop()
 
         logger.info("Elbencho: all workloads complete.")

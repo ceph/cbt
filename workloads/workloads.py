@@ -2,19 +2,32 @@
 The workloads class that contains all the Workloads for a given Benchmark run
 """
 
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from logging import Logger, getLogger
 from time import sleep
 from typing import Optional, Union
 
 import progress
-from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
+from common import (  # pyright: ignore[reportUnknownVariableType]
+    CheckedPopen,
+    CheckedPopenLocal,
+    make_remote_dir,
+    pdsh,
+)
 from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import Workload
-from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, WorkloadYamlType
+from workloads.workload_types import (
+    BenchmarkConfigurationType,
+    WorkloadType,
+    WorkloadYamlType,
+)
 
 log: Logger = getLogger("cbt")
+
+# Top-level keys in a benchmark's yaml section that are not options to pass
+# down to a workload.
+IGNORED_GLOBALS: tuple[str, ...] = ("workloads", "prefill", "force_prefill")
 
 
 class Workloads:
@@ -166,6 +179,19 @@ class Workloads:
             workload.set_executable(self._executable)
             yield from workload.get_commands_list()
 
+    def get_output_directories(self) -> Generator[str, None, None]:
+        """Yield every distinct output directory used by any command of any workload.
+
+        An uneven total_iodepth split gives the commands of one run cell
+        different per-target iodepths, and therefore different directories, so
+        callers that create directories up front must create all of them.
+
+        set_benchmark_type() must be called first.
+        """
+        for workload in self._workloads:
+            workload.set_benchmark_type(self._benchmark_type)
+            yield from workload.get_output_directories()
+
     def get_names(self) -> str:
         """
         Get the names for all the workloads
@@ -224,16 +250,23 @@ class Workloads:
         return str(value)
 
     @staticmethod
-    def _normalise_options(options: WorkloadType) -> WorkloadType:
+    def _normalise_options(options: Mapping[str, object]) -> WorkloadType:
         """
         Convert every option value (and every element within list values)
         to a string so that dict[str, str | list[str]] is consistently
         typed before being handed to Workload / FioCommand (which expect
         dict[str, str]).
         Booleans are lowercased (``True`` → ``"true"``, ``False`` → ``"false"``).
+
+        A key written with no value in the yaml (``total_iodepth:``) parses as
+        None. Drop it rather than stringify it: everything downstream decides
+        whether an option applies by its presence, and ``"None"`` would read as
+        a value that is present and then fail to parse.
         """
         normalised: WorkloadType = {}
         for key, value in options.items():
+            if value is None:
+                continue
             if isinstance(value, list):
                 normalised[key] = [Workloads._to_str(item) for item in value]
             else:
@@ -244,18 +277,15 @@ class Workloads:
         """
         Get any configuration options from the test plan .yaml that are not workload
         specific
+
+        Globals go through the same _normalise_options() as the per-workload
+        options because they are merged into a single dict before any command
+        is built, so the two must agree on what a value looks like.
         """
-        global_options: WorkloadType = {}
+        # prefill and force_prefill are not options for workloads as they are used in the
+        # Benchmark prefill() method. workloads is handled per workload, not globally.
+        globals_from_yaml: dict[str, object] = {
+            option_name: value for option_name, value in configuration.items() if option_name not in IGNORED_GLOBALS
+        }
 
-        for option_name, value in configuration.items():
-            if option_name in ("workloads", "prefill", "force_prefill"):
-                # prefill and force_prefill are not options for workloads as they are used in the
-                # Benchmark prefill() method.
-                # workloads we also want to ignore as these will be dealt with at a later date
-                pass
-            elif isinstance(value, list):
-                global_options[option_name] = [Workloads._to_str(item) for item in value]
-            else:
-                global_options[option_name] = Workloads._to_str(value)
-
-        return global_options
+        return self._normalise_options(globals_from_yaml)
