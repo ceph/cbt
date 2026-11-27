@@ -118,11 +118,15 @@ read_small:
 To benchmark aggregate throughput across multiple S3 buckets while bounding overall queue depth, use `total_iodepth` alongside `num_buckets`:
 
 - `total_iodepth` caps the aggregate IO depth across buckets and distributes it evenly across concurrent per-bucket processes (at least 1 depth per bucket).
+- `iodepth` and `total_iodepth` are mutually exclusive.
 - `num_buckets` is only used when `total_iodepth` is specified; otherwise a single bucket is used.
 - When `total_iodepth < num_buckets`, active buckets are capped to `total_iodepth` so each bucket gets at least depth 1. The number of buckets that actually run — not `num_buckets` — is what decides the naming below, so a cap down to one bucket produces a plain single-bucket run.
 - Each parallel per-bucket process targets its own suffixed bucket (`<s3_bucket>-<index>`), e.g. `cbt-benchmark-0`, `cbt-benchmark-1`. A run that ends up with a single bucket uses `<s3_bucket>` unsuffixed.
 - Targets are namespaced per client using the client's FQDN (`s3://<bucket>/$(hostname -f)`), ensuring concurrent clients do not overwrite each other's keys.
 - Results for multi-bucket runs are written to distinct per-target result files (`result-0.csv`, `result-1.csv`, etc.) within the run directory to prevent file overwrites. A single-bucket run writes `result.csv`.
+- `total_iodepth` and `num_buckets` must be `>= 1`; `0` or a negative value is rejected at startup rather than failing part-way through a run.
+- These rules apply to values set at the benchmark's top level as well as inside a workload, because a workload inherits every top-level key it does not set for itself. A top-level `iodepth` therefore clashes with a workload's `total_iodepth` in exactly the same way.
+- A key written with no value (`total_iodepth:`) counts as not set at all.
 
 Example multi-bucket workload:
 

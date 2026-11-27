@@ -492,6 +492,125 @@ class TestElbenchoEstimateDuration(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+class TestTotalIodepthValidation(unittest.TestCase):
+    """Construction-time validation for total_iodepth and num_buckets."""
+
+    archive_dir = "/tmp"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
+        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+
+    def _make(self, workloads: dict[str, Any]) -> Elbencho:
+        cfg = dict(_MINIMAL_CONFIG, workloads=workloads)
+        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
+        assert isinstance(b, Elbencho)
+        return b
+
+    def test_non_integer_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": "bad"}})
+        self.assertIn("total_iodepth value 'bad' is not an integer", str(ctx.exception))
+
+    def test_non_integer_num_buckets_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "num_buckets": "bad"}})
+        self.assertIn("num_buckets value 'bad' is not an integer", str(ctx.exception))
+
+    def test_iodepth_and_total_iodepth_mutually_exclusive(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "iodepth": 4, "total_iodepth": 16}})
+        self.assertIn("mutually exclusive", str(ctx.exception))
+
+    def test_valid_total_iodepth_and_num_buckets_accepted(self) -> None:
+        b = self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": [4, 8, 16], "num_buckets": 4}})
+        self.assertTrue(b._workloads.exist())
+
+    def test_zero_num_buckets_raises(self) -> None:
+        # num_buckets=0 with total_iodepth would otherwise divide by zero in the
+        # split; reject it at construction with a clear, key-named message.
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 8, "num_buckets": 0}})
+        self.assertIn("num_buckets", str(ctx.exception))
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+    def test_zero_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 0}})
+        self.assertIn("total_iodepth", str(ctx.exception))
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+    def test_negative_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make({"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": -4}})
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+    def test_null_total_iodepth_not_mutually_exclusive_with_iodepth(self) -> None:
+        # A null total_iodepth (``total_iodepth:`` in YAML) counts as absent, as
+        # the fio path treats a null time/duration, so it must not trip the
+        # mutual-exclusion check against a real iodepth value.
+        b = self._make({"w": {"mode": "write", "s3_bucket": "b", "iodepth": 4, "total_iodepth": None}})
+        self.assertTrue(b._workloads.exist())
+
+
+class TestGlobalOptionValidation(unittest.TestCase):
+    """Validation must cover globally set options too.
+
+    Workload.add_global_options() fills in every top-level key the workload
+    does not set, so a global reaches exactly the same arithmetic as a
+    per-workload value and has to clear the same bar.
+    """
+
+    archive_dir = "/tmp"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        settings.mock_initialize(config_file=INVARIANT_YAML)  # type: ignore[no-untyped-call]
+        cls.cluster = Ceph.mockinit(settings.cluster)  # type: ignore[no-untyped-call, attr-defined]
+
+    def _make(self, **config: Any) -> Elbencho:
+        cfg = dict(_MINIMAL_CONFIG, **config)
+        b = benchmarkfactory.get_object(self.archive_dir, self.cluster, "elbencho", cfg)  # type: ignore[no-untyped-call, attr-defined]
+        assert isinstance(b, Elbencho)
+        return b
+
+    def test_global_zero_num_buckets_raises(self) -> None:
+        # Would otherwise surface as a bare ZeroDivisionError from the split.
+        with self.assertRaises(ValueError) as ctx:
+            self._make(num_buckets=0, workloads={"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 8}})
+        self.assertIn("num_buckets", str(ctx.exception))
+        self.assertIn("must be >= 1", str(ctx.exception))
+
+    def test_global_zero_total_iodepth_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            self._make(total_iodepth=0, workloads={"w": {"mode": "write", "s3_bucket": "b"}})
+        self.assertIn("total_iodepth", str(ctx.exception))
+
+    def test_global_iodepth_with_workload_total_iodepth_raises(self) -> None:
+        # Otherwise the global iodepth sweep multiplies the run cells, and
+        # every one of them writes to the same directory and result file.
+        with self.assertRaises(ValueError) as ctx:
+            self._make(iodepth=[1, 2, 3], workloads={"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 4}})
+        self.assertIn("mutually exclusive", str(ctx.exception))
+
+    def test_workload_value_overrides_a_bad_global(self) -> None:
+        # The workload's own value wins at merge time, so a global that the
+        # workload replaces must not be held against it.
+        b = self._make(num_buckets=0, workloads={"w": {"mode": "write", "s3_bucket": "b",
+                                                       "total_iodepth": 8, "num_buckets": 2}})
+        self.assertTrue(b._workloads.exist())
+
+    def test_globally_supplied_required_key_is_accepted(self) -> None:
+        # s3_bucket set once at the top level applies to every workload.
+        b = self._make(s3_bucket="shared", workloads={"w": {"mode": "write"}})
+        self.assertTrue(b._workloads.exist())
+
+    def test_null_global_does_not_trip_mutual_exclusion(self) -> None:
+        b = self._make(iodepth=None, workloads={"w": {"mode": "write", "s3_bucket": "b", "total_iodepth": 8}})
+        self.assertTrue(b._workloads.exist())
+
+
 class TestTotalIodepthRunLoop(unittest.TestCase):
     """Run-loop fan-out when total_iodepth / num_buckets are set."""
 

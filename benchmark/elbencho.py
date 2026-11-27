@@ -13,6 +13,7 @@ import settings
 from monitoring.monitoring_factory import MonitoringFactory
 from remote.async_ssh import AsyncSSHExecutor
 from remote.remote_executor import RemoteExecutor
+from workloads.workloads import IGNORED_GLOBALS
 
 from .benchmark import Benchmark
 
@@ -44,7 +45,7 @@ class Elbencho(Benchmark):
         workloads = config.get("workloads", {})
         if not isinstance(workloads, dict):
             raise ValueError(f"workloads must be a dict, got {type(workloads).__name__}")
-        self._validate_workloads(workloads)
+        self._validate_workloads(config)
 
         for wl_name, wl_params in workloads.items():
             logger.info("Elbencho workload '%s': %s", wl_name, wl_params)
@@ -138,23 +139,56 @@ class Elbencho(Benchmark):
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_workloads(self, workloads: dict[str, Any]) -> None:
-        """Fail early with a precise error rather than mid-run inside the pipeline."""
+    def _validate_workloads(self, config: dict[str, Any]) -> None:
+        """Fail early with a precise error rather than mid-run inside the pipeline.
+
+        Validates each workload's *merged* options, because that is what the
+        pipeline runs: Workload.add_global_options() fills in every top-level
+        key the workload does not set for itself, so a top-level num_buckets
+        reaches the same arithmetic as a per-workload one and has to clear the
+        same bar.
+        """
+        workloads: dict[str, Any] = config.get("workloads", {})
+        global_options: dict[str, Any] = {
+            key: value for key, value in config.items() if key not in IGNORED_GLOBALS and value is not None
+        }
+
         for name, params in workloads.items():
             if not isinstance(params, dict):
                 raise ValueError(f"workload '{name}' must be a dict")
-            for field in ("mode", "s3_bucket"):
-                if field not in params:
-                    raise ValueError(f"workload '{name}' missing required key '{field}'")
-            for field in ("threads", "iodepth"):
-                values = params.get(field)
-                if values is None:
-                    continue
-                for value in (values if isinstance(values, list) else [values]):
-                    try:
-                        int(value)
-                    except (TypeError, ValueError) as exc:
-                        raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+            # A key written with no value in the yaml is dropped by the
+            # workloads layer, so treat it as absent here too.
+            merged: dict[str, Any] = {
+                **global_options,
+                **{key: value for key, value in params.items() if value is not None},
+            }
+            self._validate_workload_options(name, merged)
+
+    @staticmethod
+    def _validate_workload_options(name: str, options: dict[str, Any]) -> None:
+        """Check one workload's fully merged options."""
+        for field in ("mode", "s3_bucket"):
+            if field not in options:
+                raise ValueError(f"workload '{name}' missing required key '{field}'")
+
+        if "iodepth" in options and "total_iodepth" in options:
+            raise ValueError(f"workload '{name}': 'iodepth' and 'total_iodepth' are mutually exclusive — set only one")
+
+        # total_iodepth and num_buckets drive the per-bucket split, so a
+        # zero or negative value would divide by zero or yield no commands;
+        # require them to be >= 1.
+        positive_fields = ("total_iodepth", "num_buckets")
+        for field in ("threads", "iodepth", "total_iodepth", "num_buckets"):
+            values = options.get(field)
+            if values is None:
+                continue
+            for value in (values if isinstance(values, list) else [values]):
+                try:
+                    parsed = int(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"workload '{name}': {field} value {value!r} is not an integer") from exc
+                if field in positive_fields and parsed < 1:
+                    raise ValueError(f"workload '{name}': {field} value {value!r} must be >= 1")
 
     # ------------------------------------------------------------------
     # Run loop

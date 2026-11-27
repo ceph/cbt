@@ -16,6 +16,9 @@ from workloads.workload_types import BenchmarkConfigurationType, WorkloadType, W
 
 log: Logger = getLogger("cbt")
 
+# Top-level keys in a benchmark's yaml section that are not options to pass
+# down to a workload.
+IGNORED_GLOBALS: tuple[str, ...] = ("workloads", "prefill", "force_prefill")
 
 class Workloads:
     """
