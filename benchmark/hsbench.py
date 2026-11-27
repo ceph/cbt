@@ -132,7 +132,7 @@ class Hsbench(Benchmark):
         logger.info("Attempting to prefill hsbench objects...")
         ps = []
         for i in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes("clients"), self.run_command(i, self.cmd_path, True))
+            p = common.pdsh_checked(settings.getnodes("clients"), self.run_command(i, self.cmd_path, True))
             ps.append(p)
         for p in ps:
             p.wait()
@@ -155,7 +155,7 @@ class Hsbench(Benchmark):
         logger.info("Running hsbench %s test." % self.modes)
         ps = []
         for i in range(self.endpoints_per_client):
-            p = common.pdsh(settings.getnodes("clients"), self.run_command(i, self.cmd_path_full, False))
+            p = common.pdsh_checked(settings.getnodes("clients"), self.run_command(i, self.cmd_path_full, False))
             ps.append(p)
         for p in ps:
             p.wait()

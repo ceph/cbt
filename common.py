@@ -197,6 +197,15 @@ def pdsh(nodes, command, continue_if_error=True):
         return CheckedPopen(args, continue_if_error=continue_if_error, env_vars=env)
 
 
+def pdsh_checked(nodes, command):
+    """
+    pdsh for commands whose failure invalidates the results (benchmark runs, prefill).
+    Honours the `continue_on_error` key in the `common:` section of the yaml; the default
+    (True) matches pdsh(), so behaviour only changes if the user sets it to false.
+    """
+    return pdsh(nodes, command, continue_if_error=settings.common.get("continue_on_error", True))
+
+
 def pdcp(nodes, flags, localfile, remotefile):
     local_node = get_localnode(nodes)
     if local_node:

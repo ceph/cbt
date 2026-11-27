@@ -155,7 +155,7 @@ class Getput(Benchmark):
         ps = []
         for i in range(0, len(self.auth_urls)):
             cmd = self.mkgetputcmd("%s/gw%02d.cred" % (self.run_dir, i), i)
-            p = common.pdsh(settings.getnodes("clients"), cmd)
+            p = common.pdsh_checked(settings.getnodes("clients"), cmd)
             ps.append(p)
         for p in ps:
             p.wait()

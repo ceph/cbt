@@ -8,7 +8,12 @@ from time import sleep
 from typing import Optional, Union
 
 import progress
-from common import CheckedPopen, CheckedPopenLocal, make_remote_dir, pdsh  # pyright: ignore[reportUnknownVariableType]
+from common import (  # pyright: ignore[reportUnknownVariableType]
+    CheckedPopen,
+    CheckedPopenLocal,
+    make_remote_dir,
+    pdsh_checked,
+)
 from monitoring.monitoring_factory import MonitoringFactory
 from settings import getnodes  # pyright: ignore[reportUnknownVariableType]
 from workloads.workload import Workload
@@ -116,10 +121,10 @@ class Workloads:
 
                 with progress.phase_bar(phase_desc, phase_secs, overall=progress.get_overall_bar()):
                     if script_command:
-                        pdsh(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
+                        pdsh_checked(getnodes("clients"), script_command).wait()  # type: ignore[no-untyped-call]
 
                     processes: list[Union[CheckedPopen, CheckedPopenLocal]] = [
-                        pdsh(getnodes("clients"), fio_command)  # type: ignore[no-untyped-call]
+                        pdsh_checked(getnodes("clients"), fio_command)  # type: ignore[no-untyped-call]
                         for fio_command in fio_command_list
                     ]
 

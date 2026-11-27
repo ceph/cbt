@@ -101,7 +101,7 @@ class RbdFio(Benchmark):
             size,
             self.names,
         )
-        common.pdsh(settings.getnodes("clients"), pre_cmd).communicate()
+        common.pdsh_checked(settings.getnodes("clients"), pre_cmd).communicate()
 
     def run(self):
         super(RbdFio, self).run()
@@ -150,7 +150,7 @@ class RbdFio(Benchmark):
         if self.log_avg_msec is not None:
             fio_cmd += " --log_avg_msec=%s" % self.log_avg_msec
         logger.info("Running rbd fio %s test.", self.mode)
-        common.pdsh(settings.getnodes("clients"), fio_cmd).communicate()
+        common.pdsh_checked(settings.getnodes("clients"), fio_cmd).communicate()
 
         # If we were doing recovery, wait until it's done.
         if "recovery_test" in self.cluster.config:
@@ -178,22 +178,22 @@ class RbdFio(Benchmark):
         MonitoringFactory.start("%s/pool_monitoring" % self.run_dir)
         self.cluster.rmpool(self.poolname, self.pool_profile)
         self.cluster.mkpool(self.poolname, self.pool_profile, "rbd")
-        common.pdsh(
+        common.pdsh_checked(
             settings.getnodes("clients"),
             "/usr/bin/rbd create cbt-kernelrbdfio-`hostname -s` --size %s --pool %s" % (self.vol_size, self.poolname),
         ).communicate()
-        common.pdsh(
+        common.pdsh_checked(
             settings.getnodes("clients"),
             "sudo rbd map cbt-kernelrbdfio-`hostname -s` --pool %s --id admin" % self.poolname,
         ).communicate()
-        common.pdsh(
+        common.pdsh_checked(
             settings.getnodes("clients"), "sudo mkfs.xfs /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s`"
         ).communicate()
-        common.pdsh(
+        common.pdsh_checked(
             settings.getnodes("clients"),
             "sudo mkdir -p -m0755 -- %s/cbt-kernelrbdfio-`hostname -s`" % self.cluster.mnt_dir,
         ).communicate()
-        common.pdsh(
+        common.pdsh_checked(
             settings.getnodes("clients"),
             "sudo mount -t xfs -o noatime,inode64 /dev/rbd/cbt-kernelrbdfio/cbt-kernelrbdfio-`hostname -s` %s/cbt-kernelrbdfio-`hostname -s`"
             % self.cluster.mnt_dir,

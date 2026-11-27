@@ -9,6 +9,7 @@ import uuid
 import warnings
 
 import common
+import settings
 
 VAR_NAME = "CBT_TEST_NODES"
 MSG = f"No test VM provided. Set {VAR_NAME} env var"
@@ -95,3 +96,51 @@ class TestCommon(unittest.TestCase):
                 except OSError:
                     pass
             common.pdsh(nodes, "rm " + fname).communicate()
+
+
+class TestPdshContinueOnError(unittest.TestCase):
+    """
+    Tests for the `common: continue_on_error` setting.
+
+    "localhost" is routed through the local sh() path, which is the code under test.
+    """
+
+    def setUp(self) -> None:
+        self._saved_common: dict[str, object] = settings.common
+        settings.common = {}
+
+    def tearDown(self) -> None:
+        settings.common = self._saved_common
+
+    def test_pdsh_checked_default_does_not_raise(self) -> None:
+        """With no continue_on_error setting, pdsh_checked keeps going (existing default)."""
+        proc = common.pdsh_checked("localhost", "exit 3")
+        proc.communicate()
+        self.assertEqual(proc.myrtncode, 3, "failing command should report its return code")
+
+    def test_pdsh_checked_true_does_not_raise(self) -> None:
+        """continue_on_error: true keeps going."""
+        settings.common = {"continue_on_error": True}
+        proc = common.pdsh_checked("localhost", "exit 3")
+        proc.communicate()
+        self.assertEqual(proc.myrtncode, 3, "failing command should report its return code")
+
+    def test_pdsh_checked_false_raises(self) -> None:
+        """continue_on_error: false makes a failing command raise."""
+        settings.common = {"continue_on_error": False}
+        with self.assertRaisesRegex(Exception, "rtncode=3", msg="pdsh_checked should raise on a failing command"):
+            common.pdsh_checked("localhost", "exit 3").communicate()
+
+    def test_pdsh_checked_false_success_does_not_raise(self) -> None:
+        """continue_on_error: false does not affect commands that succeed."""
+        settings.common = {"continue_on_error": False}
+        proc = common.pdsh_checked("localhost", "exit 0")
+        proc.communicate()
+        self.assertEqual(proc.myrtncode, 0, "successful command should return 0")
+
+    def test_plain_pdsh_ignores_setting(self) -> None:
+        """Plain pdsh stays tolerant, so killall/pkill style teardowns never abort."""
+        settings.common = {"continue_on_error": False}
+        proc = common.pdsh("localhost", "exit 3")
+        proc.communicate()
+        self.assertEqual(proc.myrtncode, 3, "plain pdsh must not raise even when continue_on_error is false")
